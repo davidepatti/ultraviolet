@@ -1,19 +1,98 @@
 public class Channel {
 
-    public final int capacity;
-    private final String channel_id;
-    private final String channel_point;
+    private final int capacity;
     private int local_balance;
     private int remote_balance;
+    private final int channel_id;
+    private final String peer_public_key;
+
+    private int local_fee;
+    private int remote_fee;
 
     private boolean initiator;
     private boolean active;
-    // TODO: add other attribute if required
 
 
-    public Channel(int capacity, String channel_id, String channel_point) {
+    // constructor only fill the "proposal" for the channel
+    public Channel(String peer_public_key, int capacity, int channel_id, int local_fee) {
+        this.peer_public_key = peer_public_key;
         this.capacity = capacity;
         this.channel_id = channel_id;
-        this.channel_point = channel_point;
+        this.setLocal_fee(local_fee);
+    }
+
+    public int getCapacity() {
+        return capacity;
+    }
+
+    public int getLocal_balance() {
+        return local_balance;
+    }
+
+    public void setLocal_balance(int local_balance) {
+        this.local_balance = local_balance;
+    }
+
+    public int getRemote_balance() {
+        return remote_balance;
+    }
+
+    public void setRemote_balance(int remote_balance) {
+        this.remote_balance = remote_balance;
+    }
+
+    public int getChannel_id() {
+        return channel_id;
+    }
+
+    public String getPeer_public_key() {
+        return peer_public_key;
+    }
+
+    public int getLocal_fee() {
+        return local_fee;
+    }
+
+    public void setLocal_fee(int local_fee) {
+        this.local_fee = local_fee;
+    }
+
+    public int getRemote_fee() {
+        return remote_fee;
+    }
+
+    public void setRemote_fee(int remote_fee) {
+        this.remote_fee = remote_fee;
+    }
+
+    public boolean isInitiator() {
+        return initiator;
+    }
+
+    public void setInitiator(boolean initiator) {
+        this.initiator = initiator;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
+    @Override
+    public String toString() {
+        return "Channel{" +
+                "capacity=" + capacity +
+                ", local_balance=" + local_balance +
+                ", remote_balance=" + remote_balance +
+                ", channel_id=" + channel_id +
+                ", peer_public_key='" + peer_public_key + '\'' +
+                ", local_fee=" + local_fee +
+                ", remote_fee=" + remote_fee +
+                ", initiator=" + initiator +
+                ", active=" + active +
+                '}';
     }
 }
