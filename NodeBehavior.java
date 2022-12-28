@@ -1,18 +1,18 @@
 public class NodeBehavior {
 
-    private int boostrap_nodes = 1;
-    private int min_channel_size = 100000;
-    private int max_channel_size = 10000000;
+    private int boostrap_channels;
+    private double min_channel_size;
+    private double max_channel_size;
 
-    public int getBoostrap_nodes() {
-        return boostrap_nodes;
+    public int getBoostrapChannels() {
+        return boostrap_channels;
     }
 
-    public void setBoostrap_nodesi(int boostrap_nodesi) {
-        this.boostrap_nodes = boostrap_nodesi;
+    public void setBoostrapChannels(int boostrap_channels) {
+        this.boostrap_channels = boostrap_channels;
     }
 
-    public int getMin_channel_size() {
+    public double getMin_channel_size() {
         return min_channel_size;
     }
 
@@ -20,11 +20,17 @@ public class NodeBehavior {
         this.min_channel_size = min_channel_size;
     }
 
-    public int getMax_channel_size() {
+    public double getMax_channel_size() {
         return max_channel_size;
     }
 
     public void setMax_channel_size(int max_channel_size) {
+        this.max_channel_size = max_channel_size;
+    }
+
+    public NodeBehavior(int boostrap_channels, double min_channel_size, double max_channel_size) {
+        this.boostrap_channels = boostrap_channels;
+        this.min_channel_size = min_channel_size;
         this.max_channel_size = max_channel_size;
     }
 }
