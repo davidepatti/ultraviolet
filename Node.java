@@ -3,7 +3,6 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Node implements Runnable{
 
-
     // internal values are in sat
     private final int Msat = (int)1e6;
     private NodeBehavior behavior;
@@ -13,6 +12,7 @@ public class Node implements Runnable{
     private final String alias;
     private int onchain_balance;
     private int lightning_balance;
+    private int initiated_channels = 0;
     Log log = s -> { System.out.println(this.getPubkey()+"("+this.getAlias()+"):"+s); };
 
     public Node(String pubkey, String alias, int onchain_balance, int lightning_balance) {
@@ -55,7 +55,7 @@ public class Node implements Runnable{
 
         System.out.println("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain: "+getOnChainBalance());
 
-        while (behavior.getBoostrapChannels() > getNumberOfChanneles()) {
+        while (behavior.getBoostrapChannels() > initiated_channels) {
 
             log.print(" Searching for a peer to open a channel");
 
@@ -68,7 +68,7 @@ public class Node implements Runnable{
             if (peer_node==null) {
                 log.print("failed peer search, retrying later");
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep((long) (Math.random()*5000));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -89,6 +89,7 @@ public class Node implements Runnable{
                 if (!already_opened) {
                     if (openChannel(peer_node)) {
                         log.print("Successufull opened channel to "+peer_node.getPubkey()+ "new balance (onchain/lightning):"+onchain_balance+ " "+lightning_balance);
+                        initiated_channels++;
                     }
                     else log.print("Failed opening channel to "+peer_node.getPubkey());
                 }
@@ -98,7 +99,7 @@ public class Node implements Runnable{
 
     public boolean openChannel(Node peer_node) {
 
-        var channel_id = "CH_"+this.getPubkey()+"_"+peer_node.getPubkey();
+        var channel_id = "CH_"+UVMananager.timechain.getCurrent_block()+"_"+this.getPubkey()+"->"+peer_node.getPubkey();
         int max = (int) (behavior.getMax_channel_size()/Msat);
         int min = (int) (behavior.getMin_channel_size()/Msat);
         var size = Msat*ThreadLocalRandom.current().nextInt(min,max+1);

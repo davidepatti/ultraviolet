@@ -15,10 +15,15 @@ public class UVMananager {
 
     static Random random = new Random();
 
+    static Timechain timechain;
+
 
 
     private void bootstrapNetwork() {
         log.print("bootstrapping network with "+ this.total_nodes+" nodes ("+min_node_capacity+" - "+max_node_capacity+")");
+
+        timechain = new Timechain(1000);
+        new Thread(timechain,"timechain").start();
 
         for (int i =0;i<total_nodes; i++) {
 
@@ -82,14 +87,6 @@ public class UVMananager {
         if (candidate.getPubkey().compareTo(node.getPubkey())!=0)
             return candidate;
 
-        /*
-        for (Node x: nodeSet ) {
-            if (x.getPubkey().compareTo(node.getPubkey())!=0) {
-                System.out.println("RETURNING "+x.getPubkey()+" requested by "+node.getPubkey());
-                return x;
-            }
-        }
-        */
         return null;
     }
 }
