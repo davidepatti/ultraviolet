@@ -94,11 +94,11 @@ public class Channel {
     @Override
     public String toString() {
         return "Ch{" +
-                " initiator='" + initiator_public_key + '\'' +
+                " initpubkey='" + initiator_public_key + '\'' +
                 ", peer='" + peer_public_key + '\'' +
                 ", capacity=" + capacity +
-                ", local_balance=" + local_balance +
-                ", remote_balance=" + remote_balance +
+                ", local=" + local_balance +
+                ", remote=" + remote_balance +
                 ", id=" + channel_id +
                 ", initiator=" + initiator +
                 ", local_fee=" + local_fee +

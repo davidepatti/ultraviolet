@@ -18,7 +18,7 @@ public class Timechain implements Runnable{
 
     @Override
     public void run() {
-        System.out.println("Starting timechain!");
+        System.out.println("Timechain started!");
 
         while (true) {
             try {

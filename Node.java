@@ -13,9 +13,12 @@ public class Node implements Runnable{
     private int onchain_balance;
     private int lightning_balance;
     private int initiated_channels = 0;
+    private UVManager uvm;
+
     Log log = s -> { System.out.println(this.getPubkey()+"("+this.getAlias()+"):"+s); };
 
-    public Node(String pubkey, String alias, int onchain_balance, int lightning_balance) {
+    public Node(UVManager uvm, String pubkey, String alias, int onchain_balance, int lightning_balance) {
+        this.uvm = uvm;
         this.pubkey = pubkey;
         this.alias = alias;
         this.onchain_balance = onchain_balance;
@@ -64,7 +67,7 @@ public class Node implements Runnable{
                 break;
             }
 
-            var peer_node = UVMananager.findPeer(this);
+            var peer_node = uvm.findPeer(this);
             if (peer_node==null) {
                 log.print("failed peer search, retrying later");
                 try {
@@ -99,7 +102,7 @@ public class Node implements Runnable{
 
     public boolean openChannel(Node peer_node) {
 
-        var channel_id = "CH_"+UVMananager.timechain.getCurrent_block()+"_"+this.getPubkey()+"->"+peer_node.getPubkey();
+        var channel_id = "CH_"+ uvm.getTimechain().getCurrent_block()+"_"+this.getPubkey()+"->"+peer_node.getPubkey();
         int max = (int) (behavior.getMax_channel_size()/Msat);
         int min = (int) (behavior.getMin_channel_size()/Msat);
         var size = Msat*ThreadLocalRandom.current().nextInt(min,max+1);
