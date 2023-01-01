@@ -29,4 +29,12 @@ public class Timechain implements Runnable{
             tictocNextBlock();
         }
     }
+
+    @Override
+    public String toString() {
+        return "Timechain{" +
+                "current_block=" + current_block +
+                ", blocktime=" + blocktime +
+                '}';
+    }
 }

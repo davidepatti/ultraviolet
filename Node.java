@@ -106,18 +106,16 @@ public class Node implements Runnable{
         int max = (int) (behavior.getMax_channel_size()/Msat);
         int min = (int) (behavior.getMin_channel_size()/Msat);
         var size = Msat*ThreadLocalRandom.current().nextInt(min,max+1);
-        var channel_proposal = new Channel(size,size,0,channel_id, this.getPubkey() , peer_node.getPubkey(), 1,0,true,true);
+        var channel_proposal = new Channel(size,0,channel_id,this.getPubkey(), peer_node.getPubkey(),1,0);
         if (size>getOnChainBalance()) {
             log.print("Insufficient liquidity for "+size+" channel opening");
             return false;
         }
 
         if (peer_node.acceptChannel(channel_proposal)) {
-            channel_proposal.setLocal_balance(size);
-            channel_proposal.setRemote_balance(0);
             this.channels.add(channel_proposal);
-            onchain_balance = onchain_balance-channel_proposal.getCapacity();
-            lightning_balance += channel_proposal.getCapacity();
+            onchain_balance = onchain_balance-channel_proposal.getInitiator_balance();
+            lightning_balance += channel_proposal.getInitiator_balance();
         }
         else {
             log.print("channel proposal to "+peer_node.getPubkey()+" not accepted");
@@ -126,12 +124,15 @@ public class Node implements Runnable{
         return true;
     }
 
-    public synchronized boolean acceptChannel(Channel ch) {
-        log.print("Accepting channel from "+ch.getInitiator_public_key());
+    public void updateChannel() {
+        
+    }
 
-        var newchannel = new Channel(ch.getCapacity(),0,ch.getCapacity(),ch.getChannel_id(),ch.getInitiator_public_key(),this.getPubkey(),1,ch.getRemote_fee(),false,true);
+    //synchronized so that channels structure is updated correctly
+    public synchronized boolean acceptChannel(Channel new_channel) {
+        log.print("Accepting channel from "+new_channel.getInitiator_public_key());
 
-        this.channels.add(newchannel);
+        this.channels.add(new_channel);
         //log.print("Ok channel accepted:"+ch);
         return true;
     }

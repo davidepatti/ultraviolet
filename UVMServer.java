@@ -52,8 +52,9 @@ public class UVMServer implements Runnable {
                             System.out.println("Showing network");
                             showNetwork();
                             break;
-                        case "SHUTDOWN":
-                            System.out.println("Shutting down");
+                        case "STATUS":
+                            System.out.println("Get status");
+                            getStatus();
                             break;
                     }
                 }
@@ -62,6 +63,18 @@ public class UVMServer implements Runnable {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void getStatus() {
+        os.println("BEGIN DATA");
+        os.flush();
+        os.println("UVManager Status:");
+        os.println(uvm);
+        os.flush();
+        os.println(uvm.getTimechain());
+        os.println();
+        os.println("END DATA");
+        os.flush();
     }
 
     public void showNetwork() {

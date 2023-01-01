@@ -28,19 +28,22 @@ public class UVMClient {
             System.out.println("Connected to UVM Server");
         } catch (IOException e) {
             System.out.println("Cannot connect to UVMServer "+uvm_server_host+":"+uvm_server_port);
+            System.exit(-1);
             throw new RuntimeException(e);
         }
         boolean quit = false;
         boolean uvm_started = false;
         var scanner = new Scanner(System.in);
         while (!quit)  {
+
+            String s;
             System.out.println("-------------------------------------------------");
             System.out.println(" Ultraviolet Client ");
             System.out.println("-------------------------------------------------");
             System.out.println(" (1) Bootstrap Lightning Network nodes");
             System.out.println(" (2) Show network");
             System.out.println(" (3) Disconnect client");
-            System.out.println(" (4) Shutdown UV manager");
+            System.out.println(" (4) Show UVManager Status");
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
 
@@ -62,8 +65,6 @@ public class UVMClient {
                     os.println("SHOW_NETWORK");
                     os.flush();
 
-                    String s;
-
                     while (is.hasNextLine()) {
                         s = is.nextLine();
                         System.out.println(s);
@@ -78,9 +79,14 @@ public class UVMClient {
                     System.out.println("Disconnecting client");
                     break;
                 case "4":
-                    os.println("SHUTDOWN");
+                    os.println("STATUS");
                     os.flush();
-                    System.out.println("Shutting down UVM manager");
+
+                    while (is.hasNextLine()) {
+                        s = is.nextLine();
+                        System.out.println(s);
+                        if (s.equals("END DATA")) break;
+                    }
                     break;
             }
         }

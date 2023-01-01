@@ -24,7 +24,8 @@ public class UVManager {
 
     // playground
     public static void main(String[] args) {
-        var uv = new UVManager(10,10*(int)1e6,100*(int)1e6);
+        var uvm = new UVManager(10,10*(int)1e6,100*(int)1e6);
+        uvm.startServer(7777);
     }
 
 
@@ -37,7 +38,7 @@ public class UVManager {
         return timechain;
     }
 
-    public void bootstrapNetwork() {
+    public synchronized void bootstrapNetwork() {
         boostrapped = true;
         log.print("bootstrapping network with "+ this.total_nodes+" nodes ("+ min_node_funding +" - "+ max_node_funding +")");
 
@@ -62,16 +63,21 @@ public class UVManager {
     }
 
     public UVManager(int total_nodes, int min_node_funding, int max_node_funding) {
-        System.out.println("Starting UVManager...");
+        System.out.println("Initializing UVManager...");
         System.out.println(this);
-        var uvm_server = new UVMServer(this,7777);
-        new Thread(uvm_server).start();
         this.total_nodes = total_nodes;
         this.min_node_funding = min_node_funding;
         this.max_node_funding = max_node_funding;
-        System.out.println("Starting timechain");
         timechain = new Timechain(1000);
     }
+
+    public void startServer(int port) {
+        System.out.println("Starting UVM Server...");
+        var uvm_server = new UVMServer(this,port);
+        new Thread(uvm_server).start();
+
+    }
+
 
     public void showNetwork() {
 
