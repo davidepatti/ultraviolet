@@ -49,12 +49,21 @@ public class UVMServer implements Runnable {
                             disconnect = true;
                             break;
                         case "SHOW_NETWORK":
-                            System.out.println("Showing network");
                             showNetwork();
                             break;
+                        case "TEST":
+                            uvm.testRandomEvent();
+                            break;
                         case "STATUS":
-                            System.out.println("Get status");
                             getStatus();
+                            break;
+                        case "SHOW_NODE":
+                            String node = is.nextLine();
+                            System.out.println("Showing node "+node);
+                            showNode(node);
+                            break;
+                        default:
+                            System.out.println("Unknown command "+command);
                             break;
                     }
                 }
@@ -71,8 +80,6 @@ public class UVMServer implements Runnable {
         os.println("UVManager Status:");
         os.println(uvm);
         os.flush();
-        os.println(uvm.getTimechain());
-        os.println();
         os.println("END DATA");
         os.flush();
     }
@@ -81,13 +88,27 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        for (Node n: uvm.getNodeSet()) {
+        for (Node n: uvm.getNodeSet().values()) {
             os.println(n);
             os.flush();
             for (Channel c:n.getChannels()) {
                 os.println(c);
                 os.flush();
             }
+        }
+        os.println("END DATA");
+        os.flush();
+    }
+    public void showNode(String pubkey) {
+
+        os.println("BEGIN DATA");
+        os.flush();
+        var node = uvm.getNodeSet().get(pubkey);
+        os.println(node);
+        os.flush();
+        for (Channel c:node.getChannels()) {
+            os.println(c);
+            os.flush();
         }
         os.println("END DATA");
         os.flush();

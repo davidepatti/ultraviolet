@@ -44,6 +44,8 @@ public class UVMClient {
             System.out.println(" (2) Show network");
             System.out.println(" (3) Disconnect client");
             System.out.println(" (4) Show UVManager Status");
+            System.out.println(" (5) Show Node Status");
+            System.out.println(" (T) test");
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
 
@@ -78,6 +80,7 @@ public class UVMClient {
                     quit = true;
                     System.out.println("Disconnecting client");
                     break;
+
                 case "4":
                     os.println("STATUS");
                     os.flush();
@@ -87,6 +90,26 @@ public class UVMClient {
                         System.out.println(s);
                         if (s.equals("END DATA")) break;
                     }
+                    break;
+                case "5":
+                    System.out.print("insert node public key:");
+                    String node = scanner.nextLine();
+
+                    os.println("SHOW_NODE");
+                    os.flush();
+                    os.println(node);
+                    os.flush();
+                    while (is.hasNextLine()) {
+                        s = is.nextLine();
+                        System.out.println(s);
+                        if (s.equals("END DATA")) break;
+                    }
+
+                    break;
+                case "T":
+                    os.println("TEST");
+                    os.flush();
+                    System.out.println("Testing..");
                     break;
             }
         }

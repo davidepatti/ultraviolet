@@ -1,7 +1,7 @@
 import java.util.HashSet;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class Node implements Runnable{
+public class Node implements Runnable, Comparable<Node> {
 
     // internal values are in sat
     private final int Msat = (int)1e6;
@@ -15,7 +15,7 @@ public class Node implements Runnable{
     private int initiated_channels = 0;
     private UVManager uvm;
 
-    Log log = s -> { System.out.println(this.getPubkey()+"("+this.getAlias()+"):"+s); };
+    Log log;
 
     public Node(UVManager uvm, String pubkey, String alias, int onchain_balance, int lightning_balance) {
         this.uvm = uvm;
@@ -23,6 +23,10 @@ public class Node implements Runnable{
         this.alias = alias;
         this.onchain_balance = onchain_balance;
         this.lightning_balance = lightning_balance;
+        // change lamba function here to log to a different target
+        this.log = s -> {
+            uvm.log.print(this.getPubkey()+":"+s);
+        };
     }
 
     public synchronized HashSet<Channel> getChannels() {
@@ -88,7 +92,6 @@ public class Node implements Runnable{
                         break;
                     }
                 }
-
                 if (!already_opened) {
                     if (openChannel(peer_node)) {
                         log.print("Successufull opened channel to "+peer_node.getPubkey()+ "new balance (onchain/lightning):"+onchain_balance+ " "+lightning_balance);
@@ -125,7 +128,12 @@ public class Node implements Runnable{
     }
 
     public void updateChannel() {
-        
+
+        var some_channel = (Channel)channels.toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
+        log.print("updading channel "+some_channel.getChannel_id());
+
+        some_channel.updateChannel(1234,4321);
+
     }
 
     //synchronized so that channels structure is updated correctly
@@ -146,5 +154,10 @@ public class Node implements Runnable{
                 ", onchain_balance=" + onchain_balance +
                 ", lightning_balance=" + lightning_balance +
                 '}';
+    }
+
+    @Override
+    public int compareTo(Node node) {
+        return this.getPubkey().compareTo(node.getPubkey());
     }
 }

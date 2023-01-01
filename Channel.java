@@ -63,6 +63,13 @@ public class Channel {
         this.peer_fee = peer_fee;
     }
 
+    public synchronized void updateChannel(int initiator_balance,int peer_balance) {
+
+        this.initiator_balance = initiator_balance;
+        this.peer_balance = peer_balance;
+
+    }
+
 
     @Override
     public String toString() {
