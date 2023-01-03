@@ -7,27 +7,21 @@ public class UVMClient {
 
     UVManager uvm;
 
-    private final String uvm_server_host = "127.0.0.1";
-    private int uvm_server_port = 7777;
-
-
-    private Scanner is;
-    private PrintWriter os;
-    private Socket client;
-
 
     public UVMClient(int port) {
 
-        this.uvm_server_port = port;
         //uvm = new UVManager(10,(int)1e6,100*(int)1e6);
 
+        PrintWriter os;
+        Scanner is;
+        String uvm_server_host = "127.0.0.1";
         try {
-            client = new Socket(uvm_server_host,uvm_server_port);
+            Socket client = new Socket(uvm_server_host, port);
             is = new Scanner(client.getInputStream());
             os = new PrintWriter(client.getOutputStream());
             System.out.println("Connected to UVM Server");
         } catch (IOException e) {
-            System.out.println("Cannot connect to UVMServer "+uvm_server_host+":"+uvm_server_port);
+            System.out.println("Cannot connect to UVMServer "+ uvm_server_host +":"+ port);
             System.exit(-1);
             throw new RuntimeException(e);
         }

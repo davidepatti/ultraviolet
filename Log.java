@@ -1,3 +1,3 @@
 public interface Log {
-    public void print(String s);
+    void print(String s);
 }

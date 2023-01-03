@@ -1,7 +1,7 @@
 public class Timechain implements Runnable{
 
     private int current_block;
-    private int blocktime;
+    private final int blocktime;
 
     private synchronized void tictocNextBlock() {
        current_block++;
@@ -20,6 +20,7 @@ public class Timechain implements Runnable{
     public void run() {
         System.out.println("Timechain started!");
 
+        // TODO: method to stop timechain
         while (true) {
             try {
                 Thread.sleep(blocktime);

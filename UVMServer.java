@@ -24,6 +24,8 @@ public class UVMServer implements Runnable {
         try (var server = new ServerSocket(port);) {
             boolean uvm_on = true;
 
+            // TODO: method to gracefully stop/pause/save
+            //noinspection LoopConditionNotUpdatedInsideLoop,ConstantValue
             while (uvm_on) {
 
                 var client = server.accept();

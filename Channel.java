@@ -9,6 +9,7 @@ public class Channel {
     private int initiator_fee;
     private int peer_fee;
 
+    @SuppressWarnings("FieldMayBeFinal")
     private int state_hint = 0;
 
     // constructor only fill the "proposal" for the channel

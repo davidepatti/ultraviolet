@@ -7,14 +7,14 @@ public class Node implements Runnable, Comparable<Node> {
     // internal values are in sat
     private final int Msat = (int)1e6;
     private NodeBehavior behavior;
-    private HashMap<String, Channel> channels = new HashMap<>();
+    private final HashMap<String, Channel> channels = new HashMap<>();
     private final String pubkey;
     // abstracted: indeed alias can be changed
     private final String alias;
     private int onchain_balance;
     private int lightning_balance;
     private int initiated_channels = 0;
-    private UVManager uvm;
+    private final UVManager uvm;
 
     Log log;
 
@@ -25,9 +25,7 @@ public class Node implements Runnable, Comparable<Node> {
         this.onchain_balance = onchain_balance;
         this.lightning_balance = lightning_balance;
         // change lamba function here to log to a different target
-        this.log = s -> {
-            uvm.log.print(this.getPubkey()+":"+s);
-        };
+        this.log = s -> UVManager.log.print(this.getPubkey()+":"+s);
     }
 
     public synchronized HashMap<String, Channel> getChannels() {
