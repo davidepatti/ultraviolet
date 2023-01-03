@@ -15,6 +15,8 @@ Also, to facilitate the interaction with simulation environment, two further com
 - UVMServer: used to interact with UVManager via socket
 - UVMClient: a command line interface
 
+![what is](uv.png)
+
 # Quick Start
 
 from some terminal:

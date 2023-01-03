@@ -63,11 +63,14 @@ public class Channel {
         this.peer_fee = peer_fee;
     }
 
-    public synchronized void updateChannel(int initiator_balance,int peer_balance) {
+    public synchronized boolean updateChannel(int initiator_balance,int peer_balance) {
+
+        if (initiator_balance+peer_balance != this.getCapacity())
+            return false;
 
         this.initiator_balance = initiator_balance;
         this.peer_balance = peer_balance;
-
+        return true;
     }
 
 

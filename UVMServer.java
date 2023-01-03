@@ -91,7 +91,7 @@ public class UVMServer implements Runnable {
         for (Node n: uvm.getNodeSet().values()) {
             os.println(n);
             os.flush();
-            for (Channel c:n.getChannels()) {
+            for (Channel c:n.getChannels().values()) {
                 os.println(c);
                 os.flush();
             }
@@ -106,7 +106,7 @@ public class UVMServer implements Runnable {
         var node = uvm.getNodeSet().get(pubkey);
         os.println(node);
         os.flush();
-        for (Channel c:node.getChannels()) {
+        for (Channel c:node.getChannels().values()) {
             os.println(c);
             os.flush();
         }
