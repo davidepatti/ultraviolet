@@ -6,6 +6,8 @@ public class Channel {
     private final String initiator_public_key;
     private final String peer_public_key;
 
+    private int commit_number = 0;
+
     private int initiator_fee;
     private int peer_fee;
 
@@ -29,6 +31,10 @@ public class Channel {
 
     public synchronized int getCapacity() {
         return initiator_balance+peer_balance;
+    }
+
+    public synchronized int getLastCommit_number() {
+        return this.commit_number;
     }
 
     public synchronized int getInitiator_balance() {
@@ -71,6 +77,7 @@ public class Channel {
 
         this.initiator_balance = initiator_balance;
         this.peer_balance = peer_balance;
+        this.commit_number = getLastCommit_number()+1;
         return true;
     }
 
@@ -82,9 +89,6 @@ public class Channel {
                 ", peer='" + peer_public_key + '\'' +
                 ", balance=(" + initiator_balance +
                 "," + peer_balance +
-                "), id=" + channel_id +
-                ", initiator_fee=" + initiator_fee +
-                ", peer_fee=" + peer_fee +
-                '}';
+                "), id=" + channel_id + ", initiator_fee=" + initiator_fee + ", peer_fee=" + peer_fee + ", ncommits="+commit_number+'}';
     }
 }

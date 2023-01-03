@@ -1,6 +1,7 @@
 import java.io.*;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.Random;
 
 public class UVManager {
@@ -22,20 +23,22 @@ public class UVManager {
 
     private boolean boostrapped = false;
 
-    public boolean isBoostrapped() {
-        return boostrapped;
-    }
+    private static FileWriter logfile;
 
-    // playground
     public static void main(String[] args) {
         // redefining the log to write a file (optional) ////////////////////////////////////////////////
-        FileWriter logfile;
-        String LOGFILE_BASEPATH = "";
-        int DEFAULT_PORT = 7777;
+
+        if (args.length == 1) {
+            log.print("Loading configuration file:"+args[0]);
+            UVConfig.loadConfig(args[0]);
+        }
+        else {
+            log.print("No config file provided, using defaults");
+            UVConfig.setDefaults();
+        }
 
         try {
-            //logfile = new FileWriter(LOGFILE_BASEPATH+"log_uvm_" + new Date().toString() + ".txt");
-            logfile = new FileWriter(LOGFILE_BASEPATH+"log_uvm.txt");
+            logfile = new FileWriter(UVConfig.logfile);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -51,15 +54,14 @@ public class UVManager {
         };
         //////////////////////////////////////////////////////////////////////7
 
-        var uvm = new UVManager(10,10*(int)1e6,100*(int)1e6);
-
-        if (args.length==2)
-            uvm.startServer(Integer.parseInt(args[1]));
-        else {
-            System.out.println("No port provided for UVM Server, using default "+DEFAULT_PORT);
-            uvm.startServer(DEFAULT_PORT);
-        }
+        var uvm = new UVManager(UVConfig.total_nodes,UVConfig.min_funding,UVConfig.max_funding);
+        uvm.startServer(UVConfig.server_port);
     }
+
+    public boolean isBoostrapped() {
+        return boostrapped;
+    }
+
 
     public void startLog(Log log) {
 
