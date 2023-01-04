@@ -16,6 +16,10 @@ public class Node implements Runnable, Comparable<Node> {
     private int initiated_channels = 0;
     private final UVManager uvm;
 
+    private ChannelGraph channelGraph = new ChannelGraph();
+    // TODO: the concept of peers and and channel nodes should not coincide
+    private final HashMap<String,Node> peers = new HashMap<>();
+
     Log log;
 
     public Node(UVManager uvm, String pubkey, String alias, int onchain_balance, int lightning_balance) {
@@ -30,6 +34,9 @@ public class Node implements Runnable, Comparable<Node> {
 
     public synchronized HashMap<String, Channel> getChannels() {
         return this.channels;
+    }
+    public synchronized HashMap<String,Node> getPeers() {
+        return this.peers;
     }
     private int getOnChainBalance() {
         return onchain_balance;
@@ -105,7 +112,7 @@ public class Node implements Runnable, Comparable<Node> {
         int max = (int) (behavior.getMax_channel_size()/Msat);
         int min = (int) (behavior.getMin_channel_size()/Msat);
         var size = Msat*ThreadLocalRandom.current().nextInt(min,max+1);
-        var channel_proposal = new Channel(size,0,channel_id,this.getPubkey(), peer_node.getPubkey(),1,0);
+        var channel_proposal = new Channel(this,peer_node,size,0,channel_id,0,10,0,10,50);
         if (size>getOnChainBalance()) {
             log.print("Insufficient liquidity for "+size+" channel opening");
             return false;
@@ -120,6 +127,9 @@ public class Node implements Runnable, Comparable<Node> {
             log.print("channel proposal to "+peer_node.getPubkey()+" not accepted");
             return false;
         }
+
+        this.channelGraph.channel_announcement(channel_proposal);
+        peers.put(peer_node.getPubkey(),peer_node);
         return true;
     }
 
@@ -131,34 +141,33 @@ public class Node implements Runnable, Comparable<Node> {
 
     public synchronized void pushSats(String channel_id, int amount) {
 
-        System.out.println("pushing "+amount+ " sats towards channel "+channel_id);
-        var target = this.channels.get(channel_id);
+        var target_channel = this.channels.get(channel_id);
 
         boolean success = true;
 
         if (this.isInitiator(channel_id)) {
-            int new_initiator_balance =target.getInitiator_balance()-amount;
-            int new_peer_balance =target.getPeer_balance()+amount;
+            int new_initiator_balance =target_channel.getInitiator_balance()-amount;
+            int new_peer_balance =target_channel.getPeer_balance()+amount;
 
             if(new_initiator_balance>0) {
-               success = target.updateChannel(new_initiator_balance,new_peer_balance);
+               success = target_channel.updateChannel(new_initiator_balance,new_peer_balance);
             }
             else
-                log.print("Insufficient funds in channel "+target.getChannel_id()+" : cannot push  "+amount+ " sats to "+target.getPeer_public_key());
+                log.print("Insufficient funds in channel "+target_channel.getChannel_id()+" : cannot push  "+amount+ " sats to "+target_channel.getPeer_public_key());
         }
         else { // this node is not the initiator
-            int new_initiator_balance =target.getInitiator_balance()+amount;
-            int new_peer_balance =target.getPeer_balance()-amount;
+            int new_initiator_balance =target_channel.getInitiator_balance()+amount;
+            int new_peer_balance =target_channel.getPeer_balance()-amount;
 
             if(new_peer_balance>0) {
-                success = target.updateChannel(new_initiator_balance,new_peer_balance);
+                success = target_channel.updateChannel(new_initiator_balance,new_peer_balance);
             }
             else
-                log.print("Insufficient funds in channel "+target.getChannel_id()+" : cannot push  "+amount+ " sats to "+target.getInitiator_public_key());
+                log.print("Insufficient funds in channel "+target_channel.getChannel_id()+" : cannot push  "+amount+ " sats to "+target_channel.getInitiator_public_key());
         }
 
-        if (!success )
-            log.print("FATAL: pushing failed ");
+        if (success)
+            log.print("Pushed "+amount+ " sats towards channel "+channel_id);
     }
 
     public boolean isInitiator(String channel_id) {
@@ -170,6 +179,8 @@ public class Node implements Runnable, Comparable<Node> {
         log.print("Accepting channel from "+new_channel.getInitiator_public_key());
 
         this.channels.put(new_channel.getChannel_id(),new_channel);
+        this.channelGraph.channel_announcement(new_channel);
+        peers.put(new_channel.getInitiator_public_key(), new_channel.getInitiator_node());
         //log.print("Ok channel accepted:"+ch);
         return true;
     }

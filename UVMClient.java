@@ -36,10 +36,11 @@ public class UVMClient {
             System.out.println("-------------------------------------------------");
             System.out.println(" (1) Bootstrap Lightning Network nodes");
             System.out.println(" (2) Show network");
-            System.out.println(" (3) Disconnect client");
             System.out.println(" (4) Show UVManager Status");
             System.out.println(" (5) Show Node Status");
+            System.out.println(" (6) Generate Randome events");
             System.out.println(" (T) test");
+            System.out.println(" (q) Disconnect client");
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
 
@@ -68,7 +69,7 @@ public class UVMClient {
                     }
 
                     break;
-                case "3":
+                case "q":
                     os.println("DISCONNECT");
                     os.flush();
                     quit = true;
@@ -99,6 +100,14 @@ public class UVMClient {
                         if (s.equals("END DATA")) break;
                     }
 
+                    break;
+                case "6":
+                    System.out.print("Number of events to generate:");
+                    String n = scanner.nextLine();
+                    os.println("MSG_RANDOM_EVENTS");
+                    os.flush();
+                    os.println(n);
+                    os.flush();
                     break;
                 case "T":
                     os.println("TEST");

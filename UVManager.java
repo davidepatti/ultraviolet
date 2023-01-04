@@ -1,7 +1,5 @@
 import java.io.*;
-import java.util.Date;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.Random;
 
 public class UVManager {
@@ -22,7 +20,6 @@ public class UVManager {
     private final Timechain timechain;
 
     private boolean boostrapped = false;
-
     private static FileWriter logfile;
 
     public static void main(String[] args) {
@@ -60,11 +57,6 @@ public class UVManager {
 
     public boolean isBoostrapped() {
         return boostrapped;
-    }
-
-
-    public void startLog(Log log) {
-
     }
 
 
@@ -132,6 +124,20 @@ public class UVManager {
         some_node.pushSats(some_channel_id,some_amount);
     }
 
+    public void generateRandomEvents(int n) {
+        if (!boostrapped) {
+            log.print("Network not bootstrapped: Cannot generate random events!");
+            return;
+        }
+        for (int i=0;i<n;i++) {
+            var some_node = getRandomNode();
+            var some_channel_id = some_node.getRandomChannel().getChannel_id();
+            var some_amount = random.nextInt(1000);
+            some_amount *= 1000;
+            log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubkey()+" to "+some_channel_id);
+            some_node.pushSats(some_channel_id,some_amount);
+        }
+    }
 
     public void showNetwork() {
 

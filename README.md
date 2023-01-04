@@ -29,8 +29,8 @@ from some other terminal:
 
 # Components
 
-Each component is represented with a Java class that abstract some functional aspects of the related concepts usually found in a Lightning Network environment. 
-
+Each component is represented with a Java class that abstract some functional aspects of the related concepts usually
+found in a Lightning Network environment.
 
 ## Node
 Node models both the software element, e.g., lnd implementation running on some hardware, but also the operational/managements aspects.

@@ -56,6 +56,10 @@ public class UVMServer implements Runnable {
                         case "TEST":
                             uvm.testRandomEvent();
                             break;
+                        case "MSG_RANDOM_EVENTS":
+                            String n = is.nextLine();
+                            uvm.generateRandomEvents(Integer.parseInt(n));
+                            break;
                         case "STATUS":
                             getStatus();
                             break;
@@ -75,6 +79,7 @@ public class UVMServer implements Runnable {
             throw new RuntimeException(e);
         }
     }
+
 
     public void getStatus() {
         os.println("BEGIN DATA");
@@ -110,6 +115,12 @@ public class UVMServer implements Runnable {
         os.flush();
         for (Channel c:node.getChannels().values()) {
             os.println(c);
+            os.flush();
+        }
+        os.println("Peers:");
+        os.flush();
+        for (Node n:node.getPeers().values()) {
+            os.println(n);
             os.flush();
         }
         os.println("END DATA");
