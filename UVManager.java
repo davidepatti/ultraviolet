@@ -94,6 +94,7 @@ public class UVManager {
     }
 
     public UVManager(int total_nodes, int min_node_funding, int max_node_funding) {
+        if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
         this.total_nodes = total_nodes;
         this.min_node_funding = min_node_funding;
         this.max_node_funding = max_node_funding;

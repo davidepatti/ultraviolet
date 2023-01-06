@@ -14,11 +14,13 @@ public class UVConfig {
     // as fraction of the total initial funding
     private static final String DEFAULT_MIN_CHANNEL_SIZE = "0.05";
     private static final String DEFAULT_MAX_CHANNEL_SIZE = "0.2";
+    private static final String DEFAULT_SEED = "0";
 
     public static int total_nodes;
     public static int min_funding;
     public static int max_funding;
     public static int min_channels;
+    public static int seed;
     public static int max_channels;
     public static double min_channel_size;
     public static double max_channel_size;
@@ -41,6 +43,8 @@ public class UVConfig {
 
         logfile = DEFAULT_LOGFILE;
 
+        seed = Integer.parseInt(DEFAULT_SEED);
+
     }
 
     public static void loadConfig(String config_file) {
@@ -57,6 +61,7 @@ public class UVConfig {
             max_channel_size = Double.parseDouble(config.getProperty("max_funding", DEFAULT_MAX_CHANNEL_SIZE));
             server_port = Integer.parseInt(config.getProperty("server_port", DEFAULT_SERVERPORT));
             logfile = config.getProperty("logfile", DEFAULT_LOGFILE);
+            seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
 
             System.out.println("loaded config:");
             config_file_reader.close();
