@@ -74,7 +74,7 @@ public class UVManager {
             int max = UVConfig.max_funding/(int)1e6;
             int min = UVConfig.min_funding /(int)1e6;
             var funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new Node(this,"pk_"+i,"alias_"+i,funding,0);
+            var n = new Node(this,"pk_"+i,"alias_"+i,funding);
             var behavior = new NodeBehavior(UVConfig.min_channels,UVConfig.min_channel_size,UVConfig.max_channel_size);
             n.setBehavior(behavior);
             nodeMap.put(n.getPubkey(),n);

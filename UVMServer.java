@@ -68,6 +68,9 @@ public class UVMServer implements Runnable {
                             System.out.println("Showing node "+node);
                             showNode(node);
                             break;
+                        case "SHOW_NODES":
+                            showNodes();
+                            break;
                         default:
                             System.out.println("Unknown command "+command);
                             break;
@@ -105,6 +108,18 @@ public class UVMServer implements Runnable {
         }
         os.println("END DATA");
         os.flush();
+    }
+
+    public void showNodes() {
+        os.println("BEGIN DATA");
+        os.flush();
+        for (Node n: uvm.getNodes().values()) {
+            os.println(n);
+            os.flush();
+        }
+        os.println("END DATA");
+        os.flush();
+
     }
     public void showNode(String pubkey) {
 

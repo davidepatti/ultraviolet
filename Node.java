@@ -12,7 +12,6 @@ public class Node implements Runnable, Comparable<Node> {
     // abstracted: indeed alias can be changed
     private final String alias;
     private int onchain_balance;
-    private int lightning_balance;
     private int initiated_channels = 0;
     private final UVManager uvm;
 
@@ -21,13 +20,13 @@ public class Node implements Runnable, Comparable<Node> {
     private final HashMap<String,Node> peers = new HashMap<>();
 
     Log log;
+    private boolean bootstrap_completed = false;
 
-    public Node(UVManager uvm, String pubkey, String alias, int onchain_balance, int lightning_balance) {
+    public Node(UVManager uvm, String pubkey, String alias, int onchain_balance) {
         this.uvm = uvm;
         this.pubkey = pubkey;
         this.alias = alias;
         this.onchain_balance = onchain_balance;
-        this.lightning_balance = lightning_balance;
         // change lamba function here to log to a different target
         this.log = s -> UVManager.log.print(this.getPubkey()+":"+s);
     }
@@ -97,13 +96,15 @@ public class Node implements Runnable, Comparable<Node> {
                 }
                 if (!already_opened) {
                     if (openChannel(peer_node)) {
-                        log.print("Successufull opened channel to "+peer_node.getPubkey()+ "new balance (onchain/lightning):"+onchain_balance+ " "+lightning_balance);
+                        log.print("Successufull opened channel to "+peer_node.getPubkey()+ "new balance (onchain/lightning):"+onchain_balance+ " "+getLightningBalance());
                         initiated_channels++;
                     }
                     else log.print("Failed opening channel to "+peer_node.getPubkey());
                 }
             }
         } // while
+        bootstrap_completed = true;
+        log.print("Bootstrap completed");
     }
 
     public boolean openChannel(Node peer_node) {
@@ -121,7 +122,6 @@ public class Node implements Runnable, Comparable<Node> {
         if (peer_node.acceptChannel(channel_proposal)) {
             this.channels.put(channel_id,channel_proposal);
             onchain_balance = onchain_balance-channel_proposal.getInitiator_balance();
-            lightning_balance += channel_proposal.getInitiator_balance();
         }
         else {
             log.print("channel proposal to "+peer_node.getPubkey()+" not accepted");
@@ -164,7 +164,7 @@ public class Node implements Runnable, Comparable<Node> {
             }
             else {
                 log.print("Insufficient funds in channel " + target_channel.getChannel_id() + " : cannot push  " + amount + " sats to " + target_channel.getInitiator_public_key());
-                log.print("local funds:" + this.lightning_balance);
+                log.print("local funds:" + getLightningBalance());
             }
         }
 
@@ -187,6 +187,20 @@ public class Node implements Runnable, Comparable<Node> {
         return true;
     }
 
+    public boolean isBootstrap_completed() {
+        return bootstrap_completed;
+    }
+
+    public synchronized int getLightningBalance() {
+        int balance = 0;
+        for (Channel c:channels.values()) {
+            if (this.isInitiator(c.getChannel_id())) balance+=c.getInitiator_balance();
+            else
+                balance+=c.getPeer_balance();
+        }
+        return balance;
+    }
+
     @Override
     public String toString() {
         return "Node{" +
@@ -194,7 +208,8 @@ public class Node implements Runnable, Comparable<Node> {
                 ", alias='" + alias + '\'' +
                 ", nchannels=" + channels.size() +
                 ", onchain_balance=" + onchain_balance +
-                ", lightning_balance=" + lightning_balance +
+                ", lightning_balance=" + getLightningBalance() +
+                ", bootstrapped = "+isBootstrap_completed() +
                 '}';
     }
 
