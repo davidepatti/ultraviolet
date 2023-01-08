@@ -75,4 +75,8 @@ public class UVConfig {
         }
     }
 
+    @Override
+    public String toString() {
+        return super.toString();
+    }
 }

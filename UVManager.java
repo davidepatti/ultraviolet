@@ -14,7 +14,6 @@ public class UVManager {
     public int max_node_funding;
 
     private final HashMap<String,Node> nodeMap = new HashMap<>();
-    private String[] nodePubkeysArray;
 
     private final Random random = new Random();
     private final Timechain timechain;
@@ -60,7 +59,7 @@ public class UVManager {
     }
 
 
-    public synchronized HashMap<String, Node> getNodeSet(){
+    public synchronized HashMap<String, Node> getNodes(){
 
         return this.nodeMap;
     }
@@ -110,7 +109,7 @@ public class UVManager {
     }
 
     public Node getRandomNode() {
-        var n = random.nextInt(nodeMap.size()-1);
+        var n = random.nextInt(nodeMap.size());
         var some_random_key = nodeMap.keySet().toArray()[n];
         return nodeMap.get(some_random_key);
     }

@@ -162,8 +162,10 @@ public class Node implements Runnable, Comparable<Node> {
             if(new_peer_balance>0) {
                 success = target_channel.updateChannel(new_initiator_balance,new_peer_balance);
             }
-            else
-                log.print("Insufficient funds in channel "+target_channel.getChannel_id()+" : cannot push  "+amount+ " sats to "+target_channel.getInitiator_public_key());
+            else {
+                log.print("Insufficient funds in channel " + target_channel.getChannel_id() + " : cannot push  " + amount + " sats to " + target_channel.getInitiator_public_key());
+                log.print("local funds:" + this.lightning_balance);
+            }
         }
 
         if (success)
