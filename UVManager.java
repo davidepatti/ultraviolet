@@ -7,12 +7,6 @@ public class UVManager {
 
     static Log log = System.out::println;
 
-    private final int Msat = (int)1e6;
-    public final int total_nodes;
-    // in Msat
-    public int min_node_funding;
-    public int max_node_funding;
-
     private final HashMap<String,Node> nodeMap = new HashMap<>();
 
     private final Random random = new Random();
@@ -50,7 +44,7 @@ public class UVManager {
         };
         //////////////////////////////////////////////////////////////////////7
 
-        var uvm = new UVManager(UVConfig.total_nodes,UVConfig.min_funding,UVConfig.max_funding);
+        var uvm = new UVManager();
         uvm.startServer(UVConfig.server_port);
     }
 
@@ -70,20 +64,19 @@ public class UVManager {
 
     public synchronized void bootstrapNetwork() {
         boostrapped = true;
-        log.print("UVM: Bootstrapping network with "+ this.total_nodes+" nodes ("+ min_node_funding +" - "+ max_node_funding +")");
+        log.print("UVM: Bootstrapping network with "+ UVConfig.total_nodes+" nodes ("+ UVConfig.min_funding +" - "+ UVConfig.max_funding +")");
 
         log.print("UVM: Starting timechain thread...");
         new Thread(timechain,"timechain").start();
 
-        for (int i =0;i<total_nodes; i++) {
+        for (int i =0;i<UVConfig.total_nodes; i++) {
 
-            int max = max_node_funding /(int)Msat;
-            int min = min_node_funding /(int)Msat;
-            var funding = Msat*(random.nextInt(max-min)+min);
+            int max = UVConfig.max_funding/(int)1e6;
+            int min = UVConfig.min_funding /(int)1e6;
+            var funding = (int)1e6*(random.nextInt(max-min)+min);
             var n = new Node(this,"pk_"+i,"alias_"+i,funding,0);
-            //noinspection PointlessArithmeticExpression
-            var config = new NodeBehavior(3,1*Msat,5*Msat);
-            n.setBehavior(config);
+            var behavior = new NodeBehavior(UVConfig.min_channels,UVConfig.min_channel_size,UVConfig.max_channel_size);
+            n.setBehavior(behavior);
             nodeMap.put(n.getPubkey(),n);
         }
 
@@ -92,11 +85,8 @@ public class UVManager {
         }
     }
 
-    public UVManager(int total_nodes, int min_node_funding, int max_node_funding) {
+    public UVManager() {
         if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
-        this.total_nodes = total_nodes;
-        this.min_node_funding = min_node_funding;
-        this.max_node_funding = max_node_funding;
         timechain = new Timechain(1000);
         log.print("Initializing UVManager...");
         log.print(this.toString());
@@ -156,9 +146,7 @@ public class UVManager {
     @Override
     public String toString() {
         return "UVManager{" +
-                " total_nodes=" + total_nodes +
-                ", min_node_funding=" + min_node_funding +
-                ", max_node_funding=" + max_node_funding +
+                " config =" + UVConfig.printConfig()  +
                 ", timechain=" + timechain +
                 ", boostrapped=" + boostrapped +
                 '}';

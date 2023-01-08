@@ -5,27 +5,27 @@ import java.util.Properties;
 
 public class UVConfig {
     private static final String DEFAULT_TOTAL_NODES = "10";
-    private static final String DEFAULT_MIN_FUNDING = "10000000";
-    private static final String DEFAULT_MAX_FUNDING = "100000000";
+    private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
+    private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
     private static final String DEFAULT_LOGFILE = "uvm.log";
     private static final String DEFAULT_SERVERPORT = "7777";
     private static final String DEFAULT_MIN_CHANNELS = "3";
     private static final String DEFAULT_MAX_CHANNELS = "5";
     // as fraction of the total initial funding
-    private static final String DEFAULT_MIN_CHANNEL_SIZE = "0.05";
-    private static final String DEFAULT_MAX_CHANNEL_SIZE = "0.2";
+    private static final String DEFAULT_MIN_CHANNEL_SIZE = "1000000"; //1M
+    private static final String DEFAULT_MAX_CHANNEL_SIZE = "10000000"; //10M
     private static final String DEFAULT_SEED = "0";
 
     public static int total_nodes;
     public static int min_funding;
     public static int max_funding;
     public static int min_channels;
-    public static int seed;
     public static int max_channels;
-    public static double min_channel_size;
-    public static double max_channel_size;
+    public static int min_channel_size;
+    public static int max_channel_size;
     public static int server_port;
     public static String logfile;
+    public static int seed;
 
 
     public static void setDefaults() {
@@ -37,8 +37,8 @@ public class UVConfig {
         min_channels = Integer.parseInt(DEFAULT_MIN_CHANNELS);
         max_channels = Integer.parseInt(DEFAULT_MAX_CHANNELS);
 
-        min_channel_size = Double.parseDouble(DEFAULT_MIN_CHANNEL_SIZE);
-        max_channel_size = Double.parseDouble(DEFAULT_MAX_CHANNEL_SIZE);
+        min_channel_size = Integer.parseInt(DEFAULT_MIN_CHANNEL_SIZE);
+        max_channel_size = Integer.parseInt(DEFAULT_MAX_CHANNEL_SIZE);
         server_port = Integer.parseInt(DEFAULT_SERVERPORT);
 
         logfile = DEFAULT_LOGFILE;
@@ -55,10 +55,10 @@ public class UVConfig {
             total_nodes = Integer.parseInt(config.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
             min_funding = Integer.parseInt(config.getProperty("min_funding", DEFAULT_MIN_FUNDING));
             max_funding = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MAX_FUNDING));
-            min_channels = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MIN_CHANNELS));
-            max_channels = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MAX_CHANNELS));
-            min_channel_size = Double.parseDouble(config.getProperty("max_funding", DEFAULT_MIN_CHANNEL_SIZE));
-            max_channel_size = Double.parseDouble(config.getProperty("max_funding", DEFAULT_MAX_CHANNEL_SIZE));
+            min_channels = Integer.parseInt(config.getProperty("min_channels", DEFAULT_MIN_CHANNELS));
+            max_channels = Integer.parseInt(config.getProperty("max_channels", DEFAULT_MAX_CHANNELS));
+            min_channel_size = Integer.parseInt(config.getProperty("min_channel_size", DEFAULT_MIN_CHANNEL_SIZE));
+            max_channel_size = Integer.parseInt(config.getProperty("max_channel_size", DEFAULT_MAX_CHANNEL_SIZE));
             server_port = Integer.parseInt(config.getProperty("server_port", DEFAULT_SERVERPORT));
             logfile = config.getProperty("logfile", DEFAULT_LOGFILE);
             seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
@@ -75,8 +75,17 @@ public class UVConfig {
         }
     }
 
-    @Override
-    public String toString() {
-        return super.toString();
+    public static String printConfig() {
+        return
+        ", tot_nodes:"+ total_nodes+
+        ", min_funding:"+min_funding+
+        ", max_funding:"+max_funding+
+        ", min_channels:"+min_channels+
+        ", max_channels:"+max_channels+
+        ", min_channel_size:"+min_channel_size+
+        ", max_channel_size:"+max_channel_size+
+        ", server_port:"+server_port+
+        ", logfile:"+logfile+
+        ", seed:"+seed;
     }
 }
