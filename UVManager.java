@@ -65,7 +65,6 @@ public class UVManager {
     public synchronized void bootstrapNetwork() {
         boostrapped = true;
         log.print("UVM: Bootstrapping network with "+ UVConfig.total_nodes+" nodes ("+ UVConfig.min_funding +" - "+ UVConfig.max_funding +")");
-
         log.print("UVM: Starting timechain thread...");
         new Thread(timechain,"timechain").start();
 

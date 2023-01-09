@@ -107,12 +107,21 @@ public class Channel {
         return getInitiator_balance()-getReserve()-getInitiator_pending();
     }
 
+    /**
+     * Evaluate the current liquidity on channel peer side, considering the reserve to be mantained and the pending transactions
+     * @return the amount of sats that could actually be received from peer
+     */
     public synchronized int getPeerLiquidity() {
         return getPeer_balance()-getReserve()-getPeer_pending();
     }
 
-    // TODO: find better name, not to be confused with p2p gossip update_channel
-    public synchronized boolean updateChannel(int initiator_balance,int peer_balance) {
+    /**
+     * Update the channel balances according to a new commitment
+     * @param initiator_balance
+     * @param peer_balance
+     * @return true if the commitment is valid
+     */
+    public synchronized boolean newCommitment(int initiator_balance, int peer_balance) {
 
         if (initiator_balance+peer_balance != this.getCapacity())
             return false;

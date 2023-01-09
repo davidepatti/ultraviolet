@@ -2,11 +2,16 @@ public class ChannelGraph {
 
     Log log = s-> System.out.println("p2p:"+s);
 
-    public void channel_announcement(Channel ch) {
-        log.print("channel_announcement "+ch.getChannel_id());
+    // nodes of graph
+    public void addNode(String node_id) {
     }
-    public void node_announcement(Node n) {
-        log.print("node_announcement "+n.getPubkey());
+    // edges of graph
+    public void addChannel(Channel ch) {
+        // TODO: add nodes if not present
+    }
+    // to edge properties
+    public void updateChannel(String channel_id, int base_fee, int ppm_fee, int cltv_expiry_delta, long timestamp) {
+
     }
 
     public ChannelGraph(){
