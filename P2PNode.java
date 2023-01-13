@@ -2,13 +2,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class p2pNode implements Runnable{
+public class P2PNode implements Runnable{
     private final ChannelGraph channel_graph = new ChannelGraph();
     private final HashMap<String,Node> peers = new HashMap<>();
     private final Node node;
     Log log;
 
-    public p2pNode(Node n) {
+    public P2PNode(Node n) {
         this.node = n;
         channel_graph.addNode(this.node);
         log = s -> System.out.println("p2p ("+this.getId()+"):"+s);
@@ -33,6 +33,10 @@ public class p2pNode implements Runnable{
         }
     }
 
+    public synchronized void addChannel(Channel ch) {
+        this.channel_graph.addChannel(ch);
+    }
+
     /**
      * Announce to peers a channel opened from local side
      * @param channel
@@ -48,11 +52,11 @@ public class p2pNode implements Runnable{
                 peers_snapshot = new ArrayList<>(peers.values());
             }
             for (Node p : peers_snapshot) {
-                broadcastAnnounceChannel(p.getP2p_node(), channel);
+                broadcastAnnounceChannel(p.getP2PNode(), channel);
             }
     }
 
-    private void broadcastAnnounceChannel(p2pNode target_peer, Channel ch) {
+    private void broadcastAnnounceChannel(P2PNode target_peer, Channel ch) {
         target_peer.receiveAnnounceChannel(this.getId(),ch);
     }
 

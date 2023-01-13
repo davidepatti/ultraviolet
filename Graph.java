@@ -27,8 +27,6 @@ class Graph<T> {
                         boolean bidirectional)
     {
 
-        System.out.println("ADDING EDGE"+source+" -----> "+destination);
-
         if (!map.containsKey(source))
             addVertex(source);
 

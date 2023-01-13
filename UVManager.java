@@ -53,7 +53,7 @@ public class UVManager {
     }
 
 
-    public synchronized HashMap<String, Node> getNodes(){
+    public synchronized HashMap<String, Node> getNodeMap(){
 
         return this.nodeMap;
     }
@@ -82,6 +82,18 @@ public class UVManager {
         for (Node n : nodeMap.values()) {
             new Thread(n, "T_"+n.getPubkey()).start();
         }
+
+        /*
+        log.print("SLEEPING....");
+        try {
+            Thread.sleep(10000);
+            log.print("END SLEEP");
+            notifyAll();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+         */
     }
 
     public UVManager() {

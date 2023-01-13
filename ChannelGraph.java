@@ -1,6 +1,6 @@
 public class ChannelGraph {
 
-    private Graph<Node> graph = new Graph<>();
+    private final Graph<Node> graph = new Graph<>();
 
     Log log = s-> System.out.println("p2p:"+s);
 

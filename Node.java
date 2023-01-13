@@ -15,8 +15,7 @@ public class Node implements Runnable, Comparable<Node> {
     private int onchain_balance;
     private int initiated_channels = 0;
     private final UVManager uvm;
-    private p2pNode p2p_node;
-    // TODO: the concept of peers and and channel nodes should not coincide
+    private P2PNode p2p_node;
 
     Log log;
     private boolean bootstrap_completed = false;
@@ -36,7 +35,7 @@ public class Node implements Runnable, Comparable<Node> {
         // change lamba function here to log to a different target
         this.log = s -> UVManager.log.print(this.getPubkey()+":"+s);
 
-        setP2p_node(new p2pNode(this));
+        setP2p_node(new P2PNode(this));
     }
 
     /**
@@ -52,7 +51,7 @@ public class Node implements Runnable, Comparable<Node> {
      * @return the hashmap of the current list of peers
      */
     public HashMap<String,Node> getPeers() {
-        return this.getP2p_node().getPeers();
+        return this.getP2PNode().getPeers();
     }
 
     /**
@@ -79,17 +78,8 @@ public class Node implements Runnable, Comparable<Node> {
         this.behavior = behavior;
     }
 
-    /**
-     * This is the main method running while the node is considered active on the network
-     */
-    @Override
-    public void run() {
+    private void bootstrapNode() {
 
-        log.print("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
-        // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
-        new Thread(getP2p_node(),"t_p2p_"+this.getPubkey()).start();
-
-        // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
 
@@ -124,6 +114,31 @@ public class Node implements Runnable, Comparable<Node> {
         } // while
         bootstrap_completed = true;
         log.print("Bootstrap completed");
+
+        /*
+        try {
+            log.print("WAITING...");
+            wait();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        log.print("CONTINUE!");
+
+         */
+    }
+
+    /**
+     * This is the main method running while the node is considered active on the network
+     */
+    @Override
+    public void run() {
+
+        log.print("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
+        // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
+        new Thread(getP2PNode(),"t_p2p_"+this.getPubkey()).start();
+
+        // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
+        bootstrapNode();
     }
 
     /**
@@ -162,8 +177,10 @@ public class Node implements Runnable, Comparable<Node> {
         }
 
         this.channels.put(new_channel.getChannel_id(),new_channel);
-        this.getP2p_node().addPeer(new_channel.getInitiator_node());
-        this.getP2p_node().getChannel_graph().addChannel(new_channel);
+        this.getP2PNode().addPeer(new_channel.getInitiator_node());
+        //this.getP2PNode().addChannel(new_channel);
+        // test
+        this.getP2PNode().announceChannel(new_channel);
         log.print("<<< End Accepting channel from "+new_channel.getInitiator_public_key());
         return true;
     }
@@ -181,8 +198,6 @@ public class Node implements Runnable, Comparable<Node> {
            But we still want some id that locate the block height and gives hint about the signers pubkeys
          */
         var channel_id = "CH_"+ uvm.getTimechain().getCurrent_block()+"_"+this.getPubkey()+"->"+peer_node.getPubkey();
-
-
         var channel_proposal = new Channel(this,peer_node,channel_size,0,channel_id,0,10,0,10,50);
 
         // onchain balance is changed only from initiator, so no problems of sync
@@ -202,8 +217,9 @@ public class Node implements Runnable, Comparable<Node> {
         synchronized (this) {
             this.channels.put(channel_id,channel_proposal);
             onchain_balance = onchain_balance-channel_proposal.getInitiator_balance();
-            this.getP2p_node().addPeer(peer_node);
-            this.getP2p_node().announceChannel(channel_proposal);
+            this.getP2PNode().addPeer(peer_node);
+            // announce also adds
+            this.getP2PNode().announceChannel(channel_proposal);
         }
         log.print("<<< End opening channel with "+peer_node.getPubkey());
 
@@ -320,11 +336,11 @@ public class Node implements Runnable, Comparable<Node> {
         return this.getPubkey().compareTo(node.getPubkey());
     }
 
-    public p2pNode getP2p_node() {
+    public P2PNode getP2PNode() {
         return p2p_node;
     }
 
-    public void setP2p_node(p2pNode p2p_node) {
+    public void setP2p_node(P2PNode p2p_node) {
         this.p2p_node = p2p_node;
     }
 }

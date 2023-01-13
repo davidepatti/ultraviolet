@@ -98,7 +98,7 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        for (Node n: uvm.getNodes().values()) {
+        for (Node n: uvm.getNodeMap().values()) {
             os.println(n);
             os.flush();
             for (Channel c:n.getChannels().values()) {
@@ -113,7 +113,7 @@ public class UVMServer implements Runnable {
     public void showNodes() {
         os.println("BEGIN DATA");
         os.flush();
-        for (Node n: uvm.getNodes().values()) {
+        for (Node n: uvm.getNodeMap().values()) {
             os.println(n);
             os.flush();
         }
@@ -125,7 +125,7 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        var node = uvm.getNodes().get(pubkey);
+        var node = uvm.getNodeMap().get(pubkey);
         os.println(node);
         os.flush();
         for (Channel c:node.getChannels().values()) {
@@ -139,7 +139,7 @@ public class UVMServer implements Runnable {
             os.flush();
         }
         os.println("Channel Graph:");
-        os.println(node.getP2p_node().getChannel_graph().toString());
+        os.println(node.getP2PNode().getChannel_graph().toString());
         os.flush();
         os.println("END DATA");
         os.flush();
