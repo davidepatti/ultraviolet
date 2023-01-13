@@ -42,9 +42,14 @@ public class UVMServer implements Runnable {
 
                     switch (command) {
                         case "BOOTSTRAP_NETWORK":
-                            if (!uvm.isBoostrapped())
+                            os.println("BEGIN DATA");
+                            os.flush();
+                            if (!uvm.isBoostrapped()) {
                                 uvm.bootstrapNetwork();
+                            }
                             else System.out.println("Error: network already bootstrapped!");
+                            os.println("END DATA");
+                            os.flush();
                             break;
                         case "DISCONNECT":
                             System.out.println("Disconnecting client");

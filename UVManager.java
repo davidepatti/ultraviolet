@@ -1,11 +1,13 @@
 import java.io.*;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 
 public class UVManager {
 
 
 
+    CountDownLatch bootstrap_latch;
     private final HashMap<String,Node> nodeMap = new HashMap<>();
 
     private final Random random = new Random();
@@ -79,21 +81,17 @@ public class UVManager {
             nodeMap.put(n.getPubkey(),n);
         }
 
+        bootstrap_latch = new CountDownLatch(UVConfig.total_nodes);
+        log.print("Bootstrapping...");
         for (Node n : nodeMap.values()) {
             new Thread(n, "T_"+n.getPubkey()).start();
         }
-
-        /*
-        log.print("SLEEPING....");
         try {
-            Thread.sleep(10000);
-            log.print("END SLEEP");
-            notifyAll();
+            bootstrap_latch.await();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-
-         */
+        log.print("End bootstrapping");
     }
 
     public UVManager() {

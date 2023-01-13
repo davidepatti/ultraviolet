@@ -54,9 +54,17 @@ public class UVMClient {
                         uvm_started = true;
                         os.println("BOOTSTRAP_NETWORK");
                         os.flush();
+                        System.out.println("Bootstrapping...");
+                        while (is.hasNextLine()) {
+                            s = is.nextLine();
+                            System.out.println(s);
+                            if (s.equals("END DATA")) break;
+                        }
+                        System.out.println("End Bootstrapping!");
                     }
                     else
                         System.out.println("UVM already started!");
+
                     break;
                 case "2":
 

@@ -113,6 +113,7 @@ public class Node implements Runnable, Comparable<Node> {
             else log.print("Failed opening channel to "+peer_node.getPubkey());
         } // while
         bootstrap_completed = true;
+        uvm.bootstrap_latch.countDown();
         log.print("Bootstrap completed");
 
         /*
