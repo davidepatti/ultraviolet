@@ -1,29 +1,70 @@
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 public class p2pNode implements Runnable{
-    ChannelGraph channel_graph = new ChannelGraph();
+    private final ChannelGraph channel_graph = new ChannelGraph();
     private final HashMap<String,Node> peers = new HashMap<>();
-
-    Node node;
+    private final Node node;
     Log log;
 
     public p2pNode(Node n) {
         this.node = n;
-        log = s -> System.out.println(Thread.currentThread().getName()+s);
+        channel_graph.addNode(this.node);
+        log = s -> System.out.println("p2p ("+this.getId()+"):"+s);
     }
 
-    public void addPeer(Node node) {
-        this.peers.put(node.getPubkey(),node);
-        channel_graph.addNode(node.getPubkey());
+    public String getId() {
+        return this.node.getPubkey();
     }
 
+    public ChannelGraph getChannel_graph() {
+        return this.channel_graph;
+    }
+
+    /**
+     * Add a node to the list of peers and update the channel graph
+     * @param node
+     */
+    public synchronized void addPeer(Node node) {
+        if (!peers.containsKey(node.getPubkey())) {
+            this.peers.put(node.getPubkey(),node);
+            channel_graph.addNode(node);
+        }
+    }
+
+    /**
+     * Announce to peers a channel opened from local side
+     * @param channel
+     */
     public void announceChannel(Channel channel) {
-        log.print("Announcing channel "+channel.getChannel_id());
-        channel_graph.addChannel(channel);
+            log.print("Adding and Announcing channel to others: " + channel.getChannel_id());
+            synchronized (channel_graph) {
+                channel_graph.addChannel(channel);
+            }
+
+            List<Node> peers_snapshot = null;
+            synchronized (peers) {
+                peers_snapshot = new ArrayList<>(peers.values());
+            }
+            for (Node p : peers_snapshot) {
+                broadcastAnnounceChannel(p.getP2p_node(), channel);
+            }
     }
 
+    private void broadcastAnnounceChannel(p2pNode target_peer, Channel ch) {
+        target_peer.receiveAnnounceChannel(this.getId(),ch);
+    }
 
-    public synchronized HashMap<String,Node> getPeers() {
+    // synch required for multiple external node calls
+    public void receiveAnnounceChannel(String from_peer,Channel ch) {
+        log.print("Received Broadcast request for channel "+ch.getChannel_id()+ " from peer:"+from_peer);
+        synchronized (channel_graph) {
+            this.channel_graph.addChannel(ch);
+        }
+    }
+
+    public HashMap<String,Node> getPeers() {
         return peers;
     }
 

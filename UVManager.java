@@ -5,7 +5,6 @@ import java.util.Random;
 public class UVManager {
 
 
-    static Log log = System.out::println;
 
     private final HashMap<String,Node> nodeMap = new HashMap<>();
 
@@ -14,6 +13,7 @@ public class UVManager {
 
     private boolean boostrapped = false;
     private static FileWriter logfile;
+    static Log log = System.out::println;
 
     public static void main(String[] args) {
         // redefining the log to write a file (optional) ////////////////////////////////////////////////

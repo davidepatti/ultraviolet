@@ -26,6 +26,8 @@ public class UVConfig {
     public static int server_port;
     public static String logfile;
     public static int seed;
+    // TODO: add to parameters
+    public static boolean verbose = true;
 
 
     public static void setDefaults() {
@@ -44,7 +46,6 @@ public class UVConfig {
         logfile = DEFAULT_LOGFILE;
 
         seed = Integer.parseInt(DEFAULT_SEED);
-
     }
 
     public static void loadConfig(String config_file) {
@@ -68,11 +69,14 @@ public class UVConfig {
 
         } catch (
                 FileNotFoundException e) {
-            throw new RuntimeException(e);
+            System.out.println("Config file not found:"+config_file);
+            System.out.println("Setting defaults...");
+            setDefaults();
         } catch (
                 IOException e) {
             throw new RuntimeException(e);
         }
+        printConfig();
     }
 
     public static String printConfig() {

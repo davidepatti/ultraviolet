@@ -102,7 +102,7 @@ public class UVMServer implements Runnable {
             os.println(n);
             os.flush();
             for (Channel c:n.getChannels().values()) {
-                os.println(c);
+                os.println("\t"+c);
                 os.flush();
             }
         }
@@ -138,6 +138,9 @@ public class UVMServer implements Runnable {
             os.println(n);
             os.flush();
         }
+        os.println("Channel Graph:");
+        os.println(node.getP2p_node().getChannel_graph().toString());
+        os.flush();
         os.println("END DATA");
         os.flush();
     }

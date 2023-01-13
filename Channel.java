@@ -1,13 +1,14 @@
 public class Channel {
 
-    private Node initiator_node;
-    private Node peer_node;
+    private final Node initiator_node;
+    private final Node peer_node;
     private final String channel_id;
 
     private int commit_number = 0;
 
     private int initiator_fee_ppm;
     private int peer_fee_ppm;
+    @SuppressWarnings("FieldMayBeFinal")
     private int initiator_base_fee;
     private int peer_base_fee;
     private int initiator_balance;
