@@ -3,19 +3,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class Node implements Runnable, Comparable<Node> {
+public class UVNode implements Runnable, LNode {
 
     // internal values are in sat
     private final int Msat = (int)1e6;
     private NodeBehavior behavior;
-    private final HashMap<String, Channel> channels = new HashMap<>();
+    private final HashMap<String, UVChannel> channels = new HashMap<>();
     private final String pubkey;
     // abstracted: indeed alias can be changed
     private final String alias;
     private int onchain_balance;
     private int initiated_channels = 0;
     private final UVManager uvm;
-    private P2PNode p2p_node;
+    private final P2PNode p2p_node;
 
     Log log;
     private boolean bootstrap_completed = false;
@@ -27,22 +27,22 @@ public class Node implements Runnable, Comparable<Node> {
      * @param alias an alias
      * @param onchain_balance initial onchain balance
      */
-    public Node(UVManager uvm, String pubkey, String alias, int onchain_balance) {
+    public UVNode(UVManager uvm, String pubkey, String alias, int onchain_balance) {
         this.uvm = uvm;
         this.pubkey = pubkey;
         this.alias = alias;
         this.onchain_balance = onchain_balance;
         // change lamba function here to log to a different target
-        this.log = s -> UVManager.log.print(this.getPubkey()+":"+s);
+        this.log = s -> UVManager.log.print(this.getPubKey()+":"+s);
 
-        setP2p_node(new P2PNode(this));
+        this.p2p_node = new P2PNode(this);
     }
 
     /**
      *
      * @return returs the hashmap representing the current list of channels for the node
      */
-    public synchronized HashMap<String, Channel> getChannels() {
+    public synchronized HashMap<String, UVChannel> getUVChannels() {
         return this.channels;
     }
 
@@ -50,8 +50,8 @@ public class Node implements Runnable, Comparable<Node> {
      *
      * @return the hashmap of the current list of peers
      */
-    public HashMap<String,Node> getPeers() {
-        return this.getP2PNode().getPeers();
+    public HashMap<String, UVNode> getPeers() {
+        return this.p2p_node.getUvpeers();
     }
 
     /**
@@ -66,8 +66,13 @@ public class Node implements Runnable, Comparable<Node> {
      *
      * @return returns the node public key used as node id
      */
-    public String getPubkey() {
+    public String getPubKey() {
         return pubkey;
+    }
+
+    @Override
+    public String getAlias() {
+        return alias;
     }
 
     /**
@@ -89,11 +94,11 @@ public class Node implements Runnable, Comparable<Node> {
             }
 
             var peer_node = uvm.getRandomNode();
-            var peer_pubkey = peer_node.getPubkey();
+            var peer_pubkey = peer_node.getPubKey();
             log.print("Trying to open a channel with "+peer_pubkey);
 
             // TODO: add more complex requirements for peers
-            if (peer_pubkey.equals(this.getPubkey())) continue;
+            if (peer_pubkey.equals(this.getPubKey())) continue;
 
             if (this.hasChannelWith(peer_pubkey)) {
                 continue;
@@ -106,11 +111,11 @@ public class Node implements Runnable, Comparable<Node> {
 
 
             if (openChannel(peer_node,channel_size)) {
-                log.print("Successufull opened channel to "+peer_node.getPubkey());
+                log.print("Successufull opened channel to "+peer_node.getPubKey());
                 //+ " balance onchain:"+onchain_balance+ " ln:"+getLightningBalance());
                 initiated_channels++;
             }
-            else log.print("Failed opening channel to "+peer_node.getPubkey());
+            else log.print("Failed opening channel to "+peer_node.getPubKey());
         } // while
         bootstrap_completed = true;
         uvm.bootstrap_latch.countDown();
@@ -136,7 +141,7 @@ public class Node implements Runnable, Comparable<Node> {
 
         log.print("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
         // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
-        new Thread(getP2PNode(),"t_p2p_"+this.getPubkey()).start();
+        new Thread(getP2PNode(),"t_p2p_"+this.getPubKey()).start();
 
         // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
         bootstrapNode();
@@ -151,7 +156,7 @@ public class Node implements Runnable, Comparable<Node> {
         if (UVConfig.verbose)
             log.print(">>> Checking if node has already channel with "+node_id);
 
-        for (Channel c:this.getChannels().values()) {
+        for (UVChannel c:this.channels.values()) {
             boolean initiated_with_peer = c.getPeer_public_key().equals(node_id);
             boolean accepted_from_peer = c.getInitiator_public_key().equals(node_id);
 
@@ -168,38 +173,38 @@ public class Node implements Runnable, Comparable<Node> {
     /**
      * Called by the channel initiator on a target node to propose a channel opening
      * synchronized to accept one channel per time to avoid inconsistency
-     * @param new_channel  the channel proposal
+     * @param new_UV_channel  the channel proposal
      * @return true if accepted
      */
-    public synchronized boolean acceptChannel(Channel new_channel) {
-        log.print(">>> Start Accepting channel from "+new_channel.getInitiator_public_key());
-        if (this.hasChannelWith(new_channel.getInitiator_public_key())) {
+    public synchronized boolean acceptChannel(UVChannel new_UV_channel) {
+        log.print(">>> Start Accepting channel from "+ new_UV_channel.getInitiator_public_key());
+        if (this.hasChannelWith(new_UV_channel.getInitiator_public_key())) {
             return false;
         }
 
-        this.channels.put(new_channel.getChannel_id(),new_channel);
-        this.getP2PNode().addPeer(new_channel.getInitiator_node());
+        this.channels.put(new_UV_channel.getChannelId(), new_UV_channel);
+        this.getP2PNode().addPeer(new_UV_channel.getInitiatorUVNode());
         //this.getP2PNode().addChannel(new_channel);
         // test
-        this.getP2PNode().announceChannel(new_channel);
-        log.print("<<< End Accepting channel from "+new_channel.getInitiator_public_key());
+        this.getP2PNode().announceChannel(new_UV_channel);
+        log.print("<<< End Accepting channel from "+ new_UV_channel.getInitiator_public_key());
         return true;
     }
 
     /**
      * Open a channel with a peer node, with the features defined by the node behavior and configuration
-     * @param peer_node the target node partner to open the channel
+     * @param peer_UV_node the target node partner to open the channel
      * @return true if the channel has been successful opened
      */
-    public boolean openChannel(Node peer_node,int channel_size) {
-        log.print(">>> Start Opening "+channel_size+ " sats channel to "+peer_node.getPubkey());
+    public boolean openChannel(UVNode peer_UV_node, int channel_size) {
+        log.print(">>> Start Opening "+channel_size+ " sats channel to "+ peer_UV_node.getPubKey());
 
         /* UV NOTE: is not computed with the block number + tx index + output index.
            There is no need to locate the funding multisig tx on the chain, nor to validate signatures etc
            But we still want some id that locate the block height and gives hint about the signers pubkeys
          */
-        var channel_id = "CH_"+ uvm.getTimechain().getCurrent_block()+"_"+this.getPubkey()+"->"+peer_node.getPubkey();
-        var channel_proposal = new Channel(this,peer_node,channel_size,0,channel_id,0,10,0,10,50);
+        var channel_id = "CH_"+ uvm.getTimechain().getCurrent_block()+"_"+this.getPubKey()+"->"+ peer_UV_node.getPubKey();
+        var channel_proposal = new UVChannel(this, peer_UV_node,channel_size,0,channel_id,0,10,0,10,50);
 
         // onchain balance is changed only from initiator, so no problems of sync
         if (channel_size>getOnChainBalance()) {
@@ -208,21 +213,21 @@ public class Node implements Runnable, Comparable<Node> {
         }
 
         // notice: nothing forbids opening channels with each other reciprocally
-        if (!peer_node.acceptChannel(channel_proposal)) {
-            log.print("<<< Channel proposal to "+peer_node.getPubkey()+" not accepted");
+        if (!peer_UV_node.acceptChannel(channel_proposal)) {
+            log.print("<<< Channel proposal to "+ peer_UV_node.getPubKey()+" not accepted");
             return false;
         }
 
-        log.print(">>> Channel to "+peer_node.getPubkey()+" accepted, updating node status...");
+        log.print(">>> Channel to "+ peer_UV_node.getPubKey()+" accepted, updating node status...");
         // Updates on channel status and balances should be in sync with other accesses (e.g. accept())
         synchronized (this) {
             this.channels.put(channel_id,channel_proposal);
             onchain_balance = onchain_balance-channel_proposal.getInitiator_balance();
-            this.getP2PNode().addPeer(peer_node);
+            this.getP2PNode().addPeer(peer_UV_node);
             // announce also adds
             this.getP2PNode().announceChannel(channel_proposal);
         }
-        log.print("<<< End opening channel with "+peer_node.getPubkey());
+        log.print("<<< End opening channel with "+ peer_UV_node.getPubKey());
 
         return true;
     }
@@ -232,7 +237,7 @@ public class Node implements Runnable, Comparable<Node> {
      *
      * @return a random node channel
      */
-    public synchronized Channel getRandomChannel() {
+    public synchronized UVChannel getRandomChannel() {
         var some_channel_id = channels.keySet().toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
         return channels.get(some_channel_id);
     }
@@ -258,7 +263,7 @@ public class Node implements Runnable, Comparable<Node> {
                success = target_channel.newCommitment(new_initiator_balance,new_peer_balance);
             }
             else {
-                log.print("Insufficient funds in channel "+target_channel.getChannel_id()+" : cannot push  "+amount+ " sats to "+target_channel.getPeer_public_key());
+                log.print("Insufficient funds in channel "+target_channel.getChannelId()+" : cannot push  "+amount+ " sats to "+target_channel.getPeer_public_key());
                 success = false;
             }
         }
@@ -270,7 +275,7 @@ public class Node implements Runnable, Comparable<Node> {
                 success = target_channel.newCommitment(new_initiator_balance,new_peer_balance);
             }
             else {
-                log.print("Insufficient funds in channel " + target_channel.getChannel_id() + " : cannot push  " + amount + " sats to " + target_channel.getInitiator_public_key());
+                log.print("Insufficient funds in channel " + target_channel.getChannelId() + " : cannot push  " + amount + " sats to " + target_channel.getInitiator_public_key());
                 log.print("local funds:" + getLightningBalance());
                 success = false;
             }
@@ -287,7 +292,7 @@ public class Node implements Runnable, Comparable<Node> {
      * @return
      */
     public boolean isInitiatorOf(String channel_id) {
-        return channels.get(channel_id).getInitiator_public_key().equals(this.getPubkey());
+        return channels.get(channel_id).getInitiator_public_key().equals(this.getPubKey());
     }
 
 
@@ -306,14 +311,14 @@ public class Node implements Runnable, Comparable<Node> {
     public int getLightningBalance() {
         int balance = 0;
 
-        List<Channel> channel_snapshot = null;
+        List<UVChannel> UVChannel_snapshot = null;
 
         synchronized (channels) {
-            channel_snapshot = new ArrayList<>(channels.values());
+            UVChannel_snapshot = new ArrayList<>(channels.values());
         }
 
-        for (Channel c:channel_snapshot) {
-            if (this.isInitiatorOf(c.getChannel_id())) balance+=c.getInitiator_balance();
+        for (UVChannel c: UVChannel_snapshot) {
+            if (this.isInitiatorOf(c.getChannelId())) balance+=c.getInitiator_balance();
             else
                 balance+=c.getPeer_balance();
         }
@@ -332,16 +337,9 @@ public class Node implements Runnable, Comparable<Node> {
                 '}';
     }
 
-    @Override
-    public int compareTo(Node node) {
-        return this.getPubkey().compareTo(node.getPubkey());
-    }
 
     public P2PNode getP2PNode() {
         return p2p_node;
     }
 
-    public void setP2p_node(P2PNode p2p_node) {
-        this.p2p_node = p2p_node;
-    }
 }

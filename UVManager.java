@@ -5,13 +5,11 @@ import java.util.concurrent.CountDownLatch;
 
 public class UVManager {
 
-
-
     CountDownLatch bootstrap_latch;
-    private final HashMap<String,Node> nodeMap = new HashMap<>();
+    private final HashMap<String, UVNode> nodeMap = new HashMap<>();
 
     private final Random random = new Random();
-    private final Timechain timechain;
+    private final Timechain timechain = new Timechain(10000);
 
     private boolean boostrapped = false;
     private static FileWriter logfile;
@@ -55,7 +53,7 @@ public class UVManager {
     }
 
 
-    public synchronized HashMap<String, Node> getNodeMap(){
+    public synchronized HashMap<String, UVNode> getNodeMap(){
 
         return this.nodeMap;
     }
@@ -75,28 +73,29 @@ public class UVManager {
             int max = UVConfig.max_funding/(int)1e6;
             int min = UVConfig.min_funding /(int)1e6;
             var funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new Node(this,"pk_"+i,"alias_"+i,funding);
+            var n = new UVNode(this,"pk_"+i,"alias_"+i,funding);
             var behavior = new NodeBehavior(UVConfig.min_channels,UVConfig.min_channel_size,UVConfig.max_channel_size);
             n.setBehavior(behavior);
-            nodeMap.put(n.getPubkey(),n);
+            nodeMap.put(n.getPubKey(),n);
         }
 
         bootstrap_latch = new CountDownLatch(UVConfig.total_nodes);
         log.print("Bootstrapping...");
-        for (Node n : nodeMap.values()) {
-            new Thread(n, "T_"+n.getPubkey()).start();
+        for (UVNode n : nodeMap.values()) {
+            new Thread(n, "T_"+n.getPubKey()).start();
         }
+        /*
         try {
             bootstrap_latch.await();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
         log.print("End bootstrapping");
+         */
     }
 
     public UVManager() {
         if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
-        timechain = new Timechain(1000);
         log.print("Initializing UVManager...");
         log.print(this.toString());
     }
@@ -107,20 +106,24 @@ public class UVManager {
         new Thread(uvm_server).start();
     }
 
-    public Node getRandomNode() {
+    public UVNode getRandomNode() {
         var n = random.nextInt(nodeMap.size());
         var some_random_key = nodeMap.keySet().toArray()[n];
         return nodeMap.get(some_random_key);
     }
 
     public void testRandomEvent() {
+        log.print("BOOTSTRAP LATCH:"+bootstrap_latch.getCount());
+        /*
         var some_node = getRandomNode();
-        var some_channel_id = some_node.getRandomChannel().getChannel_id();
+        var some_channel_id = some_node.getRandomChannel().getChannelId();
         var some_amount = random.nextInt(1000);
         some_amount *= 1000;
 
-        log.print("TEST: pushing "+some_amount+ " sats from "+some_node.getPubkey()+" to "+some_channel_id);
+        log.print("TEST: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
         some_node.pushSats(some_channel_id,some_amount);
+
+         */
     }
 
     public void generateRandomEvents(int n) {
@@ -130,20 +133,20 @@ public class UVManager {
         }
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getChannel_id();
+            var some_channel_id = some_node.getRandomChannel().getChannelId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
-            log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubkey()+" to "+some_channel_id);
+            log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
             some_node.pushSats(some_channel_id,some_amount);
         }
     }
 
     public void showNetwork() {
 
-        for (Node n: nodeMap.values()) {
+        for (UVNode n: nodeMap.values()) {
             System.out.println("----------------------------------------");
             System.out.println(n);
-            for (Channel c:n.getChannels().values()) {
+            for (UVChannel c:n.getUVChannels().values()) {
                 System.out.println(c);
             }
             System.out.println("----------------------------------------");

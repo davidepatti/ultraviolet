@@ -1,7 +1,10 @@
-public class Channel {
+public class UVChannel implements LNChannel{
 
-    private final Node initiator_node;
-    private final Node peer_node;
+    enum ChannelStatus { OPEN, CLOSED, PENDING, NULL };
+    private ChannelStatus status;
+
+    private final UVNode initiatorUVNode;
+    private final UVNode peerUVNode;
     private final String channel_id;
 
     private int commit_number = 0;
@@ -11,6 +14,8 @@ public class Channel {
     @SuppressWarnings("FieldMayBeFinal")
     private int initiator_base_fee;
     private int peer_base_fee;
+    private int initiator_locktimedelta;
+    private int peer_locktimedelta;
     private int initiator_balance;
     private int peer_balance;
     private int initiator_pending;
@@ -20,9 +25,9 @@ public class Channel {
 
     // TODO: update_channel p2p
     // constructor only fill the "proposal" for the channel
-    public Channel(Node initiator_node, Node peer_node, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee,int peer_fee_ppm, int reserve) {
-        this.initiator_node = initiator_node;
-        this.peer_node = peer_node;
+    public UVChannel(UVNode initiatorUVNode, UVNode peerUVNode, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
+        this.initiatorUVNode = initiatorUVNode;
+        this.peerUVNode = peerUVNode;
         this.initiator_balance = initiator_balance;
         this.peer_balance = peer_balance;
         this.channel_id = channel_id;
@@ -33,18 +38,115 @@ public class Channel {
         this.initiator_pending = 0;
         this.peer_pending = 0;
         this.commit_number = 0;
+        this.status = ChannelStatus.NULL;
     }
 
-    public Node getInitiator_node() {
-        return initiator_node;
+    public UVNode getInitiatorUVNode() {
+        return initiatorUVNode;
     }
 
-    public Node getPeer_node() {
-        return peer_node;
+    public UVNode getPeer_node() {
+        return peerUVNode;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public String getChannelId() {
+        return this.channel_id;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public String getNode1PubKey() {
+        return getInitiator_public_key();
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public String getNode2PubKey() {
+        return getPeer_public_key();
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public LNode getNode1() {
+        return initiatorUVNode;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public LNode getNode2() {
+        return peerUVNode;
     }
 
     public synchronized int getCapacity() {
         return initiator_balance+peer_balance;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getLastUpdate() {
+        return 0;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode1TimeLockDelta() {
+        return initiator_locktimedelta;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode2TimeLockDelta() {
+        return peer_locktimedelta;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode1FeeBase() {
+        return initiator_base_fee;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode1FeePpm() {
+        return initiator_fee_ppm;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode2FeeBase() {
+        return peer_base_fee;
+    }
+
+    /**
+     * @return 
+     */
+    @Override
+    public int getNode2FeePpm() {
+        return peer_fee_ppm;
     }
 
     public synchronized int getLastCommit_number() {
@@ -66,15 +168,11 @@ public class Channel {
         return peer_pending;
     }
 
-    public String getChannel_id() {
-        return channel_id;
-    }
-
     public String getPeer_public_key() {
-        return peer_node.getPubkey();
+        return peerUVNode.getPubKey();
     }
     public String getInitiator_public_key() {
-        return initiator_node.getPubkey();
+        return initiatorUVNode.getPubKey();
     }
 
     public synchronized int getInitiator_fee_ppm() {
@@ -137,10 +235,11 @@ public class Channel {
     @Override
     public String toString() {
         return "Ch{" +
-                " initiator='" + initiator_node.getPubkey() + '\'' +
-                ", peer='" + peer_node.getPubkey() + '\'' +
-                ", balance=(" + initiator_balance +
+                " status:"+this.status+
+                " initiator:'" + initiatorUVNode.getPubKey() + '\'' +
+                ", peer:" + peerUVNode.getPubKey() + '\'' +
+                ", balance:(" + initiator_balance +
                 "," + peer_balance +
-                "), id=" + channel_id + ", initiator_fee=" + initiator_fee_ppm + ", peer_fee=" + peer_fee_ppm + ", ncommits="+commit_number+'}';
+                "), id:" + channel_id + ", initiator_fee:" + initiator_fee_ppm + ", peer_fee:" + peer_fee_ppm + ", ncommits:"+commit_number+'}';
     }
 }

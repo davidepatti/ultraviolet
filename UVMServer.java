@@ -59,7 +59,6 @@ public class UVMServer implements Runnable {
                             showNetwork();
                             break;
                         case "TEST":
-                            uvm.testRandomEvent();
                             break;
                         case "MSG_RANDOM_EVENTS":
                             String n = is.nextLine();
@@ -95,6 +94,8 @@ public class UVMServer implements Runnable {
         os.println("UVManager Status:");
         os.println(uvm);
         os.flush();
+        os.println("Bootstrap: "+(UVConfig.total_nodes-uvm.bootstrap_latch.getCount())+"/"+UVConfig.total_nodes);
+        os.flush();
         os.println("END DATA");
         os.flush();
     }
@@ -103,10 +104,10 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        for (Node n: uvm.getNodeMap().values()) {
+        for (UVNode n: uvm.getNodeMap().values()) {
             os.println(n);
             os.flush();
-            for (Channel c:n.getChannels().values()) {
+            for (UVChannel c:n.getUVChannels().values()) {
                 os.println("\t"+c);
                 os.flush();
             }
@@ -118,7 +119,7 @@ public class UVMServer implements Runnable {
     public void showNodes() {
         os.println("BEGIN DATA");
         os.flush();
-        for (Node n: uvm.getNodeMap().values()) {
+        for (UVNode n: uvm.getNodeMap().values()) {
             os.println(n);
             os.flush();
         }
@@ -133,13 +134,13 @@ public class UVMServer implements Runnable {
         var node = uvm.getNodeMap().get(pubkey);
         os.println(node);
         os.flush();
-        for (Channel c:node.getChannels().values()) {
+        for (UVChannel c:node.getUVChannels().values()) {
             os.println(c);
             os.flush();
         }
         os.println("Peers:");
         os.flush();
-        for (Node n:node.getPeers().values()) {
+        for (UVNode n:node.getPeers().values()) {
             os.println(n);
             os.flush();
         }
