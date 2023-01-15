@@ -11,7 +11,7 @@ public class P2PNode implements Runnable{
     public P2PNode(UVNode owner) {
         this.uvnode = owner;
         channel_graph.addNode(this.uvnode);
-        log = s -> System.out.println("p2p ("+this.getId()+"):"+s);
+        log = s -> UVManager.log.print("[p2p]"+s);
     }
 
     public String getId() {

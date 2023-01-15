@@ -9,7 +9,7 @@ public class UVManager {
     private final HashMap<String, UVNode> nodeMap = new HashMap<>();
 
     private final Random random = new Random();
-    private final Timechain timechain = new Timechain(10000);
+    private final static Timechain timechain = new Timechain(10000);
 
     private boolean boostrapped = false;
     private static FileWriter logfile;
@@ -34,9 +34,8 @@ public class UVManager {
         }
 
         log = (String s) ->  {
-            System.out.println(s);
             try {
-                logfile.write("\n"+s);
+                logfile.write("\n["+timechain.getCurrent_block()+"]"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);

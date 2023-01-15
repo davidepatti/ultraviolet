@@ -88,7 +88,7 @@ public class UVNode implements Runnable, LNode {
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
 
-            if (getOnChainBalance() < behavior.getMin_channel_size()) {
+            if (getOnChainBalance() <= behavior.getMin_channel_size()) {
                 log.print("No more onchain balance for opening further channels of min size "+behavior.getMin_channel_size());
                 break;
             }
@@ -104,7 +104,7 @@ public class UVNode implements Runnable, LNode {
                 continue;
             }
 
-            int max = behavior.getMax_channel_size();
+            int max = Math.min(behavior.getMax_channel_size(),onchain_balance);
             int min = behavior.getMin_channel_size();
             var channel_size = ThreadLocalRandom.current().nextInt(min,max);
             channel_size = (channel_size/100000)*100000;
