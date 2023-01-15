@@ -45,7 +45,7 @@ public class UVMServer implements Runnable {
                             os.println("BEGIN DATA");
                             os.flush();
                             if (!uvm.isBoostrapped()) {
-                                uvm.bootstrapNetwork();
+                                new Thread(()->uvm.bootstrapNetwork()).start();
                             }
                             else System.out.println("Error: network already bootstrapped!");
                             os.println("END DATA");
@@ -94,7 +94,7 @@ public class UVMServer implements Runnable {
         os.println("UVManager Status:");
         os.println(uvm);
         os.flush();
-        os.println("Bootstrap: "+(UVConfig.total_nodes-uvm.bootstrap_latch.getCount())+"/"+UVConfig.total_nodes);
+        os.println("Node Bootstrap status: "+(UVConfig.total_nodes-uvm.bootstrap_latch.getCount())+"/"+UVConfig.total_nodes);
         os.flush();
         os.println("END DATA");
         os.flush();
