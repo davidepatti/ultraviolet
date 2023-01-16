@@ -97,7 +97,11 @@ class Graph<T> {
         }
          */
 
-        return map.get(s).contains(d);
+        if (map.containsKey(s)) {
+                if (map.get(s).contains(d)) return true;
+                    else return false;
+        }
+        return false;
     }
 
     public void DFS_util(T start_node, HashSet<T> visited) {

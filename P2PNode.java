@@ -2,7 +2,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class P2PNode implements Runnable{
+public class P2PNode {
     private final ChannelGraph channel_graph = new ChannelGraph();
     private final HashMap<String, UVNode> uvpeers = new HashMap<>();
     private final UVNode uvnode;
@@ -11,7 +11,7 @@ public class P2PNode implements Runnable{
     public P2PNode(UVNode owner) {
         this.uvnode = owner;
         channel_graph.addNode(this.uvnode);
-        log = s -> UVManager.log.print("[p2p]"+s);
+        log = s -> uvnode.log.print("[p2p]"+s);
     }
 
     public String getId() {
@@ -62,18 +62,27 @@ public class P2PNode implements Runnable{
 
     // synch required for multiple external node calls
     public void receiveAnnounceChannel(String from_peer, UVChannel ch) {
-        log.print("Received Broadcast request for channel "+ch.getChannelId()+ " from peer:"+from_peer);
+        log.print("Broadcast request for channel "+ch.getChannelId()+ " from peer:"+from_peer);
+        boolean never_seen = false;
         synchronized (this.channel_graph) {
-            this.channel_graph.addChannel(ch);
+            if (!channel_graph.hasChannel(ch)) {
+                never_seen = true;
+                this.channel_graph.addChannel(ch);
+            }
+        }
+        if (never_seen) {
+            ArrayList<UVNode> peers_snapshot;
+            synchronized (uvpeers) {
+                peers_snapshot = new ArrayList<>(uvpeers.values());
+            }
+            log.print("Broadcasting never seen channel "+ch.getChannelId());
+            for (UVNode n: peers_snapshot) {
+                broadcastAnnounceChannel(n.getP2PNode(),ch);
+            }
         }
     }
 
     public HashMap<String, UVNode> getUvpeers() {
         return uvpeers;
-    }
-
-    @Override
-    public void run() {
-        log.print("Starting thread");
     }
 }
