@@ -47,8 +47,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
     public ArrayList<LNChannel> getLNChannelList() {
 
-        ArrayList<LNChannel> list = new ArrayList<>(this.getUVChannels().values());
-        return list;
+        return new ArrayList<>(this.getUVChannels().values());
     }
 
     /**
@@ -92,7 +91,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
             never_seen = true;
             this.channel_graph.addChannel(msg.channel);
         }
-        if (never_seen && msg.forwardings<2) {
+        if (never_seen && msg.forwardings<UVConfig.max_gossip_hops) {
             var new_message = msg.getNext();
 
             if (UVConfig.verbose)

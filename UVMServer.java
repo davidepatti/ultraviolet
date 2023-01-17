@@ -44,7 +44,7 @@ public class UVMServer implements Runnable {
                         case "BOOTSTRAP_NETWORK":
                             os.println("BEGIN DATA");
                             os.flush();
-                            if (!uvm.isBoostrapped()) {
+                            if (!uvm.bootstrapStarted()) {
                                 //noinspection Convert2MethodRef
                                 new Thread(()->uvm.bootstrapNetwork()).start();
                             }
@@ -63,7 +63,15 @@ public class UVMServer implements Runnable {
                             break;
                         case "MSG_RANDOM_EVENTS":
                             String n = is.nextLine();
-                            uvm.generateRandomEvents(Integer.parseInt(n));
+                            if (uvm.bootstrapCompleted())
+                                uvm.generateRandomEvents(Integer.parseInt(n));
+                            else{
+                                os.println("Bootstrap not completed, cannot generare events!");
+                                os.flush();
+                            }
+
+                            os.println("END DATA");
+                            os.flush();
                             break;
                         case "STATUS":
                             getStatus();
@@ -105,7 +113,7 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        for (UVNode n: uvm.getNodeMap().values()) {
+        for (UVNode n: uvm.getUVnodes().values()) {
             os.println(n);
             os.flush();
             for (UVChannel c:n.getUVChannels().values()) {
@@ -120,7 +128,7 @@ public class UVMServer implements Runnable {
     public void showNodes() {
         os.println("BEGIN DATA");
         os.flush();
-        for (UVNode n: uvm.getNodeMap().values()) {
+        for (UVNode n: uvm.getUVnodes().values()) {
             os.println(n);
             os.flush();
         }
@@ -132,7 +140,7 @@ public class UVMServer implements Runnable {
 
         os.println("BEGIN DATA");
         os.flush();
-        var node = uvm.getNodeMap().get(pubkey);
+        var node = uvm.getUVnodes().get(pubkey);
         os.println(node);
         os.flush();
         for (UVChannel c:node.getUVChannels().values()) {

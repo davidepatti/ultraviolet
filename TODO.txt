@@ -1,8 +1,8 @@
-- interfaces for UVNode and edges, exposing the right data on graphs
 - implement the update channel message for fees and lock delta
 - set a proper gossip propagation policy (stop after hops? periodically broadcast from thread?)
 
 - channel confirmation delay, also similar blockchain related events
 - importing real topology (e.g. lncli describegraph)
 - saving state
+- restart uvm network
 

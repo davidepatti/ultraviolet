@@ -127,6 +127,11 @@ public class UVMClient {
                     os.flush();
                     os.println(n);
                     os.flush();
+                    while (is.hasNextLine()) {
+                        s = is.nextLine();
+                        System.out.println(s);
+                        if (s.equals("END DATA")) break;
+                    }
                     break;
                 case "T":
                     os.println("TEST");

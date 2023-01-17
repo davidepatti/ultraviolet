@@ -68,7 +68,7 @@ public class UVConfig {
             seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
             blocktiming = Integer.parseInt(config.getProperty("blocktiming", "1000"));
             max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", "3"));
-            verbose = true;
+            verbose = false;
 
             config_file_reader.close();
             UVManager.log.print("Loaded configuration:");
