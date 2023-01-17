@@ -16,6 +16,10 @@ public class Timechain implements Runnable{
         return current_block;
     }
 
+    public int getTimeDelay(int n_blocks) {
+        return blocktime*n_blocks;
+    }
+
     public Timechain(int blocktime) {
         current_block = 0;
         this.blocktime = blocktime;

@@ -140,12 +140,12 @@ public class UVMServer implements Runnable {
         }
         os.println("Peers:");
         os.flush();
-        for (UVNode n:node.getPeers().values()) {
+        for (P2PNode n:node.getPeers().values()) {
             os.println(n);
             os.flush();
         }
         os.println("Channel Graph:");
-        os.println(node.getP2PNode().getChannel_graph().toString());
+        os.println(node.getChannelGraph().toString());
         os.flush();
         os.println("END DATA");
         os.flush();

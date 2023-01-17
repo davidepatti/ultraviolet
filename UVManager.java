@@ -9,14 +9,13 @@ public class UVManager {
     private final HashMap<String, UVNode> nodeMap = new HashMap<>();
 
     private final Random random = new Random();
-    private final static Timechain timechain = new Timechain(10000);
+    private final Timechain timechain;
 
     private boolean boostrapped = false;
     private static FileWriter logfile;
     static Log log = System.out::println;
 
     public static void main(String[] args) {
-        // redefining the log to write a file (optional) ////////////////////////////////////////////////
 
         if (args.length == 1) {
             log.print("Loading configuration file:"+args[0]);
@@ -30,9 +29,19 @@ public class UVManager {
         try {
             logfile = new FileWriter(UVConfig.logfile);
         } catch (IOException e) {
+            log.print("Cannot open logfile for writing:"+UVConfig.logfile);
             throw new RuntimeException(e);
         }
 
+        var uvm = new UVManager();
+        uvm.startServer(UVConfig.server_port);
+    }
+
+    /**
+     * Constructor
+     */
+    public UVManager() {
+        timechain = new Timechain(UVConfig.blocktiming);
         log = (String s) ->  {
             try {
                 logfile.write("\n["+timechain.getCurrent_block()+"]"+s);
@@ -41,10 +50,20 @@ public class UVManager {
                 throw new RuntimeException(e);
             }
         };
-        //////////////////////////////////////////////////////////////////////7
+        if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
+        log.print("Initializing UVManager...");
+        log.print(this.toString());
 
-        var uvm = new UVManager();
-        uvm.startServer(UVConfig.server_port);
+    }
+
+    /**
+     * Start a server listening to client to issue UVM commands
+     * @param port
+     */
+    public void startServer(int port) {
+        log.print("Starting UVM Server...");
+        var uvm_server = new UVMServer(this,port);
+        new Thread(uvm_server).start();
     }
 
     public boolean isBoostrapped() {
@@ -52,7 +71,7 @@ public class UVManager {
     }
 
 
-    public synchronized HashMap<String, UVNode> getNodeMap(){
+    public HashMap<String, UVNode> getNodeMap(){
 
         return this.nodeMap;
     }
@@ -72,7 +91,7 @@ public class UVManager {
             int max = UVConfig.max_funding/(int)1e6;
             int min = UVConfig.min_funding /(int)1e6;
             var funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new UVNode(this,"pk_"+i,"alias_"+i,funding);
+            var n = new UVNode(this,"pk_"+i,"LN"+i,funding);
             var behavior = new NodeBehavior(UVConfig.min_channels,UVConfig.min_channel_size,UVConfig.max_channel_size);
             n.setBehavior(behavior);
             nodeMap.put(n.getPubKey(),n);
@@ -93,17 +112,6 @@ public class UVManager {
          */
     }
 
-    public UVManager() {
-        if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
-        log.print("Initializing UVManager...");
-        log.print(this.toString());
-    }
-
-    public void startServer(int port) {
-        log.print("Starting UVM Server...");
-        var uvm_server = new UVMServer(this,port);
-        new Thread(uvm_server).start();
-    }
 
     public UVNode getRandomNode() {
         var n = random.nextInt(nodeMap.size());
@@ -132,7 +140,7 @@ public class UVManager {
         }
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getChannelId();
+            var some_channel_id = some_node.getRandomChannel().getId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
             log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);

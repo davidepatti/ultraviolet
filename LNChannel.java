@@ -1,5 +1,5 @@
 public interface LNChannel {
-    String getChannelId();
+    String getId();
     String getNode1PubKey();
     String getNode2PubKey();
     LNode getNode1();

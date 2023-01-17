@@ -1,6 +1,6 @@
 public class UVChannel implements LNChannel{
 
-    enum ChannelStatus { OPEN, CLOSED, PENDING, NULL };
+    enum ChannelStatus { OPEN, CLOSED, PENDING, NONE };
     private ChannelStatus status;
 
     private final UVNode initiatorUVNode;
@@ -38,22 +38,30 @@ public class UVChannel implements LNChannel{
         this.initiator_pending = 0;
         this.peer_pending = 0;
         this.commit_number = 0;
-        this.status = ChannelStatus.NULL;
+        this.status = ChannelStatus.NONE;
     }
 
-    public UVNode getInitiatorUVNode() {
+    public UVNode getInitiator() {
         return initiatorUVNode;
     }
 
-    public UVNode getPeer_node() {
+    public UVNode getPeer() {
         return peerUVNode;
+    }
+
+    public void setStatus(ChannelStatus status) {
+        this.status = status;
+    }
+
+    public ChannelStatus getStatus() {
+        return status;
     }
 
     /**
      * @return 
      */
     @Override
-    public String getChannelId() {
+    public String getId() {
         return this.channel_id;
     }
 
@@ -62,7 +70,7 @@ public class UVChannel implements LNChannel{
      */
     @Override
     public String getNode1PubKey() {
-        return getInitiator_public_key();
+        return getInitiatorPubKey();
     }
 
     /**
@@ -70,7 +78,7 @@ public class UVChannel implements LNChannel{
      */
     @Override
     public String getNode2PubKey() {
-        return getPeer_public_key();
+        return getPeerPubKey();
     }
 
     /**
@@ -153,7 +161,7 @@ public class UVChannel implements LNChannel{
         return this.commit_number;
     }
 
-    public synchronized int getInitiator_balance() {
+    public synchronized int getInitiatorBalance() {
         return initiator_balance;
     }
     public synchronized int getPeer_balance() {
@@ -168,10 +176,10 @@ public class UVChannel implements LNChannel{
         return peer_pending;
     }
 
-    public String getPeer_public_key() {
+    public String getPeerPubKey() {
         return peerUVNode.getPubKey();
     }
-    public String getInitiator_public_key() {
+    public String getInitiatorPubKey() {
         return initiatorUVNode.getPubKey();
     }
 
@@ -203,7 +211,7 @@ public class UVChannel implements LNChannel{
 
     public synchronized  int getInitatorLiquidity() {
 
-        return getInitiator_balance()-getReserve()-getInitiator_pending();
+        return getInitiatorBalance()-getReserve()-getInitiator_pending();
     }
 
     /**
@@ -235,7 +243,7 @@ public class UVChannel implements LNChannel{
     @Override
     public String toString() {
         return "Ch{" +
-                " status:"+this.status+
+                " status:"+this.status.toString()+
                 " initiator:'" + initiatorUVNode.getPubKey() + '\'' +
                 ", peer:" + peerUVNode.getPubKey() + '\'' +
                 ", balance:(" + initiator_balance +

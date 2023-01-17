@@ -11,7 +11,6 @@ public class UVConfig {
     private static final String DEFAULT_SERVERPORT = "7777";
     private static final String DEFAULT_MIN_CHANNELS = "3";
     private static final String DEFAULT_MAX_CHANNELS = "5";
-    // as fraction of the total initial funding
     private static final String DEFAULT_MIN_CHANNEL_SIZE = "1000000"; //1M
     private static final String DEFAULT_MAX_CHANNEL_SIZE = "10000000"; //10M
     private static final String DEFAULT_SEED = "0";
@@ -26,8 +25,9 @@ public class UVConfig {
     public static int server_port;
     public static String logfile;
     public static int seed;
-    // TODO: add to parameters
-    public static boolean verbose = true;
+    public static boolean verbose;
+    public static int blocktiming;
+    public static int max_gossip_hops;
 
 
     public static void setDefaults() {
@@ -46,6 +46,9 @@ public class UVConfig {
         logfile = DEFAULT_LOGFILE;
 
         seed = Integer.parseInt(DEFAULT_SEED);
+        blocktiming = 1000; //millisec
+        max_gossip_hops = 3;
+        verbose = false;
     }
 
     public static void loadConfig(String config_file) {
@@ -63,9 +66,12 @@ public class UVConfig {
             server_port = Integer.parseInt(config.getProperty("server_port", DEFAULT_SERVERPORT));
             logfile = config.getProperty("logfile", DEFAULT_LOGFILE);
             seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
+            blocktiming = Integer.parseInt(config.getProperty("blocktiming", "1000"));
+            max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", "3"));
+            verbose = true;
 
-            System.out.println("loaded config:");
             config_file_reader.close();
+            UVManager.log.print("Loaded configuration:");
 
         } catch (
                 FileNotFoundException e) {

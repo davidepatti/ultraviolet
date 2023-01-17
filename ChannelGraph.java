@@ -2,21 +2,19 @@ public class ChannelGraph {
 
     private final Graph<LNode> graph = new Graph<>();
 
-    Log log = s-> System.out.println("p2p:"+s);
-
     // nodes of graph
-    public void addNode(LNode node) {
+    public synchronized void addNode(LNode node) {
         graph.addVertex(node);
     }
     // edges of graph
-    public void addChannel(LNChannel channel) {
+    public synchronized void addChannel(LNChannel channel) {
         graph.addEdge(channel.getNode1(),channel.getNode2(),false);
     }
     // to edge properties
-    public void updateChannel(String channel_id, int base_fee, int ppm_fee, int cltv_expiry_delta, long timestamp) {
+    public synchronized void updateChannel(String channel_id, int base_fee, int ppm_fee, int cltv_expiry_delta, long timestamp) {
     }
 
-    public boolean hasChannel(LNChannel channel) {
+    public synchronized boolean hasChannel(LNChannel channel) {
        return graph.hasEdge(channel.getNode1(),channel.getNode2());
     }
 
