@@ -21,7 +21,7 @@ public class UVMServer implements Runnable {
     @Override
     public void run() {
         System.out.println("Starting UVManager socket at port " + port);
-        try (var server = new ServerSocket(port);) {
+        try (var server = new ServerSocket(port)) {
             boolean uvm_on = true;
 
             // TODO: method to gracefully stop/pause/save
@@ -45,6 +45,7 @@ public class UVMServer implements Runnable {
                             os.println("BEGIN DATA");
                             os.flush();
                             if (!uvm.isBoostrapped()) {
+                                //noinspection Convert2MethodRef
                                 new Thread(()->uvm.bootstrapNetwork()).start();
                             }
                             else System.out.println("Error: network already bootstrapped!");

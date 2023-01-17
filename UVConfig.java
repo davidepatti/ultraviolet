@@ -82,7 +82,6 @@ public class UVConfig {
                 IOException e) {
             throw new RuntimeException(e);
         }
-        printConfig();
     }
 
     public static String printConfig() {

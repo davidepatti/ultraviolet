@@ -11,6 +11,7 @@ public class ChannelGraph {
         graph.addEdge(channel.getNode1(),channel.getNode2(),false);
     }
     // to edge properties
+    @SuppressWarnings("EmptyMethod")
     public synchronized void updateChannel(String channel_id, int base_fee, int ppm_fee, int cltv_expiry_delta, long timestamp) {
     }
 
@@ -27,9 +28,9 @@ public class ChannelGraph {
         StringBuilder builder = new StringBuilder();
 
         for (LNode v : this.graph.getMap().keySet()) {
-            builder.append(v.getPubKey() + ": ");
+            builder.append(v.getPubKey()).append(": ");
             for (LNode w : this.graph.getMap().get(v)) {
-                builder.append(w.getPubKey() + " ");
+                builder.append(w.getPubKey()).append(" ");
             }
             builder.append("\n");
         }

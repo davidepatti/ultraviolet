@@ -6,7 +6,7 @@ import java.util.*;
 class Graph<T> {
 
     // We use Hashmap to store the edges in the graph
-    private Map<T, List<T> > map = new HashMap<>();
+    private final Map<T, List<T> > map = new HashMap<>();
 
     public Map<T,List<T>> getMap() {
         return map;
@@ -37,7 +37,7 @@ class Graph<T> {
 
         map.get(source).add(destination);
 
-        if (bidirectional == true) {
+        if (bidirectional) {
             map.get(destination).add(source);
         }
     }
@@ -57,7 +57,7 @@ class Graph<T> {
         for (T v : map.keySet()) {
             count += map.get(v).size();
         }
-        if (bidirection == true) {
+        if (bidirection) {
             count = count / 2;
         }
         System.out.println("The graph has "
@@ -69,33 +69,14 @@ class Graph<T> {
     // a vertex is present or not.
     public boolean hasVertex(T s)
     {
-        /*
-        if (map.containsKey(s)) {
-            System.out.println("The graph contains "
-                    + s + " as a vertex.");
-        }
-        else {
-            System.out.println("The graph does not contain "
-                    + s + " as a vertex.");
-        }
-         */
 
         return map.containsKey(s);
     }
 
     // This function gives whether an edge is present or not.
+    @SuppressWarnings("RedundantIfStatement")
     public boolean hasEdge(T s, T d)
     {
-        /*
-        if (map.get(s).contains(d)) {
-            System.out.println("The graph has an edge between "
-                    + s + " and " + d + ".");
-        }
-        else {
-            System.out.println("The graph has no edge between "
-                    + s + " and " + d + ".");
-        }
-         */
 
         if (map.containsKey(s)) {
                 if (map.get(s).contains(d)) return true;
@@ -128,9 +109,9 @@ class Graph<T> {
         StringBuilder builder = new StringBuilder();
 
         for (T v : map.keySet()) {
-            builder.append(v.toString() + ": ");
+            builder.append(v.toString()).append(": ");
             for (T w : map.get(v)) {
-                builder.append(w.toString() + " ");
+                builder.append(w.toString()).append(" ");
             }
             builder.append("\n");
         }
@@ -139,11 +120,11 @@ class Graph<T> {
     }
 
 
-    public static void main(String args[])
+    public static void main(String[] args)
     {
 
         // Object of graph is created.
-        Graph<Integer> g = new Graph<Integer>();
+        Graph<Integer> g = new Graph<>();
 
         // edges are added.
         // Since the graph is bidirectional,
@@ -158,7 +139,7 @@ class Graph<T> {
 
         // Printing the graph
         System.out.println("Graph:\n"
-                + g.toString());
+                + g);
 
         // Gives the no of vertices in the graph.
         g.getVertexCount();

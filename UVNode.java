@@ -1,6 +1,4 @@
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -19,7 +17,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
     private final ChannelGraph channel_graph = new ChannelGraph();
     private final ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
-    Log log;
+    final Log log;
     private boolean bootstrap_completed = false;
 
     /**
@@ -49,8 +47,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
     public ArrayList<LNChannel> getLNChannelList() {
 
-        ArrayList<LNChannel> list = new ArrayList<>();
-        list.addAll(this.getUVChannels().values());
+        ArrayList<LNChannel> list = new ArrayList<>(this.getUVChannels().values());
         return list;
     }
 
@@ -175,16 +172,6 @@ public class UVNode implements Runnable, LNode,P2PNode {
         uvm.bootstrap_latch.countDown();
         log.print("Bootstrap completed");
 
-        /*
-        try {
-            log.print("WAITING...");
-            wait();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        log.print("CONTINUE!");
-
-         */
     }
 
     /**
@@ -294,7 +281,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
      * @return a random node channel
      */
     public UVChannel getRandomChannel() {
-        var some_channel_id = channels.keySet().toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
+        var some_channel_id = (String)channels.keySet().toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
         return channels.get(some_channel_id);
     }
 

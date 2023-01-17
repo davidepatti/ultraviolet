@@ -80,6 +80,7 @@ public class UVManager {
         return timechain;
     }
 
+    @SuppressWarnings("CommentedOutCode")
     public synchronized void bootstrapNetwork() {
         boostrapped = true;
         log.print("UVM: Bootstrapping network with "+ UVConfig.total_nodes+" nodes ("+ UVConfig.min_funding +" - "+ UVConfig.max_funding +")");
@@ -115,10 +116,11 @@ public class UVManager {
 
     public UVNode getRandomNode() {
         var n = random.nextInt(nodeMap.size());
-        var some_random_key = nodeMap.keySet().toArray()[n];
+        var some_random_key = (String)nodeMap.keySet().toArray()[n];
         return nodeMap.get(some_random_key);
     }
 
+    @SuppressWarnings("CommentedOutCode")
     public void testRandomEvent() {
         log.print("BOOTSTRAP LATCH:"+bootstrap_latch.getCount());
         /*

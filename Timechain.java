@@ -38,6 +38,7 @@ public class Timechain implements Runnable{
         System.out.println("Timechain started!");
 
         // TODO: method to stop timechain
+        //noinspection InfiniteLoopStatement
         while (true) {
             try {
                 Thread.sleep(blocktime);
@@ -45,9 +46,7 @@ public class Timechain implements Runnable{
                     for (CountDownLatch t:timers ) {
                         t.countDown();
                     }
-                    for (CountDownLatch t:timers ) {
-                        if (t.getCount()==0) timers.remove(t);
-                    }
+                    timers.removeIf(t -> t.getCount() == 0);
                 }
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);

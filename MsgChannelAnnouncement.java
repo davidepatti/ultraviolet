@@ -1,5 +1,5 @@
 public class MsgChannelAnnouncement {
-    LNChannel channel;
+    final LNChannel channel;
     int forwardings = 0;
 
     public MsgChannelAnnouncement(LNChannel channel) {

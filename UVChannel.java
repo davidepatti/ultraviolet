@@ -1,6 +1,7 @@
 public class UVChannel implements LNChannel{
 
-    enum ChannelStatus { OPEN, CLOSED, PENDING, NONE };
+    enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
+
     private ChannelStatus status;
 
     private final UVNode initiatorUVNode;
@@ -13,12 +14,15 @@ public class UVChannel implements LNChannel{
     private int peer_fee_ppm;
     @SuppressWarnings("FieldMayBeFinal")
     private int initiator_base_fee;
+    @SuppressWarnings("FieldMayBeFinal")
     private int peer_base_fee;
     private int initiator_locktimedelta;
     private int peer_locktimedelta;
     private int initiator_balance;
     private int peer_balance;
+    @SuppressWarnings("FieldMayBeFinal")
     private int initiator_pending;
+    @SuppressWarnings("FieldMayBeFinal")
     private int peer_pending;
     private int reserve;
 
@@ -37,7 +41,6 @@ public class UVChannel implements LNChannel{
         this.peer_base_fee = peer_base_fee;
         this.initiator_pending = 0;
         this.peer_pending = 0;
-        this.commit_number = 0;
         this.status = ChannelStatus.NONE;
     }
 
