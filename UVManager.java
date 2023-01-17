@@ -2,14 +2,14 @@ import java.io.*;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class UVManager {
 
+    ExecutorService bootexec;
     CountDownLatch bootstrap_latch;
-    private final HashMap<String, UVNode> UVnodes = new HashMap<>();
+    private HashMap<String, UVNode> UVnodes = new HashMap<>();
 
     private String[] pubkeys_list;
 
@@ -61,6 +61,14 @@ public class UVManager {
         log.print("Initializing UVManager...");
         log.print(this.toString());
 
+    }
+    // TODO: not guaranteed to work perfectly
+    public void resetUVM() {
+        bootstrap_latch= new CountDownLatch(UVConfig.total_nodes);
+        boostrap_started = false;
+        this.UVnodes.clear();
+        bootexec.shutdown();
+        System.gc();
     }
 
     /**
@@ -123,11 +131,14 @@ public class UVManager {
         updatePubkeyList();
 
         log.print("Starting node threads...");
-        ExecutorService bootexec = Executors.newFixedThreadPool(UVConfig.total_nodes);
+        bootexec = Executors.newFixedThreadPool(UVConfig.total_nodes);
         for (UVNode n : UVnodes.values()) {
            bootexec.submit(n);
         }
     }
+
+
+
 
 
     /**

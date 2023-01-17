@@ -41,6 +41,7 @@ public class UVMClient {
             System.out.println(" (5) Show Node Status");
             System.out.println(" (6) Generate Randome events");
             System.out.println(" (T) test");
+            System.out.println(" (R) Reset UVM (experimental)");
             System.out.println(" (q) Disconnect client");
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
@@ -137,6 +138,12 @@ public class UVMClient {
                     os.println("TEST");
                     os.flush();
                     System.out.println("Testing..");
+                    break;
+                case "R":
+                    uvm_started = false;
+                    os.println("RESET");
+                    os.flush();
+                    System.out.println("Resetting UVM..");
                     break;
             }
         }

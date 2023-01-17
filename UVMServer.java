@@ -84,6 +84,9 @@ public class UVMServer implements Runnable {
                         case "SHOW_NODES":
                             showNodes();
                             break;
+                        case "RESET":
+                            uvm.resetUVM();
+                            break;
                         default:
                             System.out.println("Unknown command "+command);
                             break;
