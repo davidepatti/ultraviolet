@@ -1,6 +1,5 @@
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.*;
 
 public class UVNode implements Runnable, LNode,P2PNode {
 
@@ -66,41 +65,6 @@ public class UVNode implements Runnable, LNode,P2PNode {
      */
     public void addPeer(P2PNode node) {
             this.peers.putIfAbsent(node.getPubKey(),node);
-    }
-    /**
-     * Announce to peers a channel opened from local side
-     * @param channel
-     */
-    public void announceChannel(LNChannel channel) {
-        log.print("Adding and Announcing channel to others: " + channel.getId());
-        channel_graph.addChannel(channel);
-
-        var message = new MsgChannelAnnouncement(channel);
-
-        for (P2PNode target_peer : peers.values()) {
-            broadcastAnnounceChannel(target_peer, message);
-        }
-    }
-    public void broadcastAnnounceChannel(P2PNode target_peer, MsgChannelAnnouncement msg) {
-        target_peer.receiveAnnounceChannel(this.getPubKey(),msg);
-    }
-    public void receiveAnnounceChannel(String from_peer, MsgChannelAnnouncement msg) {
-        //log.print("Broadcast request for channel "+ch.getChannelId()+ " from peer:"+from_peer);
-        boolean never_seen = false;
-        if (!channel_graph.hasChannel(msg.channel)) {
-            never_seen = true;
-            this.channel_graph.addChannel(msg.channel);
-        }
-        if (never_seen && msg.forwardings<UVConfig.max_gossip_hops) {
-            var new_message = msg.getNext();
-
-            if (UVConfig.verbose)
-                log.print("Broadcasting never seen message: "+new_message);
-
-            for (P2PNode peer: peers.values()) {
-                broadcastAnnounceChannel(peer,new_message);
-            }
-        }
     }
 
     /**
@@ -210,26 +174,6 @@ public class UVNode implements Runnable, LNode,P2PNode {
             log.print("<<< NO Channel already present with peer "+node_id);
         return false;
     }
-    /**
-     * Called by the channel initiator on a target node to propose a channel opening
-     * synchronized to accept one channel per time to avoid inconsistency
-     * @param new_UV_channel  the channel proposal
-     * @return true if accepted
-     */
-    public synchronized boolean acceptChannel(UVChannel new_UV_channel) {
-        log.print(">>> Start Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
-        if (this.hasChannelWith(new_UV_channel.getInitiatorPubKey())) {
-            return false;
-        }
-
-        this.channels.put(new_UV_channel.getId(), new_UV_channel);
-        this.addPeer(new_UV_channel.getInitiator());
-        //this.getP2PNode().addChannel(new_channel);
-        // test
-        this.announceChannel(new_UV_channel);
-        log.print("<<< End Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
-        return true;
-    }
 
     /**
      * Open a channel with a peer node, with the features defined by the node behavior and configuration
@@ -260,14 +204,78 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
         log.print(">>> Channel to "+ peer_UV_node.getPubKey()+" accepted, updating node status...");
         // Updates on channel status and balances should be in sync with other accesses (e.g. accept())
-        this.channels.put(channel_id,channel_proposal);
-        updateOnChainBalance(getOnChainBalance()-channel_proposal.getInitiatorBalance());
         this.addPeer(peer_UV_node);
-        // announce also adds
-        this.announceChannel(channel_proposal);
+        this.channels.put(channel_id,channel_proposal);
+        channel_graph.addChannel(channel_proposal);
+        updateOnChainBalance(getOnChainBalance()-channel_proposal.getInitiatorBalance());
+
+        var message = new MsgChannelAnnouncement(channel_proposal);
+
+        broadcastAnnounceChannel(message);
         log.print("<<< End opening channel with "+ peer_UV_node.getPubKey());
 
         return true;
+    }
+    /**
+     * Called by the channel initiator on a target node to propose a channel opening
+     * synchronized to accept one channel per time to avoid inconsistency
+     * @param new_UV_channel  the channel proposal
+     * @return true if accepted
+     */
+    public synchronized boolean acceptChannel(UVChannel new_UV_channel) {
+        log.print(">>> Start Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        if (this.hasChannelWith(new_UV_channel.getInitiatorPubKey())) {
+            return false;
+        }
+
+        this.channels.put(new_UV_channel.getId(), new_UV_channel);
+        this.addPeer(new_UV_channel.getInitiator());
+        channel_graph.addChannel(new_UV_channel);
+
+        log.print("Adding and Announcing channel to others: " + new_UV_channel.getId());
+
+        var message = new MsgChannelAnnouncement(new_UV_channel);
+
+        broadcastAnnounceChannel(message);
+
+        log.print("<<< End Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        return true;
+    }
+
+    /**
+     *
+     * @param msg
+     */
+    public void broadcastAnnounceChannel(MsgChannelAnnouncement msg) {
+        var peer_list = new ArrayList<P2PNode>(peers.values());
+        // not including itself
+        peer_list.removeIf(x->x.getPubKey().equals(this.getPubKey()));
+
+        for (P2PNode peer: peer_list) {
+            peer.receiveAnnounceChannel(this.getPubKey(),msg);
+        }
+    }
+
+    /**
+     *
+     * @param from_peer
+     * @param msg
+     */
+    public void receiveAnnounceChannel(String from_peer, MsgChannelAnnouncement msg) {
+        //log.print("Broadcast request for channel "+ch.getChannelId()+ " from peer:"+from_peer);
+        boolean never_seen = false;
+        if (!channel_graph.hasChannel(msg.channel)) {
+            never_seen = true;
+            this.channel_graph.addChannel(msg.channel);
+        }
+        if (never_seen && msg.forwardings<UVConfig.max_gossip_hops) {
+            var new_message = msg.getNext();
+
+            if (UVConfig.verbose)
+                log.print("Broadcasting never seen message: "+new_message);
+
+                broadcastAnnounceChannel(new_message);
+        }
     }
 
     private synchronized void updateOnChainBalance(int new_balance) {

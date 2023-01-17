@@ -125,7 +125,7 @@ public class UVManager {
         log.print("Starting node threads...");
         ExecutorService bootexec = Executors.newFixedThreadPool(UVConfig.total_nodes);
         for (UVNode n : UVnodes.values()) {
-           bootexec.execute(n);
+           bootexec.submit(n);
         }
     }
 
