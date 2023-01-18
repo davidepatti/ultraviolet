@@ -156,9 +156,16 @@ public class UVMServer implements Runnable {
             os.println(n);
             os.flush();
         }
-        os.println("Channel Graph:");
-        os.println(node.getChannelGraph().toString());
-        os.flush();
+        if (Config.verbose) {
+            os.println("Channel Graph:");
+            os.println(node.getChannelGraph().toString());
+            os.flush();
+        }
+
+        int edges = node.getChannelGraph().getChannelCount();
+        int vertex = node.getChannelGraph().getNodeCount();
+        os.println("Graph nodes:"+vertex);
+        os.println("Graph channels:"+edges);
         os.println("END DATA");
         os.flush();
     }

@@ -23,6 +23,14 @@ public class ChannelGraph {
 
     }
 
+    public int getNodeCount() {
+       return graph.getVertexCount();
+    }
+
+    public int getChannelCount() {
+        return graph.getEdgesCount(false);
+    }
+
     public String toString()
     {
         StringBuilder builder = new StringBuilder();
