@@ -4,5 +4,7 @@
 - channel confirmation delay, also similar blockchain related events
 - importing real topology (e.g. lncli describegraph)
 - saving state
-- restart uvm network
+- restart uvm network (DONE)
+- profiles in properties
+- deterministic random in nodes
 

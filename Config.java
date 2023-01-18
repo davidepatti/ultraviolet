@@ -3,7 +3,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Properties;
 
-public class UVConfig {
+public class Config {
     private static final String DEFAULT_TOTAL_NODES = "10";
     private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
     private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
@@ -56,6 +56,7 @@ public class UVConfig {
             var config_file_reader = new FileReader(config_file);
             var config = new Properties();
             config.load(config_file_reader);
+            ///String profile = config.getProperty("profile")
             total_nodes = Integer.parseInt(config.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
             min_funding = Integer.parseInt(config.getProperty("min_funding", DEFAULT_MIN_FUNDING));
             max_funding = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MAX_FUNDING));
@@ -72,6 +73,7 @@ public class UVConfig {
 
             config_file_reader.close();
             UVManager.log.print("Loaded configuration:");
+            config.list(System.out);
 
         } catch (
                 FileNotFoundException e) {
@@ -82,6 +84,7 @@ public class UVConfig {
                 IOException e) {
             throw new RuntimeException(e);
         }
+
     }
 
     public static String printConfig() {

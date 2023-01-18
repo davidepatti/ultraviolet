@@ -96,7 +96,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
         this.behavior = behavior;
     }
 
-    private void bootstrapNode() {
+    public void bootstrapNode() {
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
@@ -108,7 +108,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
             var peer_node = uvm.getRandomNode();
             var peer_pubkey = peer_node.getPubKey();
-            if (UVConfig.verbose)
+            if (Config.verbose)
                 log.print("Trying to open a channel with "+peer_pubkey);
 
             // TODO: add more complex requirements for peers
@@ -120,7 +120,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
             int max = Math.min(behavior.getMax_channel_size(),onchain_balance);
             int min = behavior.getMin_channel_size();
-            var channel_size = ThreadLocalRandom.current().nextInt(min,max);
+            var channel_size = ThreadLocalRandom.current().nextInt(min,max+1);
             channel_size = (channel_size/100000)*100000;
 
 
@@ -147,7 +147,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
         // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
 
         // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
-        bootstrapNode();
+        //bootstrapNode();
     }
 
     /**
@@ -157,7 +157,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
      */
     // TODO: here
     public boolean hasChannelWith(String node_id) {
-        if (UVConfig.verbose)
+        if (Config.verbose)
             log.print(">>> Checking if node has already channel with "+node_id);
 
         for (UVChannel c:this.channels.values()) {
@@ -165,12 +165,12 @@ public class UVNode implements Runnable, LNode,P2PNode {
             boolean accepted_from_peer = c.getInitiatorPubKey().equals(node_id);
 
             if (initiated_with_peer || accepted_from_peer) {
-                if (UVConfig.verbose)
+                if (Config.verbose)
                     log.print("<<< Channel already present with peer "+node_id);
                 return true;
             }
         }
-        if (UVConfig.verbose)
+        if (Config.verbose)
             log.print("<<< NO Channel already present with peer "+node_id);
         return false;
     }
@@ -268,10 +268,10 @@ public class UVNode implements Runnable, LNode,P2PNode {
             never_seen = true;
             this.channel_graph.addChannel(msg.channel);
         }
-        if (never_seen && msg.forwardings<UVConfig.max_gossip_hops) {
+        if (never_seen && msg.forwardings< Config.max_gossip_hops) {
             var new_message = msg.getNext();
 
-            if (UVConfig.verbose)
+            if (Config.verbose)
                 log.print("Broadcasting never seen message: "+new_message);
 
                 broadcastAnnounceChannel(new_message);

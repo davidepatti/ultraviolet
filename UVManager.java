@@ -4,6 +4,7 @@ import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class UVManager {
 
@@ -24,30 +25,30 @@ public class UVManager {
 
         if (args.length == 1) {
             log.print("Loading configuration file:"+args[0]);
-            UVConfig.loadConfig(args[0]);
+            Config.loadConfig(args[0]);
         }
         else {
             log.print("No config file provided, using defaults");
-            UVConfig.setDefaults();
+            Config.setDefaults();
         }
 
         try {
-            logfile = new FileWriter(UVConfig.logfile);
+            logfile = new FileWriter(Config.logfile);
         } catch (IOException e) {
-            log.print("Cannot open logfile for writing:"+UVConfig.logfile);
+            log.print("Cannot open logfile for writing:"+ Config.logfile);
             throw new RuntimeException(e);
         }
 
         var uvm = new UVManager();
-        uvm.startServer(UVConfig.server_port);
+        uvm.startServer(Config.server_port);
     }
 
     /**
      * Constructor
      */
     public UVManager() {
-        timechain = new Timechain(UVConfig.blocktiming);
-        bootstrap_latch= new CountDownLatch(UVConfig.total_nodes);
+        timechain = new Timechain(Config.blocktiming);
+        bootstrap_latch= new CountDownLatch(Config.total_nodes);
 
         log = (String s) ->  {
             try {
@@ -57,14 +58,14 @@ public class UVManager {
                 throw new RuntimeException(e);
             }
         };
-        if (UVConfig.seed!=0) random.setSeed(UVConfig.seed);
+        if (Config.seed!=0) random.setSeed(Config.seed);
         log.print("Initializing UVManager...");
         log.print(this.toString());
 
     }
     // TODO: not guaranteed to work perfectly
-    public void resetUVM() {
-        bootstrap_latch= new CountDownLatch(UVConfig.total_nodes);
+    public synchronized void resetUVM() {
+        bootstrap_latch= new CountDownLatch(Config.total_nodes);
         boostrap_started = false;
         this.UVnodes.clear();
         bootexec.shutdown();
@@ -85,7 +86,7 @@ public class UVManager {
         return bootstrap_latch.getCount()==0;
     }
 
-    public boolean bootstrapStarted() {
+    public synchronized boolean bootstrapStarted() {
         return boostrap_started;
     }
 
@@ -110,20 +111,25 @@ public class UVManager {
     /**
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
-    public synchronized void bootstrapNetwork() {
-        boostrap_started = true;
+    public void bootstrapNetwork() {
+        synchronized (this) {
+            boostrap_started = true;
+        }
 
         log.print("UVM: Bootstrapping network...");
         log.print("UVM: Starting timechain: "+timechain);
         new Thread(timechain,"timechain").start();
 
-        log.print("UVM: deploying nodes, configuration: "+UVConfig.printConfig());
-        for (int i =0;i<UVConfig.total_nodes; i++) {
-            int max = UVConfig.max_funding/(int)1e6;
-            int min = UVConfig.min_funding /(int)1e6;
-            var funding = (int)1e6*(random.nextInt(max-min)+min);
+        log.print("UVM: deploying nodes, configuration: "+ Config.printConfig());
+        int max = Config.max_funding/(int)1e6;
+        int min = Config.min_funding /(int)1e6;
+        for (int i = 0; i< Config.total_nodes; i++) {
+            int funding;
+            if (max==min) funding = (int)1e6*min;
+            else
+                funding = (int)1e6*(random.nextInt(max-min)+min);
             var n = new UVNode(this,"pk_"+i,"LN"+i,funding);
-            var behavior = new NodeBehavior(UVConfig.min_channels,UVConfig.min_channel_size,UVConfig.max_channel_size);
+            var behavior = new NodeBehavior(Config.min_channels, Config.min_channel_size, Config.max_channel_size);
             n.setBehavior(behavior);
             UVnodes.put(n.getPubKey(),n);
         }
@@ -131,14 +137,11 @@ public class UVManager {
         updatePubkeyList();
 
         log.print("Starting node threads...");
-        bootexec = Executors.newFixedThreadPool(UVConfig.total_nodes);
+        bootexec = Executors.newFixedThreadPool(Config.total_nodes);
         for (UVNode n : UVnodes.values()) {
-           bootexec.submit(n);
+           bootexec.submit(()->n.bootstrapNode());
         }
     }
-
-
-
 
 
     /**
@@ -194,7 +197,7 @@ public class UVManager {
     @Override
     public String toString() {
         return "UVManager{" +
-                " config =" + UVConfig.printConfig()  +
+                " config =" + Config.printConfig()  +
                 ", timechain=" + timechain +
                 ", boostrap complet=" + bootstrapCompleted() +
                 '}';

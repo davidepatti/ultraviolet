@@ -10,8 +10,6 @@ public class UVMClient {
 
     public UVMClient(int port) {
 
-        //uvm = new UVManager(10,(int)1e6,100*(int)1e6);
-
         PrintWriter os;
         Scanner is;
         String uvm_server_host = "127.0.0.1";
