@@ -97,6 +97,18 @@ public class UVNode implements Runnable, LNode,P2PNode {
     }
 
     public void bootstrapNode() {
+        var warmup = ConfigManager.bootstrap_warmup;
+
+        if (warmup!=0) {
+            var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(1,warmup));
+            log.print(" waiting "+ready_to_go.getCount()+" blocks before bootstrap...");
+            try {
+                ready_to_go.await();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        log.print("Starting bootstrap!");
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
@@ -108,7 +120,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
             var peer_node = uvm.getRandomNode();
             var peer_pubkey = peer_node.getPubKey();
-            if (Config.verbose)
+            if (ConfigManager.verbose)
                 log.print("Trying to open a channel with "+peer_pubkey);
 
             // TODO: add more complex requirements for peers
@@ -157,7 +169,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
      */
     // TODO: here
     public boolean hasChannelWith(String node_id) {
-        if (Config.verbose)
+        if (ConfigManager.verbose)
             log.print(">>> Checking if node has already channel with "+node_id);
 
         for (UVChannel c:this.channels.values()) {
@@ -165,12 +177,12 @@ public class UVNode implements Runnable, LNode,P2PNode {
             boolean accepted_from_peer = c.getInitiatorPubKey().equals(node_id);
 
             if (initiated_with_peer || accepted_from_peer) {
-                if (Config.verbose)
+                if (ConfigManager.verbose)
                     log.print("<<< Channel already present with peer "+node_id);
                 return true;
             }
         }
-        if (Config.verbose)
+        if (ConfigManager.verbose)
             log.print("<<< NO Channel already present with peer "+node_id);
         return false;
     }
@@ -268,10 +280,10 @@ public class UVNode implements Runnable, LNode,P2PNode {
             never_seen = true;
             this.channel_graph.addChannel(msg.channel);
         }
-        if (never_seen && msg.forwardings< Config.max_gossip_hops) {
+        if (never_seen && msg.forwardings< ConfigManager.max_gossip_hops) {
             var new_message = msg.getNext();
 
-            if (Config.verbose)
+            if (ConfigManager.verbose)
                 log.print("Broadcasting never seen message: "+new_message);
 
                 broadcastAnnounceChannel(new_message);

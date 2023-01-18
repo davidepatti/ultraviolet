@@ -3,7 +3,8 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Properties;
 
-public class Config {
+public class ConfigManager {
+    private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
     private static final String DEFAULT_TOTAL_NODES = "10";
     private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
     private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
@@ -14,7 +15,10 @@ public class Config {
     private static final String DEFAULT_MIN_CHANNEL_SIZE = "1000000"; //1M
     private static final String DEFAULT_MAX_CHANNEL_SIZE = "10000000"; //10M
     private static final String DEFAULT_SEED = "0";
+    private static final String DEFAULT_BLOCK_TIMING = "1000";
+    private static final String DEFAULT_MAX_GOSSIP_HOPS = "2";
 
+    public static int bootstrap_warmup;
     public static int total_nodes;
     public static int min_funding;
     public static int max_funding;
@@ -32,6 +36,7 @@ public class Config {
 
     public static void setDefaults() {
         // default values when not config file is provided
+        bootstrap_warmup = Integer.parseInt(DEFAULT_BOOTSTRAP_WARMUP);
         total_nodes = Integer.parseInt(DEFAULT_TOTAL_NODES);
         min_funding = Integer.parseInt(DEFAULT_MIN_FUNDING);
         max_funding = Integer.parseInt(DEFAULT_MAX_FUNDING);
@@ -46,10 +51,11 @@ public class Config {
         logfile = DEFAULT_LOGFILE;
 
         seed = Integer.parseInt(DEFAULT_SEED);
-        blocktiming = 1000; //millisec
-        max_gossip_hops = 3;
+        blocktiming = Integer.parseInt(DEFAULT_BLOCK_TIMING);
+        max_gossip_hops = Integer.parseInt(DEFAULT_MAX_GOSSIP_HOPS);
         verbose = false;
     }
+
 
     public static void loadConfig(String config_file) {
         try {
@@ -57,6 +63,7 @@ public class Config {
             var config = new Properties();
             config.load(config_file_reader);
             ///String profile = config.getProperty("profile")
+            bootstrap_warmup = Integer.parseInt(config.getProperty("bootstrap_warmup", DEFAULT_BOOTSTRAP_WARMUP));
             total_nodes = Integer.parseInt(config.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
             min_funding = Integer.parseInt(config.getProperty("min_funding", DEFAULT_MIN_FUNDING));
             max_funding = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MAX_FUNDING));
@@ -67,13 +74,15 @@ public class Config {
             server_port = Integer.parseInt(config.getProperty("server_port", DEFAULT_SERVERPORT));
             logfile = config.getProperty("logfile", DEFAULT_LOGFILE);
             seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
-            blocktiming = Integer.parseInt(config.getProperty("blocktiming", "1000"));
-            max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", "3"));
-            verbose = false;
+            blocktiming = Integer.parseInt(config.getProperty("blocktiming", DEFAULT_BLOCK_TIMING));
+            max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", DEFAULT_MAX_GOSSIP_HOPS));
+
+            verbose = true;
+
 
             config_file_reader.close();
-            UVManager.log.print("Loaded configuration:");
-            config.list(System.out);
+            UVManager.log.print("Configuration loaded");
+            //config.list(System.out);
 
         } catch (
                 FileNotFoundException e) {

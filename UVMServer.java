@@ -106,7 +106,7 @@ public class UVMServer implements Runnable {
         os.println("UVManager Status:");
         os.println(uvm);
         os.flush();
-        os.println("Node Bootstrap status: "+(Config.total_nodes-uvm.bootstrap_latch.getCount())+"/"+ Config.total_nodes);
+        os.println("Node Bootstrap status: "+(ConfigManager.total_nodes-uvm.bootstrap_latch.getCount())+"/"+ ConfigManager.total_nodes);
         os.flush();
         os.println("END DATA");
         os.flush();
@@ -156,7 +156,7 @@ public class UVMServer implements Runnable {
             os.println(n);
             os.flush();
         }
-        if (Config.verbose) {
+        if (ConfigManager.verbose) {
             os.println("Channel Graph:");
             os.println(node.getChannelGraph().toString());
             os.flush();

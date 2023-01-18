@@ -32,7 +32,7 @@ public class UVMClient {
             System.out.println("-------------------------------------------------");
             System.out.println(" Ultraviolet Client ");
             System.out.println("-------------------------------------------------");
-            System.out.println(" (1) Bootstrap Lightning Network");
+            System.out.println(" (1) Bootstrap Lightning Network from scratch");
             System.out.println(" (2) Show network");
             System.out.println(" (3) Show nodes");
             System.out.println(" (4) Show UVManager Status");

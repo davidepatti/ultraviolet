@@ -25,30 +25,30 @@ public class UVManager {
 
         if (args.length == 1) {
             log.print("Loading configuration file:"+args[0]);
-            Config.loadConfig(args[0]);
+            ConfigManager.loadConfig(args[0]);
         }
         else {
             log.print("No config file provided, using defaults");
-            Config.setDefaults();
+            ConfigManager.setDefaults();
         }
 
         try {
-            logfile = new FileWriter(Config.logfile);
+            logfile = new FileWriter(ConfigManager.logfile);
         } catch (IOException e) {
-            log.print("Cannot open logfile for writing:"+ Config.logfile);
+            log.print("Cannot open logfile for writing:"+ ConfigManager.logfile);
             throw new RuntimeException(e);
         }
 
         var uvm = new UVManager();
-        uvm.startServer(Config.server_port);
+        uvm.startServer(ConfigManager.server_port);
     }
 
     /**
      * Constructor
      */
     public UVManager() {
-        timechain = new Timechain(Config.blocktiming);
-        bootstrap_latch= new CountDownLatch(Config.total_nodes);
+        timechain = new Timechain(ConfigManager.blocktiming);
+        bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
 
         log = (String s) ->  {
             try {
@@ -58,14 +58,14 @@ public class UVManager {
                 throw new RuntimeException(e);
             }
         };
-        if (Config.seed!=0) random.setSeed(Config.seed);
+        if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
         log.print("Initializing UVManager...");
         log.print(this.toString());
 
     }
     // TODO: not guaranteed to work perfectly
     public synchronized void resetUVM() {
-        bootstrap_latch= new CountDownLatch(Config.total_nodes);
+        bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
         boostrap_started = false;
         this.UVnodes.clear();
         bootexec.shutdown();
@@ -120,16 +120,17 @@ public class UVManager {
         log.print("UVM: Starting timechain: "+timechain);
         new Thread(timechain,"timechain").start();
 
-        log.print("UVM: deploying nodes, configuration: "+ Config.printConfig());
-        int max = Config.max_funding/(int)1e6;
-        int min = Config.min_funding /(int)1e6;
-        for (int i = 0; i< Config.total_nodes; i++) {
+        log.print("UVM: deploying nodes, configuration: "+ ConfigManager.printConfig());
+        int max = ConfigManager.max_funding/(int)1e6;
+        int min = ConfigManager.min_funding /(int)1e6;
+
+        for (int i = 0; i< ConfigManager.total_nodes; i++) {
             int funding;
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
             var n = new UVNode(this,"pk_"+i,"LN"+i,funding);
-            var behavior = new NodeBehavior(Config.min_channels, Config.min_channel_size, Config.max_channel_size);
+            var behavior = new NodeBehavior(ConfigManager.min_channels, ConfigManager.min_channel_size, ConfigManager.max_channel_size);
             n.setBehavior(behavior);
             UVnodes.put(n.getPubKey(),n);
         }
@@ -137,10 +138,19 @@ public class UVManager {
         updatePubkeyList();
 
         log.print("Starting node threads...");
-        bootexec = Executors.newFixedThreadPool(Config.total_nodes);
+        bootexec = Executors.newFixedThreadPool(ConfigManager.total_nodes);
         for (UVNode n : UVnodes.values()) {
            bootexec.submit(()->n.bootstrapNode());
         }
+
+        bootexec.shutdown();
+
+        try {
+            bootexec.awaitTermination(600, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        log.print("Terminated bootstrap");
     }
 
 
@@ -197,7 +207,7 @@ public class UVManager {
     @Override
     public String toString() {
         return "UVManager{" +
-                " config =" + Config.printConfig()  +
+                " config =" + ConfigManager.printConfig()  +
                 ", timechain=" + timechain +
                 ", boostrap complet=" + bootstrapCompleted() +
                 '}';
