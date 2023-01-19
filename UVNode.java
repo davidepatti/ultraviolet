@@ -1,4 +1,8 @@
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.concurrent.*;
 
 public class UVNode implements Runnable, LNode,P2PNode {
@@ -18,6 +22,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
     final Log log;
     private boolean bootstrap_completed = false;
+    Random deterministic_random;
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -96,12 +101,29 @@ public class UVNode implements Runnable, LNode,P2PNode {
         this.behavior = behavior;
     }
 
+    private void setDeterministicRandom() {
+        deterministic_random = new Random();
+        MessageDigest digest = null;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        byte[] encodedhash = digest.digest(getPubKey().getBytes(StandardCharsets.UTF_8));
+        int s = encodedhash[0]+128;
+        deterministic_random.setSeed(s);
+        log.print("Deterministic Randome set to: "+s);
+    }
+
     public void bootstrapNode() {
+        //setDeterministicRandom();
+        ///----------------------------------------------------------
         var warmup = ConfigManager.bootstrap_warmup;
 
+        // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         if (warmup!=0) {
             var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(1,warmup));
-            log.print(" waiting "+ready_to_go.getCount()+" blocks before bootstrap...");
+            log.print(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
             try {
                 ready_to_go.await();
             } catch (InterruptedException e) {
@@ -109,6 +131,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
             }
         }
         log.print("Starting bootstrap!");
+
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
@@ -118,8 +141,13 @@ public class UVNode implements Runnable, LNode,P2PNode {
                 break;
             }
 
+            /*
+            var n = deterministic_random.nextInt(ConfigManager.total_nodes);
+            var peer_node = uvm.getDeterministicNode(n);
+             */
             var peer_node = uvm.getRandomNode();
             var peer_pubkey = peer_node.getPubKey();
+
             if (ConfigManager.verbose)
                 log.print("Trying to open a channel with "+peer_pubkey);
 

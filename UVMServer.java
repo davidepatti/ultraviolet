@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.util.Scanner;
+import java.util.function.Consumer;
 
 // decouples the usage of UVManager services from actual client, that interacts via socket
 public class UVMServer implements Runnable {
@@ -11,6 +12,8 @@ public class UVMServer implements Runnable {
 
     Scanner is;
     PrintWriter os;
+
+    Consumer<String> send_cmd = x-> { os.println(x); os.flush();};
 
     public UVMServer(UVManager uvm, int port) {
         System.out.println("Creating UVMServer attached to UVM "+uvm);
@@ -42,18 +45,17 @@ public class UVMServer implements Runnable {
 
                     switch (command) {
                         case "BOOTSTRAP_NETWORK":
-                            os.println("BEGIN DATA");
-                            os.flush();
                             if (!uvm.bootstrapStarted()) {
+                                send_cmd.accept("Bootstrap Started, check "+ConfigManager.logfile);
                                 //noinspection Convert2MethodRef
                                 new Thread(()->uvm.bootstrapNetwork()).start();
                             }
-                            else System.out.println("Error: network already bootstrapped!");
-                            os.println("END DATA");
-                            os.flush();
+                            else {
+                                send_cmd.accept("ERROR: network already bootstrapped!");
+                            }
+                            send_cmd.accept("END DATA");
                             break;
                         case "DISCONNECT":
-                            System.out.println("Disconnecting client");
                             disconnect = true;
                             break;
                         case "SHOW_NETWORK":
@@ -63,22 +65,20 @@ public class UVMServer implements Runnable {
                             break;
                         case "MSG_RANDOM_EVENTS":
                             String n = is.nextLine();
-                            if (uvm.bootstrapCompleted())
+                            if (uvm.bootstrapCompleted()) {
+                                send_cmd.accept("Generating events, check "+ConfigManager.logfile);
                                 uvm.generateRandomEvents(Integer.parseInt(n));
-                            else{
-                                os.println("Bootstrap not completed, cannot generare events!");
-                                os.flush();
                             }
-
-                            os.println("END DATA");
-                            os.flush();
+                            else{
+                                send_cmd.accept("Bootstrap not completed, cannot generate events!");
+                            }
+                            send_cmd.accept("END DATA");
                             break;
                         case "STATUS":
                             getStatus();
                             break;
                         case "SHOW_NODE":
                             String node = is.nextLine();
-                            System.out.println("Showing node "+node);
                             showNode(node);
                             break;
                         case "SHOW_NODES":
@@ -88,7 +88,8 @@ public class UVMServer implements Runnable {
                             uvm.resetUVM();
                             break;
                         default:
-                            System.out.println("Unknown command "+command);
+                            send_cmd.accept("Unknown command "+command);
+                            send_cmd.accept("END DATA");
                             break;
                     }
                 }
@@ -101,72 +102,48 @@ public class UVMServer implements Runnable {
 
 
     public void getStatus() {
-        os.println("BEGIN DATA");
-        os.flush();
-        os.println("UVManager Status:");
-        os.println(uvm);
-        os.flush();
-        os.println("Node Bootstrap status: "+(ConfigManager.total_nodes-uvm.bootstrap_latch.getCount())+"/"+ ConfigManager.total_nodes);
-        os.flush();
-        os.println("END DATA");
-        os.flush();
+        send_cmd.accept(uvm.toString());
+        send_cmd.accept("Node Bootstrap status: "+(ConfigManager.total_nodes-uvm.bootstrap_latch.getCount())+"/"+ ConfigManager.total_nodes);
+        send_cmd.accept("END DATA");
     }
 
     public void showNetwork() {
-
-        os.println("BEGIN DATA");
-        os.flush();
         for (UVNode n: uvm.getUVnodes().values()) {
-            os.println(n);
-            os.flush();
+            send_cmd.accept(n.toString());
             for (UVChannel c:n.getUVChannels().values()) {
-                os.println("\t"+c);
-                os.flush();
+                send_cmd.accept("\t"+c);
             }
         }
-        os.println("END DATA");
-        os.flush();
+        send_cmd.accept("END DATA");
     }
 
     public void showNodes() {
-        os.println("BEGIN DATA");
-        os.flush();
         for (UVNode n: uvm.getUVnodes().values()) {
-            os.println(n);
-            os.flush();
+            send_cmd.accept(n.toString());
         }
-        os.println("END DATA");
-        os.flush();
+        send_cmd.accept("END DATA");
 
     }
     public void showNode(String pubkey) {
 
-        os.println("BEGIN DATA");
-        os.flush();
         var node = uvm.getUVnodes().get(pubkey);
-        os.println(node);
-        os.flush();
+        send_cmd.accept(node.toString());
         for (UVChannel c:node.getUVChannels().values()) {
-            os.println(c);
-            os.flush();
+            send_cmd.accept(c.toString());
         }
-        os.println("Peers:");
-        os.flush();
+        send_cmd.accept("Peers:");
         for (P2PNode n:node.getPeers().values()) {
-            os.println(n);
-            os.flush();
+            send_cmd.accept(n.toString());
         }
         if (ConfigManager.verbose) {
-            os.println("Channel Graph:");
-            os.println(node.getChannelGraph().toString());
-            os.flush();
+            send_cmd.accept("Channel Graph:");
+            send_cmd.accept(node.getChannelGraph().toString());
         }
 
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();
         os.println("Graph nodes:"+vertex);
         os.println("Graph channels:"+edges);
-        os.println("END DATA");
-        os.flush();
+        send_cmd.accept("END DATA");
     }
 }

@@ -1,18 +1,111 @@
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.Scanner;
+import java.util.*;
+import java.util.function.Consumer;
 
 public class UVMClient {
 
-    UVManager uvm;
+    private final String UVM_SERVER_HOST = "127.0.0.1";
+    private final int PORT = 7777;
+    PrintWriter os;
+    Scanner is;
+    boolean quit = false;
+
+    Consumer<String> send_cmd = x-> { os.println(x); os.flush();};
+    Consumer<String> wait_msg = (x)-> {
+        String s;
+        while (is.hasNextLine() && !((s=is.nextLine()).equals(x))) {
+            System.out.println(s);
+            //System.out.println(s = is.nextLine());
+            //if (s.equals(x)) break;
+        }
+    };
+
+    private class MenuItem {
+        public String key, description;
+        public Consumer<Void> func;
+
+        public MenuItem(String key, String desc, Consumer<Void> func) {
+            this.key = key;
+            this.description = desc;
+            this.func = func;
+        }
+    }
+    /**
+     * Client
+     */
+    public UVMClient() {
+        ArrayList<MenuItem> menuItems = new ArrayList<>();
+        var scanner = new Scanner(System.in);
+        initConnection(UVM_SERVER_HOST, PORT);
+
+        menuItems.add(new MenuItem("b","Bootstrap Lightning Network from scratch",(x)-> {
+            send_cmd.accept("BOOTSTRAP_NETWORK");
+            wait_msg.accept("END DATA");
+        }));
+
+        menuItems.add(new MenuItem("c","Show Newtork Nodes and Channels",x-> {
+            send_cmd.accept("SHOW_NETWORK");
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("s","Show Nodes ",x-> {
+            send_cmd.accept("SHOW_NODES");
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("q","Disconnect Client ",x-> {
+            send_cmd.accept("DISCONNECT");
+            quit = true;
+        }));
+        menuItems.add(new MenuItem("t","UVM Status ",x-> {
+            send_cmd.accept("STATUS");
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("n","Show Node ",x-> {
+            System.out.print("insert node public key:");
+            send_cmd.accept("SHOW_NODE\n"+scanner.nextLine());
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("r","Generate Random Events ",x-> {
+            System.out.print("Number of events:");
+            send_cmd.accept("MSG_RANDOM_EVENTS\n"+scanner.nextLine());
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("x"," Test", x-> {
+            send_cmd.accept("TEST");
+            wait_msg.accept("END DATA");
+        }));
+        menuItems.add(new MenuItem("0"," Reset", x-> {
+            send_cmd.accept("RESET");
+            wait_msg.accept("END DATA");
+        }));
 
 
-    public UVMClient(int port) {
+        while (!quit)  {
+            System.out.println("-------------------------------------------------");
+            System.out.println(" Ultraviolet Client ");
+            System.out.println("-------------------------------------------------");
+            for (MenuItem item:menuItems) {
+                System.out.println(item.key+" - "+item.description);
+            }
+            System.out.println("-------------------------------------------------");
+            System.out.print(" -> ");
+            var ch = scanner.nextLine();
 
-        PrintWriter os;
-        Scanner is;
-        String uvm_server_host = "127.0.0.1";
+            for (MenuItem item:menuItems) {
+                if (item.key.equals(ch)) {
+                    item.func.accept(null);
+                    break;
+                }
+            }
+        }
+        System.out.println("Disconnecting client");
+
+
+    }
+
+    private void initConnection(String uvm_server_host, int port) {
+        System.out.println("Connecting to server at "+uvm_server_host+" port "+port);
         try {
             Socket client = new Socket(uvm_server_host, port);
             is = new Scanner(client.getInputStream());
@@ -23,135 +116,18 @@ public class UVMClient {
             System.exit(-1);
             throw new RuntimeException(e);
         }
-        boolean quit = false;
-        boolean uvm_started = false;
-        var scanner = new Scanner(System.in);
-        while (!quit)  {
-
-            String s;
-            System.out.println("-------------------------------------------------");
-            System.out.println(" Ultraviolet Client ");
-            System.out.println("-------------------------------------------------");
-            System.out.println(" (1) Bootstrap Lightning Network from scratch");
-            System.out.println(" (2) Show network");
-            System.out.println(" (3) Show nodes");
-            System.out.println(" (4) Show UVManager Status");
-            System.out.println(" (5) Show Node Status");
-            System.out.println(" (6) Generate Randome events");
-            System.out.println(" (T) test");
-            System.out.println(" (R) Reset UVM (experimental)");
-            System.out.println(" (q) Disconnect client");
-            System.out.println("-------------------------------------------------");
-            System.out.print(" -> ");
-
-            var ch = scanner.nextLine();
-
-            switch (ch) {
-                case "1":
-                    if (!uvm_started) {
-                        System.out.println("Bootstrapping Network");
-                        uvm_started = true;
-                        os.println("BOOTSTRAP_NETWORK");
-                        os.flush();
-                        System.out.println("Bootstrapping...");
-                        while (is.hasNextLine()) {
-                            s = is.nextLine();
-                            System.out.println(s);
-                            if (s.equals("END DATA")) break;
-                        }
-                    }
-                    else
-                        System.out.println("UVM already started!");
-
-                    break;
-                case "2":
-
-                    os.println("SHOW_NETWORK");
-                    os.flush();
-
-                    while (is.hasNextLine()) {
-                        s = is.nextLine();
-                        System.out.println(s);
-                        if (s.equals("END DATA")) break;
-                    }
-
-                    break;
-                case "3":
-
-                    os.println("SHOW_NODES");
-                    os.flush();
-
-                    while (is.hasNextLine()) {
-                        s = is.nextLine();
-                        System.out.println(s);
-                        if (s.equals("END DATA")) break;
-                    }
-                    break;
-                case "q":
-                    os.println("DISCONNECT");
-                    os.flush();
-                    quit = true;
-                    System.out.println("Disconnecting client");
-                    break;
-
-                case "4":
-                    os.println("STATUS");
-                    os.flush();
-
-                    while (is.hasNextLine()) {
-                        s = is.nextLine();
-                        System.out.println(s);
-                        if (s.equals("END DATA")) break;
-                    }
-                    break;
-                case "5":
-                    System.out.print("insert node public key:");
-                    String node = scanner.nextLine();
-
-                    os.println("SHOW_NODE");
-                    os.flush();
-                    os.println(node);
-                    os.flush();
-                    while (is.hasNextLine()) {
-                        s = is.nextLine();
-                        System.out.println(s);
-                        if (s.equals("END DATA")) break;
-                    }
-
-                    break;
-                case "6":
-                    System.out.print("Number of events to generate:");
-                    String n = scanner.nextLine();
-                    os.println("MSG_RANDOM_EVENTS");
-                    os.flush();
-                    os.println(n);
-                    os.flush();
-                    while (is.hasNextLine()) {
-                        s = is.nextLine();
-                        System.out.println(s);
-                        if (s.equals("END DATA")) break;
-                    }
-                    break;
-                case "T":
-                    os.println("TEST");
-                    os.flush();
-                    System.out.println("Testing..");
-                    break;
-                case "R":
-                    uvm_started = false;
-                    os.println("RESET");
-                    os.flush();
-                    System.out.println("Resetting UVM..");
-                    break;
-            }
-        }
     }
+
     public static void main(String[] args) {
 
-        int port = 7777;
-        System.out.println("Connecting client to UVMServer port "+port);
-        var uvm_client = new UVMClient(port);
+        System.out.println("Connecting client to UVMServer ");
+        var uvm_client = new UVMClient();
     }
-
 }
+
+
+
+
+
+
 

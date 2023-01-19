@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.Properties;
 
 public class ConfigManager {
+
     private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
     private static final String DEFAULT_TOTAL_NODES = "10";
     private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M

@@ -14,8 +14,8 @@ public class UVManager {
 
     private String[] pubkeys_list;
 
-    private final Random random = new Random();
-    private final Timechain timechain;
+    private Random random = new Random();
+    private Timechain timechain;
 
     private boolean boostrap_started = false;
     private static FileWriter logfile;
@@ -65,6 +65,10 @@ public class UVManager {
     }
     // TODO: not guaranteed to work perfectly
     public synchronized void resetUVM() {
+        log.print("Resetting UVManager (experimental!)");
+        random = new Random();
+        if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
+        timechain = new Timechain(ConfigManager.blocktiming);
         bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
         boostrap_started = false;
         this.UVnodes.clear();
@@ -163,6 +167,12 @@ public class UVManager {
         var n = random.nextInt(pubkeys_list.length);
         var some_random_key = pubkeys_list[n];
         return UVnodes.get(some_random_key);
+    }
+
+    public UVNode getDeterministicNode(int n) {
+       var some_key = pubkeys_list[n];
+       return UVnodes.get(some_key);
+
     }
 
     /**
