@@ -1,3 +1,4 @@
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -5,7 +6,7 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.*;
 
-public class UVNode implements Runnable, LNode,P2PNode {
+public class UVNode implements Runnable, LNode,P2PNode, Serializable {
 
     // internal values are in sat
     private final int Msat = (int)1e6;
@@ -14,15 +15,14 @@ public class UVNode implements Runnable, LNode,P2PNode {
     private final String alias;
     private int onchain_balance;
     private int initiated_channels = 0;
-    private final UVManager uvm;
+    transient private UVManager uvm;
     private final ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     // p2p
     private final ChannelGraph channel_graph = new ChannelGraph();
     private final ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
-    final Log log;
     private boolean bootstrap_completed = false;
-    Random deterministic_random;
+    transient Random deterministic_random;
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -37,8 +37,15 @@ public class UVNode implements Runnable, LNode,P2PNode {
         this.alias = alias;
         this.onchain_balance = onchain_balance;
         // change lamba function here to log to a different target
-        this.log = s -> UVManager.log.print(this.getPubKey()+":"+s);
         channel_graph.addNode(this);
+    }
+
+    private void log(String s) {
+         UVManager.log.print(this.getPubKey()+":"+s);
+    }
+
+    public void setUVM(UVManager uvm) {
+        this.uvm = uvm;
     }
 
     /**
@@ -112,7 +119,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
         byte[] encodedhash = digest.digest(getPubKey().getBytes(StandardCharsets.UTF_8));
         int s = encodedhash[0]+128;
         deterministic_random.setSeed(s);
-        log.print("Deterministic Randome set to: "+s);
+        log("Deterministic Randome set to: "+s);
     }
 
     public void bootstrapNode() {
@@ -123,21 +130,21 @@ public class UVNode implements Runnable, LNode,P2PNode {
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         if (warmup!=0) {
             var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(1,warmup));
-            log.print(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
+            log(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
             try {
                 ready_to_go.await();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
-        log.print("Starting bootstrap!");
+        log("Starting bootstrap!");
 
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
 
             if (getOnChainBalance() <= behavior.getMin_channel_size()) {
-                log.print("No more onchain balance for opening further channels of min size "+behavior.getMin_channel_size());
+                log("No more onchain balance for opening further channels of min size "+behavior.getMin_channel_size());
                 break;
             }
 
@@ -149,7 +156,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
             var peer_pubkey = peer_node.getPubKey();
 
             if (ConfigManager.verbose)
-                log.print("Trying to open a channel with "+peer_pubkey);
+                log("Trying to open a channel with "+peer_pubkey);
 
             // TODO: add more complex requirements for peers
             if (peer_pubkey.equals(this.getPubKey())) continue;
@@ -165,15 +172,15 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
 
             if (openChannel(peer_node,channel_size)) {
-                log.print("Successufull opened channel to "+peer_node.getPubKey());
+                log("Successufull opened channel to "+peer_node.getPubKey());
                 //+ " balance onchain:"+onchain_balance+ " ln:"+getLightningBalance());
                 initiated_channels++;
             }
-            else log.print("Failed opening channel to "+peer_node.getPubKey());
+            else log("Failed opening channel to "+peer_node.getPubKey());
         } // while
         bootstrap_completed = true;
         uvm.bootstrap_latch.countDown();
-        log.print("Bootstrap completed");
+        log("Bootstrap completed");
 
     }
 
@@ -183,7 +190,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
     @Override
     public void run() {
 
-        log.print("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
+        log("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
         // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
 
         // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
@@ -198,7 +205,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
     // TODO: here
     public boolean hasChannelWith(String node_id) {
         if (ConfigManager.verbose)
-            log.print(">>> Checking if node has already channel with "+node_id);
+            log(">>> Checking if node has already channel with "+node_id);
 
         for (UVChannel c:this.channels.values()) {
             boolean initiated_with_peer = c.getPeerPubKey().equals(node_id);
@@ -206,12 +213,12 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
             if (initiated_with_peer || accepted_from_peer) {
                 if (ConfigManager.verbose)
-                    log.print("<<< Channel already present with peer "+node_id);
+                    log("<<< Channel already present with peer "+node_id);
                 return true;
             }
         }
         if (ConfigManager.verbose)
-            log.print("<<< NO Channel already present with peer "+node_id);
+            log("<<< NO Channel already present with peer "+node_id);
         return false;
     }
 
@@ -221,7 +228,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
      * @return true if the channel has been successful opened
      */
     public boolean openChannel(UVNode peer_UV_node, int channel_size) {
-        log.print(">>> Start Opening "+channel_size+ " sats channel to "+ peer_UV_node.getPubKey());
+        log(">>> Start Opening "+channel_size+ " sats channel to "+ peer_UV_node.getPubKey());
 
         /* UV NOTE: is not computed with the block number + tx index + output index.
            There is no need to locate the funding multisig tx on the chain, nor to validate signatures etc
@@ -232,17 +239,17 @@ public class UVNode implements Runnable, LNode,P2PNode {
 
         // onchain balance is changed only from initiator, so no problems of sync
         if (channel_size>getOnChainBalance()) {
-            log.print("<<< Insufficient liquidity for "+channel_size+" channel opening");
+            log("<<< Insufficient liquidity for "+channel_size+" channel opening");
             return false;
         }
 
         // notice: nothing forbids opening channels with each other reciprocally
         if (!peer_UV_node.acceptChannel(channel_proposal)) {
-            log.print("<<< Channel proposal to "+ peer_UV_node.getPubKey()+" not accepted");
+            log("<<< Channel proposal to "+ peer_UV_node.getPubKey()+" not accepted");
             return false;
         }
 
-        log.print(">>> Channel to "+ peer_UV_node.getPubKey()+" accepted, updating node status...");
+        log(">>> Channel to "+ peer_UV_node.getPubKey()+" accepted, updating node status...");
         // Updates on channel status and balances should be in sync with other accesses (e.g. accept())
         this.addPeer(peer_UV_node);
         this.channels.put(channel_id,channel_proposal);
@@ -252,7 +259,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
         var message = new MsgChannelAnnouncement(channel_proposal);
 
         broadcastAnnounceChannel(message);
-        log.print("<<< End opening channel with "+ peer_UV_node.getPubKey());
+        log("<<< End opening channel with "+ peer_UV_node.getPubKey());
 
         return true;
     }
@@ -263,7 +270,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
      * @return true if accepted
      */
     public synchronized boolean acceptChannel(UVChannel new_UV_channel) {
-        log.print(">>> Start Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        log(">>> Start Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
         if (this.hasChannelWith(new_UV_channel.getInitiatorPubKey())) {
             return false;
         }
@@ -272,13 +279,13 @@ public class UVNode implements Runnable, LNode,P2PNode {
         this.addPeer(new_UV_channel.getInitiator());
         channel_graph.addChannel(new_UV_channel);
 
-        log.print("Adding and Announcing channel to others: " + new_UV_channel.getId());
+        log("Adding and Announcing channel to others: " + new_UV_channel.getId());
 
         var message = new MsgChannelAnnouncement(new_UV_channel);
 
         broadcastAnnounceChannel(message);
 
-        log.print("<<< End Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        log("<<< End Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
         return true;
     }
 
@@ -312,7 +319,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
             var new_message = msg.getNext();
 
             if (ConfigManager.verbose)
-                log.print("Broadcasting never seen message: "+new_message);
+                log("Broadcasting never seen message: "+new_message);
 
                 broadcastAnnounceChannel(new_message);
         }
@@ -353,7 +360,7 @@ public class UVNode implements Runnable, LNode,P2PNode {
                success = target_channel.newCommitment(new_initiator_balance,new_peer_balance);
             }
             else {
-                log.print("Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getPeerPubKey());
+                log("Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getPeerPubKey());
                 success = false;
             }
         }
@@ -365,14 +372,14 @@ public class UVNode implements Runnable, LNode,P2PNode {
                 success = target_channel.newCommitment(new_initiator_balance,new_peer_balance);
             }
             else {
-                log.print("Insufficient funds in channel " + target_channel.getId() + " : cannot push  " + amount + " sats to " + target_channel.getInitiatorPubKey());
-                log.print("local funds:" + getLightningBalance());
+                log("Insufficient funds in channel " + target_channel.getId() + " : cannot push  " + amount + " sats to " + target_channel.getInitiatorPubKey());
+                log("local funds:" + getLightningBalance());
                 success = false;
             }
         }
 
         if (success)
-            log.print("Pushed "+amount+ " sats towards channel "+channel_id);
+            log("Pushed "+amount+ " sats towards channel "+channel_id);
         return success;
     }
 

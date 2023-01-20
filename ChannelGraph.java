@@ -1,4 +1,6 @@
-public class ChannelGraph {
+import java.io.Serializable;
+
+public class ChannelGraph implements Serializable {
 
     private final Graph<LNode> graph = new Graph<>();
 

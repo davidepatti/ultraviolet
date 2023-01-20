@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 public class UVManager {
 
     ExecutorService bootexec;
-    CountDownLatch bootstrap_latch;
+    CountDownLatch bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
     private HashMap<String, UVNode> UVnodes = new HashMap<>();
 
     private String[] pubkeys_list;
@@ -18,8 +18,58 @@ public class UVManager {
     private Timechain timechain;
 
     private boolean boostrap_started = false;
-    private static FileWriter logfile;
+    private boolean bootstrap_completed = false;
+    private FileWriter logfile;
     static Log log = System.out::println;
+
+
+    /**
+     * Save the current network status to file
+     * @param file destination file
+     */
+    public void save(String file) {
+
+        if (bootstrapStarted() && !bootstrapCompleted())  {
+            System.out.println("Bootstrap incomplete, cannot save");
+            return;
+        }
+        System.out.println("Stopping timechain");
+        this.getTimechain().stop();
+
+        try (var f = new ObjectOutputStream(new FileOutputStream(file));){
+
+            // TODO: check whether it's a portability problem hashmap serialization
+            f.writeObject(UVnodes);
+            f.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("fine");
+    }
+
+    /**
+     * Load network status from file
+     * @param file
+     * @return False if is not possible to read the file
+     */
+    public boolean load(String file) {
+
+        try (var f = new ObjectInputStream(new FileInputStream(file))) {
+
+            this.UVnodes = (HashMap<String, UVNode>) f.readObject();
+            updatePubkeyList();
+            bootstrap_completed = true;
+            for (UVNode n:UVnodes.values()) {
+                n.setUVM(this);
+            }
+
+        } catch (IOException e) {
+            return false;
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        return true;
+    }
 
     public static void main(String[] args) {
 
@@ -32,24 +82,16 @@ public class UVManager {
             ConfigManager.setDefaults();
         }
 
+        var uvm = new UVManager();
+    }
+
+    private void initLog() {
         try {
             logfile = new FileWriter(ConfigManager.logfile);
         } catch (IOException e) {
             log.print("Cannot open logfile for writing:"+ ConfigManager.logfile);
             throw new RuntimeException(e);
         }
-
-        var uvm = new UVManager();
-        uvm.startServer(ConfigManager.server_port);
-    }
-
-    /**
-     * Constructor
-     */
-    public UVManager() {
-        timechain = new Timechain(ConfigManager.blocktiming);
-        bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
-
         log = (String s) ->  {
             try {
                 logfile.write("\n["+timechain.getCurrent_block()+"]"+s);
@@ -58,10 +100,20 @@ public class UVManager {
                 throw new RuntimeException(e);
             }
         };
+    }
+
+    /**
+     * Constructor
+     */
+    public UVManager() {
+        initLog();
+
+        timechain = new Timechain(ConfigManager.blocktiming);
+
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
         log.print("Initializing UVManager...");
         log.print(this.toString());
-
+        startServer(ConfigManager.server_port);
     }
     // TODO: not guaranteed to work perfectly
     public synchronized void resetUVM() {
@@ -87,7 +139,13 @@ public class UVManager {
     }
 
     public boolean bootstrapCompleted() {
-        return bootstrap_latch.getCount()==0;
+        if (bootstrap_completed) return true;
+
+        if (bootstrap_latch.getCount()==0) {
+            bootstrap_completed = true;
+            return true;
+        }
+        return false;
     }
 
     public synchronized boolean bootstrapStarted() {
@@ -155,6 +213,8 @@ public class UVManager {
             throw new RuntimeException(e);
         }
         log.print("Terminated bootstrap");
+        log.print("Stopping timechain");
+        this.getTimechain().stop();
     }
 
 
@@ -210,16 +270,27 @@ public class UVManager {
             log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
             some_node.pushSats(some_channel_id,some_amount);
         }
+        log.print("Random events generation ended!");
+    }
+
+
+    private String getStatus() {
+        StringBuilder s = new StringBuilder();
+        s.append("\n-------------------------------------------------------------");
+        s.append("\nConfiguration: ").append(ConfigManager.printConfig());
+        s.append("\nTimechain: ").append(timechain);
+        s.append("\nBootstrap completed: ").append(bootstrap_completed);
+
+        if (!bootstrapCompleted() && bootstrapStarted())
+            s.append("\nBootstrapped ").append(bootstrap_latch.getCount()).append(" of ").append(ConfigManager.total_nodes);
+        s.append("\n-------------------------------------------------------------");
+        return s.toString();
     }
 
 
 
     @Override
     public String toString() {
-        return "UVManager{" +
-                " config =" + ConfigManager.printConfig()  +
-                ", timechain=" + timechain +
-                ", boostrap complet=" + bootstrapCompleted() +
-                '}';
+        return getStatus();
     }
 }

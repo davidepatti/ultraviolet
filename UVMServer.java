@@ -53,7 +53,7 @@ public class UVMServer implements Runnable {
                             else {
                                 send_cmd.accept("ERROR: network already bootstrapped!");
                             }
-                            send_cmd.accept("END DATA");
+                            send_cmd.accept("END_DATA");
                             break;
                         case "DISCONNECT":
                             disconnect = true;
@@ -62,6 +62,19 @@ public class UVMServer implements Runnable {
                             showNetwork();
                             break;
                         case "TEST":
+                            send_cmd.accept("END_DATA");
+                            break;
+                        case "SAVE":
+                            String file_to_save = is.nextLine();
+                            uvm.save(file_to_save);
+                            send_cmd.accept("END_DATA");
+                            break;
+                        case "LOAD":
+                            String file_to_load = is.nextLine();
+                            if (uvm.load(file_to_load))
+                                send_cmd.accept("UVM LOADED");
+                            else send_cmd.accept("ERROR LOADING UVM from "+file_to_load);
+                            send_cmd.accept("END_DATA");
                             break;
                         case "MSG_RANDOM_EVENTS":
                             String n = is.nextLine();
@@ -72,7 +85,7 @@ public class UVMServer implements Runnable {
                             else{
                                 send_cmd.accept("Bootstrap not completed, cannot generate events!");
                             }
-                            send_cmd.accept("END DATA");
+                            send_cmd.accept("END_DATA");
                             break;
                         case "STATUS":
                             getStatus();
@@ -89,7 +102,7 @@ public class UVMServer implements Runnable {
                             break;
                         default:
                             send_cmd.accept("Unknown command "+command);
-                            send_cmd.accept("END DATA");
+                            send_cmd.accept("END_DATA");
                             break;
                     }
                 }
@@ -103,30 +116,40 @@ public class UVMServer implements Runnable {
 
     public void getStatus() {
         send_cmd.accept(uvm.toString());
-        send_cmd.accept("Node Bootstrap status: "+(ConfigManager.total_nodes-uvm.bootstrap_latch.getCount())+"/"+ ConfigManager.total_nodes);
-        send_cmd.accept("END DATA");
+        send_cmd.accept("END_DATA");
     }
 
     public void showNetwork() {
+        if (uvm.getUVnodes().size()==0)
+            send_cmd.accept("EMPTY NODE LIST");
         for (UVNode n: uvm.getUVnodes().values()) {
             send_cmd.accept(n.toString());
             for (UVChannel c:n.getUVChannels().values()) {
                 send_cmd.accept("\t"+c);
             }
         }
-        send_cmd.accept("END DATA");
+        send_cmd.accept("END_DATA");
     }
 
     public void showNodes() {
+        if (uvm.getUVnodes().size()==0)
+            send_cmd.accept("EMPTY NODE LIST");
         for (UVNode n: uvm.getUVnodes().values()) {
             send_cmd.accept(n.toString());
         }
-        send_cmd.accept("END DATA");
+        send_cmd.accept("END_DATA");
 
     }
     public void showNode(String pubkey) {
 
+        if (uvm.getUVnodes().size()==0) 
+            send_cmd.accept("EMPTY NODE LIST");
         var node = uvm.getUVnodes().get(pubkey);
+        if (node==null) {
+            send_cmd.accept("ERROR: NODE NOT FOUND");
+            send_cmd.accept("END_DATA");
+            return;
+        }
         send_cmd.accept(node.toString());
         for (UVChannel c:node.getUVChannels().values()) {
             send_cmd.accept(c.toString());
@@ -144,6 +167,6 @@ public class UVMServer implements Runnable {
         int vertex = node.getChannelGraph().getNodeCount();
         os.println("Graph nodes:"+vertex);
         os.println("Graph channels:"+edges);
-        send_cmd.accept("END DATA");
+        send_cmd.accept("END_DATA");
     }
 }

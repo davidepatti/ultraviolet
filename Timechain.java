@@ -1,8 +1,9 @@
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
-public class Timechain implements Runnable{
+public class Timechain implements Runnable, Serializable  {
 
     private int current_block;
     private final int blocktime;
@@ -20,6 +21,8 @@ public class Timechain implements Runnable{
         return blocktime*n_blocks;
     }
 
+    boolean running = false;
+
     public Timechain(int blocktime) {
         current_block = 0;
         this.blocktime = blocktime;
@@ -33,13 +36,25 @@ public class Timechain implements Runnable{
         return new_latch;
     }
 
+    public synchronized void stop() {
+        this.running = false;
+    }
+
+    public synchronized void start() {
+        this.running = true;
+    }
+
+    public synchronized boolean isRunning() {
+
+        return this.running;
+    }
+
     @Override
     public void run() {
+        start();
         System.out.println("Timechain started!");
 
-        // TODO: method to stop timechain
-        //noinspection InfiniteLoopStatement
-        while (true) {
+        while (isRunning()) {
             try {
                 Thread.sleep(blocktime);
                 synchronized (timers) {

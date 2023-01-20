@@ -1,9 +1,10 @@
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.Properties;
 
-public class ConfigManager {
+public class ConfigManager implements Serializable {
 
     private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
     private static final String DEFAULT_TOTAL_NODES = "10";

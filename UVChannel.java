@@ -1,4 +1,6 @@
-public class UVChannel implements LNChannel{
+import java.io.Serializable;
+
+public class UVChannel implements LNChannel, Serializable {
 
     enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
 

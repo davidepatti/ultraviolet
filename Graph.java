@@ -1,9 +1,10 @@
 // Java program to implement Graph
 // with the help of Generics
 
+import java.io.Serializable;
 import java.util.*;
 
-class Graph<T> {
+class Graph<T> implements Serializable {
 
     // We use Hashmap to store the edges in the graph
     private final Map<T, List<T> > map = new HashMap<>();
