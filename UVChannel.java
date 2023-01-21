@@ -1,3 +1,4 @@
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 public class UVChannel implements LNChannel, Serializable {
@@ -6,8 +7,13 @@ public class UVChannel implements LNChannel, Serializable {
 
     private ChannelStatus status;
 
-    private final UVNode initiatorUVNode;
-    private final UVNode peerUVNode;
+    // TODO: made public to restore on load, fix later calling constructor
+    // CAN THIS BE LNODE?
+    transient public UVNode initiatorUVNode;
+    transient public UVNode peerUVNode;
+
+    final private String initiator_pubkey;
+    final private String peer_pubkey;
     private final String channel_id;
 
     private int commit_number = 0;
@@ -28,7 +34,6 @@ public class UVChannel implements LNChannel, Serializable {
     private int peer_pending;
     private int reserve;
 
-
     // TODO: update_channel p2p
     // constructor only fill the "proposal" for the channel
     public UVChannel(UVNode initiatorUVNode, UVNode peerUVNode, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
@@ -44,6 +49,16 @@ public class UVChannel implements LNChannel, Serializable {
         this.initiator_pending = 0;
         this.peer_pending = 0;
         this.status = ChannelStatus.NONE;
+        this.initiator_pubkey = initiatorUVNode.getPubKey();
+        this.peer_pubkey = peerUVNode.getPubKey();
+    }
+
+    public String getPeerPubKey() {
+        return peer_pubkey;
+    }
+
+    public String getInitiatorPubKey() {
+        return initiator_pubkey;
     }
 
     public UVNode getInitiator() {
@@ -181,12 +196,6 @@ public class UVChannel implements LNChannel, Serializable {
         return peer_pending;
     }
 
-    public String getPeerPubKey() {
-        return peerUVNode.getPubKey();
-    }
-    public String getInitiatorPubKey() {
-        return initiatorUVNode.getPubKey();
-    }
 
     public synchronized int getInitiator_fee_ppm() {
         return initiator_fee_ppm;

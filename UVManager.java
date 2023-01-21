@@ -30,21 +30,23 @@ public class UVManager {
     public void save(String file) {
 
         if (bootstrapStarted() && !bootstrapCompleted())  {
-            System.out.println("Bootstrap incomplete, cannot save");
+            log.print("Bootstrap incomplete, cannot save");
             return;
         }
-        System.out.println("Stopping timechain");
+        log.print("Stopping timechain");
         this.getTimechain().stop();
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file));){
 
-            // TODO: check whether it's a portability problem hashmap serialization
-            f.writeObject(UVnodes);
+           f.writeInt(UVnodes.size());
+
+           for (UVNode n: UVnodes.values())
+                f.writeObject(n);
             f.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("fine");
+        log.print("End saving ");
     }
 
     /**
@@ -53,15 +55,23 @@ public class UVManager {
      * @return False if is not possible to read the file
      */
     public boolean load(String file) {
+        UVnodes.clear();
 
-        try (var f = new ObjectInputStream(new FileInputStream(file))) {
+        try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
-            this.UVnodes = (HashMap<String, UVNode>) f.readObject();
+            int num_nodes = s.readInt();
+            for (int i=0;i<num_nodes;i++) {
+                UVNode n = (UVNode) s.readObject();
+                n.setUVM(this);
+                UVnodes.put(n.getPubKey(),n);
+            }
+
+            // must restore channel partners, can be done only after all nodes have been restored in UVM
+            for (UVNode n:UVnodes.values()) {
+                n.restoreChannelPartners();
+            }
             updatePubkeyList();
             bootstrap_completed = true;
-            for (UVNode n:UVnodes.values()) {
-                n.setUVM(this);
-            }
 
         } catch (IOException e) {
             return false;
@@ -138,7 +148,7 @@ public class UVManager {
         new Thread(uvm_server).start();
     }
 
-    public boolean bootstrapCompleted() {
+    public synchronized boolean bootstrapCompleted() {
         if (bootstrap_completed) return true;
 
         if (bootstrap_latch.getCount()==0) {
@@ -279,10 +289,10 @@ public class UVManager {
         s.append("\n-------------------------------------------------------------");
         s.append("\nConfiguration: ").append(ConfigManager.printConfig());
         s.append("\nTimechain: ").append(timechain);
-        s.append("\nBootstrap completed: ").append(bootstrap_completed);
+        s.append("\nBootstrap completed: ").append(bootstrapCompleted());
 
         if (!bootstrapCompleted() && bootstrapStarted())
-            s.append("\nBootstrapped ").append(bootstrap_latch.getCount()).append(" of ").append(ConfigManager.total_nodes);
+            s.append("\nBootstrapped in progress for ").append(bootstrap_latch.getCount()).append(" of ").append(ConfigManager.total_nodes);
         s.append("\n-------------------------------------------------------------");
         return s.toString();
     }

@@ -1,3 +1,6 @@
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -8,21 +11,70 @@ import java.util.concurrent.*;
 
 public class UVNode implements Runnable, LNode,P2PNode, Serializable {
 
-    // internal values are in sat
-    private final int Msat = (int)1e6;
     private NodeBehavior behavior;
     private final String pubkey;
     private final String alias;
     private int onchain_balance;
-    private int initiated_channels = 0;
+
+    // serialized and restored manually, to avoid stack overflow
     transient private UVManager uvm;
-    private final ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
-    // p2p
-    private final ChannelGraph channel_graph = new ChannelGraph();
-    private final ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
+    transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
+    transient private final ChannelGraph channel_graph = new ChannelGraph();
+    transient private final ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
     private boolean bootstrap_completed = false;
     transient Random deterministic_random;
+
+    /**
+     * Serialized format: number of channels / channel objects
+     * @param s
+     */
+    private void writeObject(ObjectOutputStream s) {
+        try {
+            s.defaultWriteObject();
+            s.writeInt(channels.size());
+            for (UVChannel c:channels.values()) {
+                s.writeObject(c);
+            }
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Read custom serialization of UVNode: num channels + sequence of channels object
+     * Notice that internal UVNodes are restored separately to avoid stack overflow
+     * @param s
+     */
+    private void readObject(ObjectInputStream s) {
+        if (channels==null) channels = new ConcurrentHashMap<>();
+        else channels.clear();
+
+        try {
+            s.defaultReadObject();
+            int num_channels = s.readInt();
+            for (int i=0;i<num_channels;i++) {
+                UVChannel c = (UVChannel)s.readObject();
+                channels.put(c.getId(),c);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    /**
+     * restoring channel UVNodes, made transient to avoid stack overflow when saving...
+     */
+    public void restoreChannelPartners() {
+        for (UVChannel c:channels.values()) {
+            c.initiatorUVNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
+            c.peerUVNode = uvm.getUVnodes().get(c.getPeerPubKey());
+        }
+    }
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -123,6 +175,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
     }
 
     public void bootstrapNode() {
+        int initiated_channels =0;
         //setDeterministicRandom();
         ///----------------------------------------------------------
         var warmup = ConfigManager.bootstrap_warmup;
@@ -276,6 +329,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
         }
 
         this.channels.put(new_UV_channel.getId(), new_UV_channel);
+        // TODO: this is why UVChannel must contain UVNode partners and not only pubkeys
         this.addPeer(new_UV_channel.getInitiator());
         channel_graph.addChannel(new_UV_channel);
 

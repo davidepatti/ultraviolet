@@ -31,7 +31,7 @@ public class ConfigManager implements Serializable {
     public static int server_port;
     public static String logfile;
     public static int seed;
-    public static boolean verbose;
+    public static boolean verbose = false;
     public static int blocktiming;
     public static int max_gossip_hops;
 
@@ -55,7 +55,6 @@ public class ConfigManager implements Serializable {
         seed = Integer.parseInt(DEFAULT_SEED);
         blocktiming = Integer.parseInt(DEFAULT_BLOCK_TIMING);
         max_gossip_hops = Integer.parseInt(DEFAULT_MAX_GOSSIP_HOPS);
-        verbose = false;
     }
 
 
@@ -78,10 +77,6 @@ public class ConfigManager implements Serializable {
             seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
             blocktiming = Integer.parseInt(config.getProperty("blocktiming", DEFAULT_BLOCK_TIMING));
             max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", DEFAULT_MAX_GOSSIP_HOPS));
-
-            verbose = true;
-
-
             config_file_reader.close();
             UVManager.log.print("Configuration loaded");
             //config.list(System.out);
