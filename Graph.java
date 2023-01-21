@@ -4,8 +4,9 @@
 import java.io.Serializable;
 import java.util.*;
 
-class Graph<T> implements Serializable {
+class Graph<T> {
 
+    //private static final long serialVersionUID = 120679L;
     // We use Hashmap to store the edges in the graph
     private final Map<T, List<T> > map = new HashMap<>();
 

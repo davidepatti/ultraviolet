@@ -1,8 +1,73 @@
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.ArrayList;
 
 public class ChannelGraph implements Serializable {
 
-    private final Graph<LNode> graph = new Graph<>();
+    private static final long serialVersionUID = 120676L;
+
+    transient private Graph<LNode> graph = new Graph<>();
+    transient private Graph<String> restored_graph;
+
+
+    public void restoreChannelGraph(UVManager uvm) {
+        graph = new Graph<>();
+
+        for (String v : restored_graph.getMap().keySet()) {
+            ArrayList<LNode> list = new ArrayList<>();
+            for (String w : restored_graph.getMap().get(v)) {
+                list.add(uvm.getUVnodes().get(w));
+            }
+            graph.getMap().put(uvm.getUVnodes().get(v),list);
+        }
+    }
+
+    private void readObject(ObjectInputStream s) {
+        int n_lists;
+        try {
+            s.defaultReadObject();
+            restored_graph = new Graph<>();
+            n_lists = s.readInt();
+
+            for (int i=0;i<n_lists;i++) {
+                var node_pubkey = (String) s.readObject();
+                int sub_nodes = s.readInt();
+                var list_pubkeys = new ArrayList<String>();
+                for (int j=0;j<sub_nodes;j++) {
+                    list_pubkeys.add((String) s.readObject());
+                }
+                restored_graph.getMap().put(node_pubkey,list_pubkeys);
+            }
+
+        } catch (IOException | ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void writeObject(ObjectOutputStream s) {
+        try {
+            s.defaultWriteObject();
+            int n_key = graph.getMap().keySet().size();
+            s.writeInt(n_key);
+
+            for (LNode v : graph.getMap().keySet()) {
+                s.writeObject(v.getPubKey());
+
+                n_key = graph.getMap().get(v).size();
+                s.writeInt(n_key);
+
+                for (LNode w : this.graph.getMap().get(v)) {
+                    s.writeObject(w.getPubKey());
+                }
+            }
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     // nodes of graph
     public synchronized void addNode(LNode node) {

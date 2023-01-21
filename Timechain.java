@@ -5,6 +5,7 @@ import java.util.concurrent.CountDownLatch;
 
 public class Timechain implements Runnable, Serializable  {
 
+    private static final long serialVersionUID = 1207897L;
     private int current_block;
     private final int blocktime;
     private final Set<CountDownLatch> timers = new HashSet<>();

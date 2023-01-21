@@ -1,6 +1,7 @@
 import java.io.Serializable;
 
 public class NodeBehavior implements Serializable {
+    private static final long serialVersionUID = 9579L;
     // TODO: define more profiles here
     public final static int Msat = (int)1e6;
     public final static NodeBehavior MANY_SMALL = new NodeBehavior(100,Msat/10,5*Msat);

@@ -1,6 +1,17 @@
 import java.io.Serializable;
 
-public class UVChannel implements LNChannel, Serializable {
+public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel> {
+
+    private static final long serialVersionUID = 120897L;
+
+    /**
+     * @param uvChannel 
+     * @return
+     */
+    @Override
+    public int compareTo(UVChannel uvChannel) {
+        return Integer.compare(this.getCapacity(),uvChannel.getCapacity());
+    }
 
     enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
 

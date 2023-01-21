@@ -45,13 +45,13 @@ public class UVMServer implements Runnable {
 
                     switch (command) {
                         case "BOOTSTRAP_NETWORK":
-                            if (!uvm.bootstrapStarted()) {
+                            if (uvm.bootstrapStarted() || uvm.bootstrapCompleted()) {
+                                send_cmd.accept("ERROR: network already bootstrapped!");
+                            }
+                            else {
                                 send_cmd.accept("Bootstrap Started, check "+ConfigManager.logfile);
                                 //noinspection Convert2MethodRef
                                 new Thread(()->uvm.bootstrapNetwork()).start();
-                            }
-                            else {
-                                send_cmd.accept("ERROR: network already bootstrapped!");
                             }
                             send_cmd.accept("END_DATA");
                             break;
@@ -99,6 +99,7 @@ public class UVMServer implements Runnable {
                             break;
                         case "RESET":
                             uvm.resetUVM();
+                            send_cmd.accept("END_DATA");
                             break;
                         default:
                             send_cmd.accept("Unknown command "+command);
@@ -134,9 +135,8 @@ public class UVMServer implements Runnable {
     public void showNodes() {
         if (uvm.getUVnodes().size()==0)
             send_cmd.accept("EMPTY NODE LIST");
-        for (UVNode n: uvm.getUVnodes().values()) {
-            send_cmd.accept(n.toString());
-        }
+
+        uvm.getUVnodes().values().stream().sorted().forEach((n)->send_cmd.accept(n.toString()));
         send_cmd.accept("END_DATA");
 
     }
@@ -151,17 +151,13 @@ public class UVMServer implements Runnable {
             return;
         }
         send_cmd.accept(node.toString());
-        for (UVChannel c:node.getUVChannels().values()) {
-            send_cmd.accept(c.toString());
-        }
+
+        node.getUVChannels().values().stream().sorted().forEach((c)->send_cmd.accept(c.toString()));
         send_cmd.accept("Peers:");
-        for (P2PNode n:node.getPeers().values()) {
-            send_cmd.accept(n.toString());
-        }
-        if (ConfigManager.verbose) {
-            send_cmd.accept("Channel Graph:");
-            send_cmd.accept(node.getChannelGraph().toString());
-        }
+        node.getPeers().values().stream().sorted().forEach((p)->send_cmd.accept(p.toString()));
+
+        send_cmd.accept("Channel Graph:");
+        send_cmd.accept(node.getChannelGraph().toString());
 
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();

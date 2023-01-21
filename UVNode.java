@@ -9,7 +9,9 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.*;
 
-public class UVNode implements Runnable, LNode,P2PNode, Serializable {
+public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<UVNode> {
+
+    private static final long serialVersionUID = 120675L;
 
     private NodeBehavior behavior;
     private final String pubkey;
@@ -45,6 +47,8 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
                 s.writeObject(p.getPubKey());
             }
 
+            s.writeObject(channel_graph);
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -55,6 +59,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
      * readObject have been invoked on all UVNodes
      */
     public void restorePersistentData() {
+        //channel_graph = new ChannelGraph();
         // restore channel partners
         for (UVChannel c:channels.values()) {
             c.initiatorNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
@@ -65,6 +70,9 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peer_list)
            peers.put(p,uvm.getUVnodes().get(p));
+
+        channel_graph.restoreChannelGraph(uvm);
+
     }
 
     /**
@@ -75,7 +83,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
     private void readObject(ObjectInputStream s) {
         channels = new ConcurrentHashMap<>();
         saved_peer_list = new ArrayList<>();
-        channel_graph = new ChannelGraph();
 
         try {
             s.defaultReadObject();
@@ -83,12 +90,13 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
             for (int i=0;i<num_channels;i++) {
                 UVChannel c = (UVChannel)s.readObject();
                 channels.put(c.getId(),c);
-                channel_graph.addChannel(c);
             }
             int num_peers = s.readInt();
             for (int i=0;i<num_peers;i++) {
                 saved_peer_list.add((String)s.readObject());
             }
+
+            channel_graph = (ChannelGraph) s.readObject();
 
         }
          catch (IOException e) {
@@ -509,4 +517,12 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
                 '}';
     }
 
+    /**
+     * @param uvNode 
+     * @return
+     */
+    @Override
+    public int compareTo(UVNode uvNode) {
+        return this.getPubKey().compareTo(uvNode.getPubKey());
+    }
 }

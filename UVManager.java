@@ -133,8 +133,8 @@ public class UVManager {
         timechain = new Timechain(ConfigManager.blocktiming);
         bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
         boostrap_started = false;
+        bootstrap_completed = false;
         this.UVnodes.clear();
-        bootexec.shutdown();
         System.gc();
     }
 
