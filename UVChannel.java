@@ -1,4 +1,3 @@
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 public class UVChannel implements LNChannel, Serializable {
@@ -9,8 +8,8 @@ public class UVChannel implements LNChannel, Serializable {
 
     // TODO: made public to restore on load, fix later calling constructor
     // CAN THIS BE LNODE?
-    transient public UVNode initiatorUVNode;
-    transient public UVNode peerUVNode;
+    transient public UVNode initiatorNode;
+    transient public UVNode channelPeerNode;
 
     final private String initiator_pubkey;
     final private String peer_pubkey;
@@ -36,9 +35,9 @@ public class UVChannel implements LNChannel, Serializable {
 
     // TODO: update_channel p2p
     // constructor only fill the "proposal" for the channel
-    public UVChannel(UVNode initiatorUVNode, UVNode peerUVNode, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
-        this.initiatorUVNode = initiatorUVNode;
-        this.peerUVNode = peerUVNode;
+    public UVChannel(UVNode initiatorNode, UVNode channelPeerNode, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
+        this.initiatorNode = initiatorNode;
+        this.channelPeerNode = channelPeerNode;
         this.initiator_balance = initiator_balance;
         this.peer_balance = peer_balance;
         this.channel_id = channel_id;
@@ -49,8 +48,8 @@ public class UVChannel implements LNChannel, Serializable {
         this.initiator_pending = 0;
         this.peer_pending = 0;
         this.status = ChannelStatus.NONE;
-        this.initiator_pubkey = initiatorUVNode.getPubKey();
-        this.peer_pubkey = peerUVNode.getPubKey();
+        this.initiator_pubkey = initiatorNode.getPubKey();
+        this.peer_pubkey = channelPeerNode.getPubKey();
     }
 
     public String getPeerPubKey() {
@@ -62,11 +61,11 @@ public class UVChannel implements LNChannel, Serializable {
     }
 
     public UVNode getInitiator() {
-        return initiatorUVNode;
+        return initiatorNode;
     }
 
-    public UVNode getPeer() {
-        return peerUVNode;
+    public UVNode getChannelPeer() {
+        return channelPeerNode;
     }
 
     public void setStatus(ChannelStatus status) {
@@ -106,7 +105,7 @@ public class UVChannel implements LNChannel, Serializable {
      */
     @Override
     public LNode getNode1() {
-        return initiatorUVNode;
+        return initiatorNode;
     }
 
     /**
@@ -114,7 +113,7 @@ public class UVChannel implements LNChannel, Serializable {
      */
     @Override
     public LNode getNode2() {
-        return peerUVNode;
+        return channelPeerNode;
     }
 
     public synchronized int getCapacity() {
@@ -258,8 +257,8 @@ public class UVChannel implements LNChannel, Serializable {
     public String toString() {
         return "Ch{" +
                 " status:"+this.status.toString()+
-                " initiator:'" + initiatorUVNode.getPubKey() + '\'' +
-                ", peer:" + peerUVNode.getPubKey() + '\'' +
+                " initiator:'" + initiatorNode.getPubKey() + '\'' +
+                ", peer:" + channelPeerNode.getPubKey() + '\'' +
                 ", balance:(" + initiator_balance +
                 "," + peer_balance +
                 "), id:" + channel_id + ", initiator_fee:" + initiator_fee_ppm + ", peer_fee:" + peer_fee_ppm + ", ncommits:"+commit_number+'}';

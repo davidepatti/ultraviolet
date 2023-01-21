@@ -68,7 +68,7 @@ public class UVManager {
 
             // must restore channel partners, can be done only after all nodes have been restored in UVM
             for (UVNode n:UVnodes.values()) {
-                n.restoreChannelPartners();
+                n.restorePersistentData();
             }
             updatePubkeyList();
             bootstrap_completed = true;

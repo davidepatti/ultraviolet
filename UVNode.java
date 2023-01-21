@@ -19,22 +19,30 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
     // serialized and restored manually, to avoid stack overflow
     transient private UVManager uvm;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
-    transient private final ChannelGraph channel_graph = new ChannelGraph();
-    transient private final ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
+    transient private ChannelGraph channel_graph = new ChannelGraph();
+    transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
     private boolean bootstrap_completed = false;
     transient Random deterministic_random;
+    transient ArrayList<String> saved_peer_list;
 
     /**
-     * Serialized format: number of channels / channel objects
+     * Custom Serialized format: number of element / objects
      * @param s
      */
     private void writeObject(ObjectOutputStream s) {
         try {
+            // savig non transient data
             s.defaultWriteObject();
+
             s.writeInt(channels.size());
             for (UVChannel c:channels.values()) {
                 s.writeObject(c);
+            }
+            // saving only pubkey
+            s.writeInt(peers.size());
+            for (P2PNode p:peers.values()) {
+                s.writeObject(p.getPubKey());
             }
 
         } catch (IOException e) {
@@ -43,13 +51,31 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
     }
 
     /**
+     * Restoring that can performed after all UVNodes have be loaded from UVM load (after all
+     * readObject have been invoked on all UVNodes
+     */
+    public void restorePersistentData() {
+        // restore channel partners
+        for (UVChannel c:channels.values()) {
+            c.initiatorNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
+            c.channelPeerNode = uvm.getUVnodes().get(c.getPeerPubKey());
+        }
+
+        // restore peers
+        peers = new ConcurrentHashMap<>();
+        for (String p: saved_peer_list)
+           peers.put(p,uvm.getUVnodes().get(p));
+    }
+
+    /**
      * Read custom serialization of UVNode: num channels + sequence of channels object
      * Notice that internal UVNodes are restored separately to avoid stack overflow
      * @param s
      */
     private void readObject(ObjectInputStream s) {
-        if (channels==null) channels = new ConcurrentHashMap<>();
-        else channels.clear();
+        channels = new ConcurrentHashMap<>();
+        saved_peer_list = new ArrayList<>();
+        channel_graph = new ChannelGraph();
 
         try {
             s.defaultReadObject();
@@ -57,8 +83,15 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
             for (int i=0;i<num_channels;i++) {
                 UVChannel c = (UVChannel)s.readObject();
                 channels.put(c.getId(),c);
+                channel_graph.addChannel(c);
             }
-        } catch (IOException e) {
+            int num_peers = s.readInt();
+            for (int i=0;i<num_peers;i++) {
+                saved_peer_list.add((String)s.readObject());
+            }
+
+        }
+         catch (IOException e) {
             throw new RuntimeException(e);
         } catch (ClassNotFoundException e) {
             throw new RuntimeException(e);
@@ -69,12 +102,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable {
     /**
      * restoring channel UVNodes, made transient to avoid stack overflow when saving...
      */
-    public void restoreChannelPartners() {
-        for (UVChannel c:channels.values()) {
-            c.initiatorUVNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
-            c.peerUVNode = uvm.getUVnodes().get(c.getPeerPubKey());
-        }
-    }
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
