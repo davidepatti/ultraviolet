@@ -97,6 +97,12 @@ public class UVMServer implements Runnable {
                         case "SHOW_NODES":
                             showNodes();
                             break;
+                        case "ROUTE":
+                            String start = is.nextLine();
+                            String end = is.nextLine();
+                            route(start,end);
+                            send_cmd.accept("END_DATA");
+                            break;
                         case "RESET":
                             uvm.resetUVM();
                             send_cmd.accept("END_DATA");
@@ -114,13 +120,20 @@ public class UVMServer implements Runnable {
         }
     }
 
+    private void route(String start, String end) {
+        UVNode start_node = uvm.getUVnodes().get(start);
+        UVNode end_node = uvm.getUVnodes().get(end);
 
-    public void getStatus() {
+        start_node.getChannelGraph().getGraph().DFS_path(start_node,end_node);
+
+    }
+
+    private void getStatus() {
         send_cmd.accept(uvm.toString());
         send_cmd.accept("END_DATA");
     }
 
-    public void showNetwork() {
+    private void showNetwork() {
         if (uvm.getUVnodes().size()==0)
             send_cmd.accept("EMPTY NODE LIST");
         for (UVNode n: uvm.getUVnodes().values()) {
@@ -132,7 +145,7 @@ public class UVMServer implements Runnable {
         send_cmd.accept("END_DATA");
     }
 
-    public void showNodes() {
+    private void showNodes() {
         if (uvm.getUVnodes().size()==0)
             send_cmd.accept("EMPTY NODE LIST");
 
@@ -140,7 +153,7 @@ public class UVMServer implements Runnable {
         send_cmd.accept("END_DATA");
 
     }
-    public void showNode(String pubkey) {
+    private void showNode(String pubkey) {
 
         if (uvm.getUVnodes().size()==0) 
             send_cmd.accept("EMPTY NODE LIST");

@@ -16,18 +16,14 @@ class Graph<T> {
 
 
     // This function adds a new vertex to the graph
-    public void addVertex(T s)
-    {
+    public void addVertex(T s) {
         if (!map.containsKey(s))
             map.put(s, new LinkedList<T>());
     }
 
     // This function adds the edge
     // between source to destination
-    public void addEdge(T source,
-                        T destination,
-                        boolean bidirectional)
-    {
+    public void addEdge(T source, T destination, boolean bidirectional) {
 
         if (!map.containsKey(source))
             addVertex(source);
@@ -45,16 +41,14 @@ class Graph<T> {
     }
 
     // This function gives the count of vertices
-    public int getVertexCount()
-    {
+    public int getVertexCount() {
         int v = map.keySet().size();
         System.out.println("The graph has " + v + " vertex");
         return v;
     }
 
     // This function gives the count of edges
-    public int getEdgesCount(boolean bidirection)
-    {
+    public int getEdgesCount(boolean bidirection) {
         int count = 0;
         for (T v : map.keySet()) {
             count += map.get(v).size();
@@ -67,16 +61,13 @@ class Graph<T> {
 
     // This function gives whether
     // a vertex is present or not.
-    public boolean hasVertex(T s)
-    {
-
+    public boolean hasVertex(T s) {
         return map.containsKey(s);
     }
 
     // This function gives whether an edge is present or not.
     @SuppressWarnings("RedundantIfStatement")
-    public boolean hasEdge(T s, T d)
-    {
+    public boolean hasEdge(T s, T d) {
 
         if (map.containsKey(s)) {
                 if (map.get(s).contains(d)) return true;
@@ -85,27 +76,52 @@ class Graph<T> {
         return false;
     }
 
-    public void DFS_util(T start_node, HashSet<T> visited) {
-        visited.add(start_node);
-        System.out.println("v:"+start_node);
 
-        Iterator<T> i = map.get(start_node).listIterator();
+    public void DFS_path_util(T current_node, T end_node, HashSet<T> visited) {
+        visited.add(current_node);
+        System.out.println("visiting:"+current_node);
+        if (current_node.equals(end_node)) System.out.println("FOUND!");
+
+        Iterator<T> i = map.get(current_node).listIterator();
         while (i.hasNext()) {
             var n = i.next();
-            if (!visited.contains(n))
+            System.out.print("   -> Considering:"+n+ " ");
+            if (!visited.contains(n)) {
+                DFS_path_util(n,end_node,visited);
+            }
+        }
+    }
+
+    public void DFS_path(T start_node,T end_node) {
+        var visited = new HashSet<T>();
+        System.out.println("Starting from "+start_node+" destination "+end_node);
+        DFS_path_util(start_node,end_node,visited);
+    }
+
+    public void DFS_util(T current_node, HashSet<T> visited) {
+        visited.add(current_node);
+        System.out.println("visiting:"+current_node);
+
+        Iterator<T> i = map.get(current_node).listIterator();
+        while (i.hasNext()) {
+            var n = i.next();
+            System.out.print("   -> Considering:"+n+ " ");
+            if (!visited.contains(n)) {
+                System.out.println("NOT VISITED");
                 DFS_util(n,visited);
+            }
         }
     }
 
     public void DFS(T start_node) {
         var visited = new HashSet<T>();
+        System.out.println("Starting from "+start_node);
         DFS_util(start_node,visited);
     }
 
     // Prints the adjancency list of each vertex.
     @Override
-    public String toString()
-    {
+    public String toString() {
         StringBuilder builder = new StringBuilder();
 
         for (T v : map.keySet()) {
@@ -115,45 +131,8 @@ class Graph<T> {
             }
             builder.append("\n");
         }
-
         return (builder.toString());
-    }
-
-
-    public static void main(String[] args)
-    {
-
-        // Object of graph is created.
-        Graph<Integer> g = new Graph<>();
-
-        // edges are added.
-        // Since the graph is bidirectional,
-        // so boolean bidirectional is passed as true.
-        g.addEdge(0, 1, true);
-        g.addEdge(0, 4, true);
-        g.addEdge(1, 2, true);
-        g.addEdge(1, 3, true);
-        g.addEdge(1, 4, true);
-        g.addEdge(2, 3, true);
-        g.addEdge(3, 4, true);
-
-        // Printing the graph
-        System.out.println("Graph:\n"
-                + g);
-
-        // Gives the no of vertices in the graph.
-        g.getVertexCount();
-
-        // Gives the no of edges in the graph.
-        g.getEdgesCount(true);
-
-        // Tells whether the edge is present or not.
-        g.hasEdge(3, 4);
-
-        // Tells whether vertex is present or not
-        g.hasVertex(5);
     }
 }
 
-// Driver Code
 

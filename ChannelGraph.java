@@ -11,6 +11,9 @@ public class ChannelGraph implements Serializable {
     transient private Graph<LNode> graph = new Graph<>();
     transient private Graph<String> restored_graph;
 
+    public Graph<LNode> getGraph() {
+        return graph;
+    }
 
     public void restoreChannelGraph(UVManager uvm) {
         graph = new Graph<>();

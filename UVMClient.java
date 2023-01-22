@@ -75,6 +75,14 @@ public class UVMClient {
             send_cmd.accept("TEST");
             wait_msg.accept("END_DATA");
         }));
+        menuItems.add(new MenuItem("route","Route Test",x-> {
+            System.out.print("insert node public key:");
+            String node = scanner.nextLine();
+            System.out.print("insert starting node public key:");
+            String start = scanner.nextLine();
+            send_cmd.accept("ROUTE\n"+node+"\n"+start);
+            wait_msg.accept("END_DATA");
+        }));
         menuItems.add(new MenuItem("save"," Save UVM status", x-> {
             System.out.print("Save to:");
             send_cmd.accept("SAVE\n"+scanner.nextLine());
