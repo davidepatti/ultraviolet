@@ -124,7 +124,7 @@ public class UVMServer implements Runnable {
         UVNode start_node = uvm.getUVnodes().get(start);
         UVNode end_node = uvm.getUVnodes().get(end);
 
-        start_node.getChannelGraph().getGraph().DFS_path(start_node,end_node);
+        start_node.getChannelGraph().DFSFindPath(start_node,end_node);
 
     }
 
