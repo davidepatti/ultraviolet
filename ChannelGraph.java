@@ -6,15 +6,14 @@ import java.util.*;
 
 public class ChannelGraph implements Serializable  {
 
+    private static boolean DEBUG = true;
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph
-    transient private Map<LNode, List<LNode>> adj_map = new HashMap<>();
-    transient private Map<String,List<String>> restore_map = new HashMap<>();
+    transient private Map<String, List<String>> adj_map = new HashMap<>();
 
     // This function adds a new vertex to the graph
-    private void addVertex(LNode s) {
-        if (!adj_map.containsKey(s))
-            adj_map.put(s, new LinkedList<LNode>());
+    private void addVertex(String s) {
+        adj_map.putIfAbsent(s,new LinkedList<String>());
     }
 
     /**
@@ -23,13 +22,10 @@ public class ChannelGraph implements Serializable  {
      * @param destination
      * @param bidirectional
      */
-    private void addEdge(LNode source, LNode destination, boolean bidirectional) {
+    private void addEdge(String source, String destination, boolean bidirectional) {
 
-        if (!adj_map.containsKey(source))
-            addVertex(source);
-
-        if (!adj_map.containsKey(destination))
-            addVertex(destination);
+        adj_map.putIfAbsent(source,new LinkedList<String>());
+        adj_map.putIfAbsent(destination,new LinkedList<String>());
 
         if (this.hasEdge(source,destination)) return;
 
@@ -38,6 +34,18 @@ public class ChannelGraph implements Serializable  {
         if (bidirectional) {
             adj_map.get(destination).add(source);
         }
+    }
+
+    // TODO: assuming symmetric adjcency map (see above)
+    private boolean hasEdge(String n1, String n2) {
+
+        boolean x1 = false;
+
+        if (adj_map.containsKey(n1)) {
+            x1 = adj_map.get(n1).stream().anyMatch((e)->e.equals(n2));
+        }
+
+        return x1;
     }
 
     /**
@@ -56,7 +64,7 @@ public class ChannelGraph implements Serializable  {
      */
     private int getEdgesCount(boolean bidirection) {
         int count = 0;
-        for (LNode v : adj_map.keySet()) {
+        for (String v : adj_map.keySet()) {
             count += adj_map.get(v).size();
         }
         if (bidirection) {
@@ -70,23 +78,8 @@ public class ChannelGraph implements Serializable  {
      * @param s
      * @return
      */
-    private boolean hasVertex(LNode s) {
+    private boolean hasVertex(String s) {
         return adj_map.containsKey(s);
-    }
-
-    /**
-     * This function gives whether an edge is present or not.
-     * @param s
-     * @param d
-     * @return
-     */
-    private boolean hasEdge(LNode s, LNode d) {
-
-        if (adj_map.containsKey(s)) {
-            if (adj_map.get(s).contains(d)) return true;
-            else return false;
-        }
-        return false;
     }
 
 
@@ -96,82 +89,50 @@ public class ChannelGraph implements Serializable  {
      * @param end_node
      * @param visited
      */
-    public void DFS_path_util(LNode current_node, LNode end_node, HashSet<LNode> visited) {
+    public void DFS_path_util(String current_node, String end_node, HashSet<String> visited) {
         visited.add(current_node);
-        System.out.println("visiting:"+current_node);
-        if (current_node.equals(end_node)) System.out.println("FOUND!");
+        if (DEBUG)
+            System.out.println(">>> Considering:" + current_node + " ");
 
-        Iterator<LNode> i = adj_map.get(current_node).listIterator();
-        while (i.hasNext()) {
-            var n = i.next();
-            System.out.print("   -> Considering:"+n+ " ");
+        if (DEBUG)
+            if (current_node.equals(end_node)) System.out.println("FOUND!");
+
+        for (var n : adj_map.get(current_node)) {
+            if (DEBUG)
+                System.out.println("\t-> Looking " + current_node + "-->" + n);
             if (!visited.contains(n)) {
-                DFS_path_util(n,end_node,visited);
+                DFS_path_util(n, end_node, visited);
             }
         }
+        if (DEBUG)
+            System.out.println(">>> FINISH "+current_node+ " ");
     }
 
-    public void DFSFindPath(LNode start_node,LNode end_node) {
-        var visited = new HashSet<LNode>();
-        System.out.println("Starting from "+start_node+" destination "+end_node);
-        DFS_path_util(start_node,end_node,visited);
-    }
-
-    public void DFS_util(LNode current_node, HashSet<LNode> visited) {
-        visited.add(current_node);
-        System.out.println("visiting:"+current_node);
-
-        Iterator<LNode> i = adj_map.get(current_node).listIterator();
-        while (i.hasNext()) {
-            var n = i.next();
-            System.out.print("   -> Considering:"+n+ " ");
-            if (!visited.contains(n)) {
-                System.out.println("NOT VISITED");
-                DFS_util(n,visited);
-            }
-        }
-    }
-
-    public void DFS(LNode start_node) {
-        var visited = new HashSet<LNode>();
-        System.out.println("Starting from "+start_node);
-        DFS_util(start_node,visited);
+    public boolean DFSFindPath(LNode start_node,LNode end_node) {
+        var visited = new HashSet<String>();
+        if (DEBUG)
+            System.out.println("Starting from "+start_node.getPubKey()+" destination "+end_node.getPubKey());
+        DFS_path_util(start_node.getPubKey(),end_node.getPubKey(),visited);
+        return  false;
     }
 
 
-    public Map<LNode,List<LNode>> getAdj_map() {
+    public Map<String,List<String>> getAdj_map() {
         return adj_map;
     }
 
-    public void restoreChannelGraph(UVManager uvm) {
-
-        adj_map = new HashMap<>();
-
-        for (String v : restore_map.keySet()) {
-            ArrayList<LNode> list = new ArrayList<>();
-            for (String w : restore_map.get(v)) {
-                list.add(uvm.getUVnodes().get(w));
-            }
-            adj_map.put(uvm.getUVnodes().get(v),list);
-        }
-    }
-
     private void readObject(ObjectInputStream s) {
-        int n_lists;
+        adj_map = new HashMap<>();
+        int n_keys;
         try {
             s.defaultReadObject();
-            restore_map = new HashMap<>();
-            n_lists = s.readInt();
+            n_keys = s.readInt();
 
-            for (int i=0;i<n_lists;i++) {
-                var node_pubkey = (String) s.readObject();
-                int sub_nodes = s.readInt();
-                var list_pubkeys = new ArrayList<String>();
-                for (int j=0;j<sub_nodes;j++) {
-                    list_pubkeys.add((String) s.readObject());
-                }
-                restore_map.put(node_pubkey,list_pubkeys);
-            }
+            for (int i=0;i<n_keys;i++) {
+                var pubkey = (String) s.readObject();
+                var list = (LinkedList<String>)s.readObject();
+                adj_map.put(pubkey,list);
+             }
 
         } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
@@ -182,18 +143,12 @@ public class ChannelGraph implements Serializable  {
     private void writeObject(ObjectOutputStream s) {
         try {
             s.defaultWriteObject();
-            int n_key = adj_map.keySet().size();
-            s.writeInt(n_key);
+            int n_keys = adj_map.keySet().size();
+            s.writeInt(n_keys);
 
-            for (LNode v : adj_map.keySet()) {
-                s.writeObject(v.getPubKey());
-
-                n_key = adj_map.get(v).size();
-                s.writeInt(n_key);
-
-                for (LNode w : adj_map.get(v)) {
-                    s.writeObject(w.getPubKey());
-                }
+            for (String k : adj_map.keySet()) {
+                s.writeObject(k);
+                s.writeObject(adj_map.get(k));
             }
 
         } catch (IOException e) {
@@ -203,11 +158,11 @@ public class ChannelGraph implements Serializable  {
 
     // nodes of graph
     public synchronized void addNode(LNode node) {
-        addVertex(node);
+        addVertex(node.getPubKey());
     }
     // edges of graph
     public synchronized void addChannel(LNChannel channel) {
-        addEdge(channel.getNode1(),channel.getNode2(),false);
+        addEdge(channel.getNode1().getPubKey(),channel.getNode2().getPubKey(),true);
     }
     // to edge properties
     @SuppressWarnings("EmptyMethod")
@@ -215,7 +170,7 @@ public class ChannelGraph implements Serializable  {
     }
 
     public synchronized boolean hasChannel(LNChannel channel) {
-       return hasEdge(channel.getNode1(),channel.getNode2());
+       return hasEdge(channel.getNode1().getPubKey(),channel.getNode2().getPubKey());
     }
 
     public ChannelGraph(){
@@ -234,14 +189,42 @@ public class ChannelGraph implements Serializable  {
     {
         StringBuilder builder = new StringBuilder();
 
-        for (LNode v : adj_map.keySet()) {
-            builder.append(v.getPubKey()).append(": ");
-            for (LNode w : adj_map.get(v)) {
-                builder.append(w.getPubKey()).append(" ");
+        ArrayList<String> list = new ArrayList<>();
+
+        adj_map.keySet().stream().sorted().forEach((e)->list.add(e));
+
+        for (String v : list) {
+            builder.append(v).append(": ");
+            for (String w : adj_map.get(v)) {
+                builder.append(w).append(" ");
             }
             builder.append("\n");
         }
 
         return (builder.toString());
     }
+    /*
+    public void DFS_util(LNode current_node, HashSet<LNode> visited) {
+        visited.add(current_node);
+        if (DEBUG)
+            System.out.println("visiting:"+current_node.getPubKey());
+
+        Iterator<LNode> i = adj_map.get(current_node).listIterator();
+        while (i.hasNext()) {
+            var n = i.next();
+            if (DEBUG)
+                System.out.print("   -> Considering:"+n.getPubKey()+ " ");
+            if (!visited.contains(n)) {
+                System.out.println("NOT VISITED");
+                DFS_util(n,visited);
+            }
+        }
+    }
+
+    public void DFS(LNode start_node) {
+        var visited = new HashSet<LNode>();
+        DFS_util(start_node,visited);
+    }
+
+     */
 }

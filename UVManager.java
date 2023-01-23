@@ -162,11 +162,28 @@ public class UVManager {
         return boostrap_started;
     }
 
+    /**
+     *
+     * @param pubkey
+     * @return
+     */
+    public LNode getLNode(String pubkey) {
+        return UVnodes.get(pubkey);
+    }
+
+    /**
+     *
+     * @return
+     */
     public HashMap<String, UVNode> getUVnodes(){
 
         return this.UVnodes;
     }
 
+    /**
+     *
+     * @return
+     */
     public Timechain getTimechain() {
         return timechain;
     }

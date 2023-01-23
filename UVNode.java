@@ -71,7 +71,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         for (String p: saved_peer_list)
            peers.put(p,uvm.getUVnodes().get(p));
 
-        channel_graph.restoreChannelGraph(uvm);
+        //channel_graph.restoreChannelGraph(uvm);
 
     }
 
