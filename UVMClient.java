@@ -23,21 +23,26 @@ public class UVMClient {
     };
 
     private class MenuItem {
-        public String key, description;
+        public final String key, description;
+        private String entry;
 
         public Consumer<Void> func;
 
         public MenuItem(String key, String desc, Consumer<Void> func) {
-            /*
-            StringBuilder s = new StringBuilder();
-            s.append(key);
-            while (s.toString().length()<8) s.append(" ");
-            this.key = s.toString();
-
-             */
             this.key = key;
             this.description = desc;
             this.func = func;
+            StringBuilder s = new StringBuilder();
+            s.append(key);
+            while (s.toString().length()<8) s.append(" ");
+            s.append("- "+ desc);
+
+            entry = s.toString();
+        }
+
+        @Override
+        public String toString() {
+            return entry;
         }
     }
     /**
@@ -53,7 +58,7 @@ public class UVMClient {
             wait_msg.accept("END_DATA");
         }));
 
-        menuItems.add(new MenuItem("channels","Show Newtork Nodes and Channels",x-> {
+        menuItems.add(new MenuItem("all","Show All newtork Nodes and Channels",x-> {
             send_cmd.accept("SHOW_NETWORK");
             wait_msg.accept("END_DATA");
         }));
@@ -114,9 +119,7 @@ public class UVMClient {
             System.out.println("-------------------------------------------------");
             System.out.println(" Ultraviolet Client ");
             System.out.println("-------------------------------------------------");
-            for (MenuItem item:menuItems) {
-                System.out.println(item.key+" - "+item.description);
-            }
+            menuItems.stream().forEach(System.out::println);
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
             var ch = scanner.nextLine();
@@ -124,11 +127,11 @@ public class UVMClient {
             for (MenuItem item:menuItems) {
                 if (item.key.equals(ch)) {
                     item.func.accept(null);
-                    System.out.println("\n[PRESS ENTER TO CONTINUE...]");
-                    scanner.nextLine();
                     break;
                 }
             }
+            System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+            scanner.nextLine();
         }
         System.out.println("Disconnecting client");
 
