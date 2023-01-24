@@ -5,10 +5,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class UVManager {
 
-    ExecutorService bootexec;
     CountDownLatch bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
     private HashMap<String, UVNode> UVnodes = new HashMap<>();
 
@@ -20,7 +20,12 @@ public class UVManager {
     private boolean boostrap_started = false;
     private boolean bootstrap_completed = false;
     private FileWriter logfile;
-    static Log log = System.out::println;
+    static Consumer<String> Log = System.out::println;
+
+
+    static void log(String s) {
+        Log.accept(s);
+    }
 
 
     /**
@@ -30,10 +35,10 @@ public class UVManager {
     public void save(String file) {
 
         if (bootstrapStarted() && !bootstrapCompleted())  {
-            log.print("Bootstrap incomplete, cannot save");
+            Log.accept("Bootstrap incomplete, cannot save");
             return;
         }
-        log.print("Stopping timechain");
+        log("Stopping timechain");
         this.getTimechain().stop();
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file));){
@@ -46,7 +51,7 @@ public class UVManager {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        log.print("End saving ");
+        log("End saving ");
     }
 
     /**
@@ -84,11 +89,11 @@ public class UVManager {
     public static void main(String[] args) {
 
         if (args.length == 1) {
-            log.print("Loading configuration file:"+args[0]);
+            log("Loading configuration file:"+args[0]);
             ConfigManager.loadConfig(args[0]);
         }
         else {
-            log.print("No config file provided, using defaults");
+            log("No config file provided, using defaults");
             ConfigManager.setDefaults();
         }
 
@@ -99,12 +104,12 @@ public class UVManager {
         try {
             logfile = new FileWriter(ConfigManager.logfile);
         } catch (IOException e) {
-            log.print("Cannot open logfile for writing:"+ ConfigManager.logfile);
+            log("Cannot open logfile for writing:"+ ConfigManager.logfile);
             throw new RuntimeException(e);
         }
-        log = (String s) ->  {
+        Log = (s) ->  {
             try {
-                logfile.write("\n["+timechain.getCurrent_block()+"]"+s);
+                logfile.write("\n["+timechain.getCurrent_block()+"]"+getClass().getName()+":"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -121,13 +126,13 @@ public class UVManager {
         timechain = new Timechain(ConfigManager.blocktiming);
 
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
-        log.print("Initializing UVManager...");
-        log.print(this.toString());
+        log("Initializing UVManager...");
+        log(this.toString());
         startServer(ConfigManager.server_port);
     }
     // TODO: not guaranteed to work perfectly
     public synchronized void resetUVM() {
-        log.print("Resetting UVManager (experimental!)");
+        log("Resetting UVManager (experimental!)");
         random = new Random();
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
         timechain = new Timechain(ConfigManager.blocktiming);
@@ -143,7 +148,7 @@ public class UVManager {
      * @param port
      */
     public void startServer(int port) {
-        log.print("Starting UVM Server...");
+        log("Starting UVM Server...");
         var uvm_server = new UVMServer(this,port);
         new Thread(uvm_server).start();
     }
@@ -205,11 +210,11 @@ public class UVManager {
             boostrap_started = true;
         }
 
-        log.print("UVM: Bootstrapping network...");
-        log.print("UVM: Starting timechain: "+timechain);
+        log("UVM: Bootstrapping network...");
+        log("UVM: Starting timechain: "+timechain);
         new Thread(timechain,"timechain").start();
 
-        log.print("UVM: deploying nodes, configuration: "+ ConfigManager.printConfig());
+        log("UVM: deploying nodes, configuration: "+ ConfigManager.printConfig());
         int max = ConfigManager.max_funding/(int)1e6;
         int min = ConfigManager.min_funding /(int)1e6;
 
@@ -226,8 +231,8 @@ public class UVManager {
 
         updatePubkeyList();
 
-        log.print("Starting node threads...");
-        bootexec = Executors.newFixedThreadPool(ConfigManager.total_nodes);
+        log("Starting node threads...");
+        ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.total_nodes);
         for (UVNode n : UVnodes.values()) {
            bootexec.submit(()->n.bootstrapNode());
         }
@@ -239,8 +244,8 @@ public class UVManager {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        log.print("Terminated bootstrap");
-        log.print("Stopping timechain");
+        log("Terminated bootstrap");
+        log("Stopping timechain");
         this.getTimechain().stop();
     }
 
@@ -267,7 +272,7 @@ public class UVManager {
      */
     @SuppressWarnings("CommentedOutCode")
     public void testRandomEvent() {
-        log.print("BOOTSTRAP LATCH:"+bootstrap_latch.getCount());
+        log("BOOTSTRAP LATCH:"+bootstrap_latch.getCount());
         /*
         var some_node = getRandomNode();
         var some_channel_id = some_node.getRandomChannel().getChannelId();
@@ -286,7 +291,7 @@ public class UVManager {
      */
     public void generateRandomEvents(int n) {
         if (!this.bootstrapCompleted()) {
-            log.print("Bootstrap non completed, Cannot generate random events!");
+            log("Bootstrap non completed, Cannot generate random events!");
             return;
         }
         for (int i=0;i<n;i++) {
@@ -294,10 +299,10 @@ public class UVManager {
             var some_channel_id = some_node.getRandomChannel().getId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
-            log.print("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
+            log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
             some_node.pushSats(some_channel_id,some_amount);
         }
-        log.print("Random events generation ended!");
+        log("Random events generation ended!");
     }
 
 

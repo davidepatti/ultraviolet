@@ -128,7 +128,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     private void log(String s) {
-         UVManager.log.print(this.getPubKey()+":"+s);
+         UVManager.log(this.getPubKey()+":"+s);
     }
 
     public void setUVM(UVManager uvm) {

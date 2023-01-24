@@ -35,6 +35,7 @@ public class ConfigManager implements Serializable {
     public static boolean verbose = false;
     public static int blocktiming;
     public static int max_gossip_hops;
+    public static boolean debug = false;
 
 
     public static void setDefaults() {
@@ -56,8 +57,8 @@ public class ConfigManager implements Serializable {
         seed = Integer.parseInt(DEFAULT_SEED);
         blocktiming = Integer.parseInt(DEFAULT_BLOCK_TIMING);
         max_gossip_hops = Integer.parseInt(DEFAULT_MAX_GOSSIP_HOPS);
+        debug = true;
     }
-
 
     public static void loadConfig(String config_file) {
         try {
@@ -79,8 +80,7 @@ public class ConfigManager implements Serializable {
             blocktiming = Integer.parseInt(config.getProperty("blocktiming", DEFAULT_BLOCK_TIMING));
             max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", DEFAULT_MAX_GOSSIP_HOPS));
             config_file_reader.close();
-            UVManager.log.print("Configuration loaded");
-            //config.list(System.out);
+            debug = true;
 
         } catch (
                 FileNotFoundException e) {
