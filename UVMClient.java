@@ -24,9 +24,17 @@ public class UVMClient {
 
     private class MenuItem {
         public String key, description;
+
         public Consumer<Void> func;
 
         public MenuItem(String key, String desc, Consumer<Void> func) {
+            /*
+            StringBuilder s = new StringBuilder();
+            s.append(key);
+            while (s.toString().length()<8) s.append(" ");
+            this.key = s.toString();
+
+             */
             this.key = key;
             this.description = desc;
             this.func = func;
@@ -40,16 +48,16 @@ public class UVMClient {
         var scanner = new Scanner(System.in);
         initConnection(UVM_SERVER_HOST, PORT);
 
-        menuItems.add(new MenuItem("b","Bootstrap Lightning Network from scratch",(x)-> {
+        menuItems.add(new MenuItem("boot","Bootstrap Lightning Network from scratch",(x)-> {
             send_cmd.accept("BOOTSTRAP_NETWORK");
             wait_msg.accept("END_DATA");
         }));
 
-        menuItems.add(new MenuItem("c","Show Newtork Nodes and Channels",x-> {
+        menuItems.add(new MenuItem("channels","Show Newtork Nodes and Channels",x-> {
             send_cmd.accept("SHOW_NETWORK");
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("s","Show Nodes ",x-> {
+        menuItems.add(new MenuItem("nodes","Show Nodes ",x-> {
             send_cmd.accept("SHOW_NODES");
             wait_msg.accept("END_DATA");
         }));
@@ -57,21 +65,21 @@ public class UVMClient {
             send_cmd.accept("DISCONNECT");
             quit = true;
         }));
-        menuItems.add(new MenuItem("t","UVM Status ",x-> {
+        menuItems.add(new MenuItem("status","UVM Status ",x-> {
             send_cmd.accept("STATUS");
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("n","Show Node ",x-> {
+        menuItems.add(new MenuItem("node","Show a single Node ",x-> {
             System.out.print("insert node public key:");
             send_cmd.accept("SHOW_NODE\n"+scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("r","Generate Random Events ",x-> {
+        menuItems.add(new MenuItem("rand","Generate Random Events ",x-> {
             System.out.print("Number of events:");
             send_cmd.accept("MSG_RANDOM_EVENTS\n"+scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("x"," Test", x-> {
+        menuItems.add(new MenuItem("x","Test", x-> {
             send_cmd.accept("TEST");
             wait_msg.accept("END_DATA");
         }));
@@ -83,20 +91,21 @@ public class UVMClient {
             send_cmd.accept("ROUTE\n"+start+"\n"+end);
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("save"," Save UVM status", x-> {
+        menuItems.add(new MenuItem("save","Save UVM status", x-> {
             System.out.print("Save to:");
             send_cmd.accept("SAVE\n"+scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("load"," Load UVM status", x-> {
+        menuItems.add(new MenuItem("load","Load UVM status", x-> {
             System.out.print("Load from:");
             send_cmd.accept("LOAD\n"+scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("0"," Reset", x-> {
+        menuItems.add(new MenuItem("reset","Reset the UVM (experimental)", x-> {
             send_cmd.accept("RESET");
             wait_msg.accept("END_DATA");
         }));
+
 
 
         while (!quit)  {
