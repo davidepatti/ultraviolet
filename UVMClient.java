@@ -88,7 +88,7 @@ public class UVMClient {
             send_cmd.accept("TEST");
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("route","Route Test",x-> {
+        menuItems.add(new MenuItem("route","Get routing paths between nodes",x-> {
             System.out.print("Starting node public key:");
             String start = scanner.nextLine();
             System.out.print("End node public key:");
@@ -108,6 +108,10 @@ public class UVMClient {
         }));
         menuItems.add(new MenuItem("reset","Reset the UVM (experimental)", x-> {
             send_cmd.accept("RESET");
+            wait_msg.accept("END_DATA");
+        }));
+        menuItems.add(new MenuItem("free","Try to free memory", x-> {
+            send_cmd.accept("FREE");
             wait_msg.accept("END_DATA");
         }));
 

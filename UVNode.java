@@ -217,7 +217,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         if (warmup!=0) {
-            var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(1,warmup));
+            var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(0,warmup));
             log(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
             try {
                 ready_to_go.await();
@@ -404,7 +404,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             never_seen = true;
             this.channel_graph.addChannel(msg.channel);
         }
-        if (never_seen && msg.forwardings< ConfigManager.max_gossip_hops) {
+        if (never_seen && msg.getForwardings()< ConfigManager.max_gossip_hops) {
             var new_message = msg.getNext();
 
             if (ConfigManager.verbose)

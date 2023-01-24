@@ -28,6 +28,11 @@ public class UVManager {
     }
 
 
+    public void free() {
+        System.gc();
+    }
+
+
     /**
      * Save the current network status to file
      * @param file destination file

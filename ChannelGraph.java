@@ -82,7 +82,62 @@ public class ChannelGraph implements Serializable  {
         return adj_map.containsKey(s);
     }
 
+    // prints BFS traversal from a given source s
 
+    public ArrayList<ArrayList<String>> BFS(String start,String end)
+    {
+        var visited = new ArrayList<String>();
+        var queue = new LinkedList<String>();
+        var paths = new ArrayList<ArrayList<String>>();
+        boolean found = false;
+
+        var last_parent = new HashMap<String,String>();
+        last_parent.put(start,"ROOT");
+
+        // Mark the current node as visited and enqueue it
+        visited.add(start);
+        queue.add(start);
+
+        while (queue.size() != 0) {
+            // Dequeue a vertex from queue and print it
+            var s = queue.poll();
+            if (DEBUG) {
+                System.out.println("Visiting "+s);
+                System.out.println("---------------------------------------------");
+            }
+
+            for (String n : adj_map.get(s)) {
+                System.out.println("Looking "+s+"--->"+n);
+
+                if (n.equals(end))  {
+                    if (DEBUG)
+                        System.out.println("FOUND "+end);
+                    found = true;
+
+                    var path = new ArrayList<String>();
+                    path.add(end);
+                    path.add(s);
+
+                    String current = last_parent.get(s);
+                    while (!current.equals("ROOT")) {
+                       path.add(current);
+                       current = last_parent.get(current);
+                    }
+
+                    paths.add(path);
+                }
+                if (!visited.contains(n)) {
+                    System.out.println("\tWill visit "+n+" (last parent "+s+")");
+                    last_parent.put(n,s);
+                    visited.add(n);
+                    queue.add(n);
+                }
+            }
+            if (DEBUG)
+                System.out.println("---------------------------------------------");
+        }
+        return paths;
+    }
     /**
      *
      * @param current_node
@@ -110,6 +165,7 @@ public class ChannelGraph implements Serializable  {
 
     public boolean DFSFindPath(LNode start_node,LNode end_node) {
         var visited = new HashSet<String>();
+        var path = new ArrayList<String>();
         if (DEBUG)
             System.out.println("Starting from "+start_node.getPubKey()+" destination "+end_node.getPubKey());
         DFS_path_util(start_node.getPubKey(),end_node.getPubKey(),visited);

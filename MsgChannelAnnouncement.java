@@ -1,6 +1,6 @@
 public class MsgChannelAnnouncement {
     final LNChannel channel;
-    int forwardings = 0;
+    private int forwardings = 0;
 
     public MsgChannelAnnouncement(LNChannel channel) {
         this.channel = channel;
@@ -10,6 +10,10 @@ public class MsgChannelAnnouncement {
         var next = new MsgChannelAnnouncement(this.channel);
         next.forwardings = this.forwardings+1;
         return next;
+    }
+
+    public int getForwardings() {
+        return forwardings;
     }
 
     @Override
