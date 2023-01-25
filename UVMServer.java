@@ -44,6 +44,8 @@ public class UVMServer implements Runnable {
 
                 while (!disconnect) {
                     String command = is.nextLine();
+                    // workaround for removing the null bytes that are received from client checking  connection
+                    command = command.replace("\0","");
                     System.out.println("UVM Server: Received command " + command);
 
                     switch (command) {
@@ -102,7 +104,7 @@ public class UVMServer implements Runnable {
                             send_to_client("END_DATA");
                         }
                         default -> {
-                            send_to_client("Unknown command " + command);
+                            send_to_client("Unknown command __" + command+"_____");
                             send_to_client("END_DATA");
                         }
                     }

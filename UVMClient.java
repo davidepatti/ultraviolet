@@ -1,7 +1,10 @@
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class UVMClient {
@@ -9,6 +12,9 @@ public class UVMClient {
     PrintWriter os;
     Scanner is;
     boolean quit = false;
+    Socket client;
+    final String UVM_SERVER_HOST = "127.0.0.1";
+    final int PORT = 7777;
 
     final Consumer<String> send_cmd = x-> { os.println(x); os.flush();};
     final Consumer<String> wait_msg = (x)-> {
@@ -47,9 +53,10 @@ public class UVMClient {
     public UVMClient() {
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
-        String UVM_SERVER_HOST = "127.0.0.1";
-        int PORT = 7777;
-        initConnection(UVM_SERVER_HOST, PORT);
+
+        //var executor = Executors.newSingleThreadScheduledExecutor();
+        //executor.scheduleAtFixedRate(()->initConnection(UVM_SERVER_HOST,PORT),0,2, TimeUnit.SECONDS);
+        initConnection(UVM_SERVER_HOST,PORT);
 
         menuItems.add(new MenuItem("boot", "Bootstrap Lightning Network from scratch", (x) -> {
             send_cmd.accept("BOOTSTRAP_NETWORK");
@@ -82,9 +89,8 @@ public class UVMClient {
             send_cmd.accept("MSG_RANDOM_EVENTS\n" + scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("x", "Test", x -> {
-            send_cmd.accept("TEST");
-            wait_msg.accept("END_DATA");
+        menuItems.add(new MenuItem("r", "Reconnect to Server", x -> {
+            initConnection(UVM_SERVER_HOST,PORT);
         }));
         menuItems.add(new MenuItem("route", "Get routing paths between nodes", x -> {
             System.out.print("Starting node public key:");
@@ -122,6 +128,7 @@ public class UVMClient {
             System.out.println(" Ultraviolet Client ");
             System.out.println("-------------------------------------------------");
             menuItems.stream().forEach(System.out::println);
+            System.out.println("Connection Status:"+isConnected(client));
             System.out.println("-------------------------------------------------");
             System.out.print(" -> ");
             var ch = scanner.nextLine();
@@ -140,17 +147,32 @@ public class UVMClient {
 
     }
 
-    private void initConnection(String uvm_server_host, int port) {
-        System.out.println("Connecting to server at "+uvm_server_host+" port "+port);
+    public static boolean isConnected(Socket socket) {
+        if (socket==null) return false;
         try {
-            Socket client = new Socket(uvm_server_host, port);
+            socket.setSoTimeout(1000);
+            socket.getOutputStream().write(0);
+            return true;
+        } catch (SocketTimeoutException ste) {
+            return false;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private void initConnection(String uvm_server_host, int port) {
+        if (isConnected(client)) return;
+
+        try {
+            client = new Socket(uvm_server_host, port);
             is = new Scanner(client.getInputStream());
             os = new PrintWriter(client.getOutputStream());
-            System.out.println("Connected to UVM Server");
+            System.out.println("Connected to UVM Server "+client.getRemoteSocketAddress().toString());
         } catch (IOException e) {
             System.out.println("Cannot connect to UVMServer "+ uvm_server_host +":"+ port);
-            System.exit(-1);
-            throw new RuntimeException(e);
+
+            //System.exit(-1);
+            //throw new RuntimeException(e);
         }
     }
 
