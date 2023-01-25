@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 public class UVManager {
 
     CountDownLatch bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
-    private HashMap<String, UVNode> UVnodes = new HashMap<>();
+    private final HashMap<String, UVNode> UVnodes = new HashMap<>();
 
     private String[] pubkeys_list;
 
@@ -46,13 +46,12 @@ public class UVManager {
         log("Stopping timechain");
         this.getTimechain().stop();
 
-        try (var f = new ObjectOutputStream(new FileOutputStream(file));){
+        try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
            f.writeInt(UVnodes.size());
 
            for (UVNode n: UVnodes.values())
                 f.writeObject(n);
-            f.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -206,7 +205,6 @@ public class UVManager {
         pubkeys_list = UVnodes.keySet().toArray(pubkeys_list);
     }
 
-    @SuppressWarnings("CommentedOutCode")
     /**
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
@@ -239,17 +237,21 @@ public class UVManager {
         log("Starting node threads...");
         ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.total_nodes);
         for (UVNode n : UVnodes.values()) {
-           bootexec.submit(()->n.bootstrapNode());
+           bootexec.submit(n::bootstrapNode);
         }
 
         bootexec.shutdown();
 
+        boolean term;
+
         try {
-            bootexec.awaitTermination(600, TimeUnit.SECONDS);
+            term = bootexec.awaitTermination(600, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        log("Terminated bootstrap");
+        if (!term) log("Bootstrap timout! terminating...") ;
+        else
+            log("Bootstrap ended correctly");
         log("Stopping timechain");
         this.getTimechain().stop();
     }

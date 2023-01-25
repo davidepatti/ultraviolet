@@ -1,7 +1,9 @@
+import java.io.Serial;
 import java.io.Serializable;
 
 public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel> {
 
+    @Serial
     private static final long serialVersionUID = 120897L;
 
     /**
@@ -30,9 +32,9 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
 
     private int initiator_fee_ppm;
     private int peer_fee_ppm;
-    @SuppressWarnings("FieldMayBeFinal")
+    @SuppressWarnings({"FieldMayBeFinal", "CanBeFinal"})
     private int initiator_base_fee;
-    @SuppressWarnings("FieldMayBeFinal")
+    @SuppressWarnings({"FieldMayBeFinal", "CanBeFinal"})
     private int peer_base_fee;
     private int initiator_locktimedelta;
     private int peer_locktimedelta;

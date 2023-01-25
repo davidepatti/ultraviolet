@@ -1,19 +1,17 @@
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 
 public class ChannelGraph implements Serializable  {
 
-    private static boolean DEBUG = true;
+    private static final boolean DEBUG = true;
+    @Serial
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph
     transient private Map<String, List<String>> adj_map = new HashMap<>();
 
     // This function adds a new vertex to the graph
     private void addVertex(String s) {
-        adj_map.putIfAbsent(s,new LinkedList<String>());
+        adj_map.putIfAbsent(s, new LinkedList<>());
     }
 
     /**
@@ -24,8 +22,8 @@ public class ChannelGraph implements Serializable  {
      */
     private void addEdge(String source, String destination, boolean bidirectional) {
 
-        adj_map.putIfAbsent(source,new LinkedList<String>());
-        adj_map.putIfAbsent(destination,new LinkedList<String>());
+        adj_map.putIfAbsent(source, new LinkedList<>());
+        adj_map.putIfAbsent(destination, new LinkedList<>());
 
         if (this.hasEdge(source,destination)) return;
 
@@ -53,8 +51,7 @@ public class ChannelGraph implements Serializable  {
      * @return
      */
     private int getVertexCount() {
-        int v = adj_map.keySet().size();
-        return v;
+        return adj_map.keySet().size();
     }
 
     /**
@@ -89,7 +86,6 @@ public class ChannelGraph implements Serializable  {
         var visited = new ArrayList<String>();
         var queue = new LinkedList<String>();
         var paths = new ArrayList<ArrayList<String>>();
-        boolean found = false;
 
         var last_parent = new HashMap<String,String>();
         last_parent.put(start,"ROOT");
@@ -112,7 +108,6 @@ public class ChannelGraph implements Serializable  {
                 if (n.equals(end))  {
                     if (DEBUG)
                         System.out.println("FOUND "+end);
-                    found = true;
 
                     var path = new ArrayList<String>();
                     path.add(end);
@@ -165,7 +160,6 @@ public class ChannelGraph implements Serializable  {
 
     public boolean DFSFindPath(LNode start_node,LNode end_node) {
         var visited = new HashSet<String>();
-        var path = new ArrayList<String>();
         if (DEBUG)
             System.out.println("Starting from "+start_node.getPubKey()+" destination "+end_node.getPubKey());
         DFS_path_util(start_node.getPubKey(),end_node.getPubKey(),visited);
@@ -177,6 +171,7 @@ public class ChannelGraph implements Serializable  {
         return adj_map;
     }
 
+    @Serial
     private void readObject(ObjectInputStream s) {
         adj_map = new HashMap<>();
         int n_keys;
@@ -196,6 +191,7 @@ public class ChannelGraph implements Serializable  {
 
     }
 
+    @Serial
     private void writeObject(ObjectOutputStream s) {
         try {
             s.defaultWriteObject();
@@ -247,7 +243,7 @@ public class ChannelGraph implements Serializable  {
 
         ArrayList<String> list = new ArrayList<>();
 
-        adj_map.keySet().stream().sorted().forEach((e)->list.add(e));
+        adj_map.keySet().stream().sorted().forEach(list::add);
 
         for (String v : list) {
             builder.append(v).append(": ");
@@ -259,28 +255,4 @@ public class ChannelGraph implements Serializable  {
 
         return (builder.toString());
     }
-    /*
-    public void DFS_util(LNode current_node, HashSet<LNode> visited) {
-        visited.add(current_node);
-        if (DEBUG)
-            System.out.println("visiting:"+current_node.getPubKey());
-
-        Iterator<LNode> i = adj_map.get(current_node).listIterator();
-        while (i.hasNext()) {
-            var n = i.next();
-            if (DEBUG)
-                System.out.print("   -> Considering:"+n.getPubKey()+ " ");
-            if (!visited.contains(n)) {
-                System.out.println("NOT VISITED");
-                DFS_util(n,visited);
-            }
-        }
-    }
-
-    public void DFS(LNode start_node) {
-        var visited = new HashSet<LNode>();
-        DFS_util(start_node,visited);
-    }
-
-     */
 }

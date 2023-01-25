@@ -1,6 +1,8 @@
+import java.io.Serial;
 import java.io.Serializable;
 
 public class NodeBehavior implements Serializable {
+    @Serial
     private static final long serialVersionUID = 9579L;
     // TODO: define more profiles here
     public final static int Msat = (int)1e6;

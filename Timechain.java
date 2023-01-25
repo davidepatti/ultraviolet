@@ -1,3 +1,4 @@
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
@@ -5,6 +6,7 @@ import java.util.concurrent.CountDownLatch;
 
 public class Timechain implements Runnable, Serializable  {
 
+    @Serial
     private static final long serialVersionUID = 1207897L;
     private int current_block;
     private final int blocktime;

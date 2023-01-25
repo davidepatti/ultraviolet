@@ -1,11 +1,9 @@
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Properties;
 
 public class ConfigManager implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 120678L;
     private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
     private static final String DEFAULT_TOTAL_NODES = "10";
@@ -32,7 +30,7 @@ public class ConfigManager implements Serializable {
     public static int server_port;
     public static String logfile;
     public static int seed;
-    public static boolean verbose = false;
+    public static final boolean verbose = false;
     public static int blocktiming;
     public static int max_gossip_hops;
     public static boolean debug = false;

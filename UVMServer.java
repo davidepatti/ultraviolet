@@ -47,76 +47,64 @@ public class UVMServer implements Runnable {
                     System.out.println("UVM Server: Received command " + command);
 
                     switch (command) {
-                        case "BOOTSTRAP_NETWORK":
+                        case "BOOTSTRAP_NETWORK" -> {
                             if (uvm.bootstrapStarted() || uvm.bootstrapCompleted()) {
                                 send_to_client("ERROR: network already bootstrapped!");
-                            }
-                            else {
-                                send_to_client("Bootstrap Started, check "+ConfigManager.logfile);
+                            } else {
+                                send_to_client("Bootstrap Started, check " + ConfigManager.logfile);
                                 //noinspection Convert2MethodRef
-                                new Thread(()->uvm.bootstrapNetwork()).start();
+                                new Thread(() -> uvm.bootstrapNetwork()).start();
                             }
                             send_to_client("END_DATA");
-                            break;
-                        case "DISCONNECT":
-                            disconnect = true;
-                            break;
-                        case "SHOW_NETWORK":
-                            showNetwork();
-                            break;
-                        case "TEST":
-                            send_to_client("END_DATA");
-                            break;
-                        case "SAVE":
+                        }
+                        case "DISCONNECT" -> disconnect = true;
+                        case "SHOW_NETWORK" -> showNetwork();
+                        case "TEST" -> send_to_client("END_DATA");
+                        case "SAVE" -> {
                             String file_to_save = is.nextLine();
                             uvm.save(file_to_save);
                             send_to_client("END_DATA");
-                            break;
-                        case "LOAD":
+                        }
+                        case "LOAD" -> {
                             String file_to_load = is.nextLine();
                             if (uvm.load(file_to_load))
                                 send_to_client("UVM LOADED");
-                            else send_to_client("ERROR LOADING UVM from "+file_to_load);
+                            else send_to_client("ERROR LOADING UVM from " + file_to_load);
                             send_to_client("END_DATA");
-                            break;
-                        case "MSG_RANDOM_EVENTS":
+                        }
+                        case "MSG_RANDOM_EVENTS" -> {
                             String n = is.nextLine();
                             if (uvm.bootstrapCompleted()) {
-                                send_to_client("Generating events, check "+ConfigManager.logfile);
+                                send_to_client("Generating events, check " + ConfigManager.logfile);
                                 uvm.generateRandomEvents(Integer.parseInt(n));
-                            }
-                            else{
+                            } else {
                                 send_to_client("Bootstrap not completed, cannot generate events!");
                             }
                             send_to_client("END_DATA");
-                            break;
-                        case "STATUS":
-                            getStatus();
-                            break;
-                        case "SHOW_NODE":
+                        }
+                        case "STATUS" -> getStatus();
+                        case "SHOW_NODE" -> {
                             String node = is.nextLine();
                             showNode(node);
-                            break;
-                        case "SHOW_NODES":
-                            showNodes();
-                            break;
-                        case "FREE":
+                        }
+                        case "SHOW_NODES" -> showNodes();
+                        case "FREE" -> {
                             uvm.free();
                             send_to_client("END_DATA");
-                            break;
-                        case "ROUTE":
+                        }
+                        case "ROUTE" -> {
                             String start = is.nextLine();
                             String end = is.nextLine();
-                            route(start,end);
-                            break;
-                        case "RESET":
+                            route(start, end);
+                        }
+                        case "RESET" -> {
                             uvm.resetUVM();
                             send_to_client("END_DATA");
-                            break;
-                        default:
-                            send_to_client("Unknown command "+command);
+                        }
+                        default -> {
+                            send_to_client("Unknown command " + command);
                             send_to_client("END_DATA");
-                            break;
+                        }
                     }
                 }
             }

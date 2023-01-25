@@ -1,7 +1,4 @@
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -11,6 +8,7 @@ import java.util.concurrent.*;
 
 public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<UVNode> {
 
+    @Serial
     private static final long serialVersionUID = 120675L;
 
     private NodeBehavior behavior;
@@ -32,6 +30,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      * Custom Serialized format: number of element / objects
      * @param s
      */
+    @Serial
     private void writeObject(ObjectOutputStream s) {
         try {
             // savig non transient data
@@ -80,6 +79,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      * Notice that internal UVNodes are restored separately to avoid stack overflow
      * @param s
      */
+    @Serial
     private void readObject(ObjectInputStream s) {
         channels = new ConcurrentHashMap<>();
         saved_peer_list = new ArrayList<>();
@@ -99,17 +99,11 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             channel_graph = (ChannelGraph) s.readObject();
 
         }
-         catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (ClassNotFoundException e) {
+         catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
 
-
-    /**
-     * restoring channel UVNodes, made transient to avoid stack overflow when saving...
-     */
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -197,7 +191,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
 
     private void setDeterministicRandom() {
         deterministic_random = new Random();
-        MessageDigest digest = null;
+        MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
@@ -236,10 +230,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
                 break;
             }
 
-            /*
-            var n = deterministic_random.nextInt(ConfigManager.total_nodes);
-            var peer_node = uvm.getDeterministicNode(n);
-             */
             var peer_node = uvm.getRandomNode();
             var peer_pubkey = peer_node.getPubKey();
 
@@ -383,7 +373,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      * @param msg
      */
     public void broadcastAnnounceChannel(MsgChannelAnnouncement msg) {
-        var peer_list = new ArrayList<P2PNode>(peers.values());
+        var peer_list = new ArrayList<>(peers.values());
         // not including itself
         peer_list.removeIf(x->x.getPubKey().equals(this.getPubKey()));
 
@@ -410,7 +400,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             if (ConfigManager.verbose)
                 log("Broadcasting never seen message: "+new_message);
 
-                broadcastAnnounceChannel(new_message);
+            broadcastAnnounceChannel(new_message);
         }
     }
 
