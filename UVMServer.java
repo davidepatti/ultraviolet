@@ -103,6 +103,18 @@ public class UVMServer implements Runnable {
                             uvm.resetUVM();
                             send_to_client("END_DATA");
                         }
+                        case "STATS" -> {
+                            var max = uvm.getStats().getMaxGraphSizeNode();
+                            var min = uvm.getStats().getMinGraphSizeNode();
+                            StringBuilder s = new StringBuilder();
+                            s.append("Max Graph size:").append(max).append(" (node/channels) ");
+                            s.append(max.getChannelGraph().getNodeCount()).append("/").append(max.getChannelGraph().getChannelCount());
+                            s.append("\nMin Graph size:").append(min).append(" (node/channels) ");
+                            s.append(min.getChannelGraph().getNodeCount()).append("/").append(min.getChannelGraph().getChannelCount());
+
+                            send_to_client(s.toString());
+                            send_to_client("END_DATA");
+                        }
                         default -> {
                             send_to_client("Unknown command __" + command+"_____");
                             send_to_client("END_DATA");
@@ -189,6 +201,7 @@ public class UVMServer implements Runnable {
         int vertex = node.getChannelGraph().getNodeCount();
         os.println("Graph nodes:"+vertex);
         os.println("Graph channels:"+edges);
+        os.println("Current p2p message queue:"+node.getP2PMsgQueue().size());
         send_to_client("END_DATA");
     }
 }

@@ -20,7 +20,7 @@ public class Timechain implements Runnable, Serializable  {
         return current_block;
     }
 
-    public int getTimeDelay(int n_blocks) {
+    public int getBlockToMillisecTimeDelay(int n_blocks) {
         return blocktime*n_blocks;
     }
 

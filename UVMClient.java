@@ -110,6 +110,10 @@ public class UVMClient {
             send_cmd.accept("LOAD\n" + scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
+        menuItems.add(new MenuItem("stats", "Show Global stats", x -> {
+            send_cmd.accept("STATS");
+            wait_msg.accept("END_DATA");
+        }));
         menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> {
             send_cmd.accept("RESET");
             wait_msg.accept("END_DATA");
@@ -128,19 +132,26 @@ public class UVMClient {
             System.out.println(" Ultraviolet Client ");
             System.out.println("-------------------------------------------------");
             menuItems.stream().forEach(System.out::println);
-            System.out.println("Connection Status:"+isConnected(client));
             System.out.println("-------------------------------------------------");
-            System.out.print(" -> ");
-            var ch = scanner.nextLine();
+            if (isConnected(client)) {
+                System.out.println("Connected to "+client.getRemoteSocketAddress().toString());
+                System.out.print(" -> ");
+                var ch = scanner.nextLine();
 
-            for (MenuItem item:menuItems) {
-                if (item.key.equals(ch)) {
-                    item.func.accept(null);
-                    break;
+                for (MenuItem item:menuItems) {
+                    if (item.key.equals(ch)) {
+                        item.func.accept(null);
+                        break;
+                    }
                 }
+                System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+                scanner.nextLine();
             }
-            System.out.println("\n[PRESS ENTER TO CONTINUE...]");
-            scanner.nextLine();
+            else {
+                System.out.println("NOT CONNECTED! (start server and press enter to rety)");
+                scanner.nextLine();
+                initConnection(UVM_SERVER_HOST,PORT);
+            }
         }
         System.out.println("Disconnecting client");
 
@@ -175,6 +186,8 @@ public class UVMClient {
             //throw new RuntimeException(e);
         }
     }
+
+
 
     public static void main(String[] args) {
 

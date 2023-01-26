@@ -22,12 +22,11 @@ public class UVManager {
     private FileWriter logfile;
     static Consumer<String> Log = System.out::println;
 
+    private GlobalStats stats;
 
     static void log(String s) {
         Log.accept(s);
     }
-
-
     public void free() {
         System.gc();
     }
@@ -133,6 +132,7 @@ public class UVManager {
         log("Initializing UVManager...");
         log(this.toString());
         startServer(ConfigManager.server_port);
+        stats = new GlobalStats(this);
     }
     // TODO: not guaranteed to work perfectly
     public synchronized void resetUVM() {
@@ -144,6 +144,8 @@ public class UVManager {
         boostrap_started = false;
         bootstrap_completed = false;
         this.UVnodes.clear();
+
+
         System.gc();
     }
 
@@ -213,7 +215,7 @@ public class UVManager {
             boostrap_started = true;
         }
 
-        log("UVM: Bootstrapping network...");
+        log("UVM: Bootstrapping network from scratch...");
         log("UVM: Starting timechain: "+timechain);
         new Thread(timechain,"timechain").start();
 
@@ -252,8 +254,19 @@ public class UVManager {
         if (!term) log("Bootstrap timout! terminating...") ;
         else
             log("Bootstrap ended correctly");
+
+        log("Launching p2p nodes services...");
+        var p2p_executor = Executors.newScheduledThreadPool(ConfigManager.total_nodes);
+        var delay = getTimechain().getBlockToMillisecTimeDelay(1);
+        for (UVNode n : UVnodes.values()) {
+            //p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,getTimechain().getBlockToMillisecTimeDelay(1),TimeUnit.MILLISECONDS);
+            p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,delay,TimeUnit.MILLISECONDS);
+        }
+
+        /*
         log("Stopping timechain");
         this.getTimechain().stop();
+         */
     }
 
 
@@ -326,7 +339,9 @@ public class UVManager {
         return s.toString();
     }
 
-
+    public GlobalStats getStats() {
+        return stats;
+    }
 
     @Override
     public String toString() {

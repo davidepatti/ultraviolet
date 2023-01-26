@@ -3,6 +3,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.*;
 
@@ -25,6 +26,9 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     private boolean bootstrap_completed = false;
     transient Random deterministic_random;
     transient ArrayList<String> saved_peer_list;
+
+    transient Queue<P2PMessage> p2p_messages = new ConcurrentLinkedQueue<>();
+
 
     /**
      * Custom Serialized format: number of element / objects
@@ -221,13 +225,19 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         }
         log("Starting bootstrap!");
 
+        /*
+        // p2p services like broadcasting new message announcement etc should be processed not too oftern to avoid gossip
+        // here the period is expressed in blocks using the gettimedelay function
+        var p2p_executor =Executors.newSingleThreadScheduledExecutor();
+        p2p_executor.scheduleAtFixedRate(()->P2PService(),0,uvm.getTimechain().getBlockToMillisecTimeDelay(1),TimeUnit.MILLISECONDS);
+         */
+
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
-
             if (getOnChainBalance() <= behavior.getMin_channel_size()) {
                 log("No more onchain balance for opening further channels of min size "+behavior.getMin_channel_size());
-                break;
+                break; // exit while loop
             }
 
             var peer_node = uvm.getRandomNode();
@@ -256,6 +266,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             }
             else log("Failed opening channel to "+peer_node.getPubKey());
         } // while
+
         bootstrap_completed = true;
         uvm.bootstrap_latch.countDown();
         log("Bootstrap completed");
@@ -334,9 +345,9 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         channel_graph.addChannel(channel_proposal);
         updateOnChainBalance(getOnChainBalance()-channel_proposal.getInitiatorBalance());
 
-        var message = new MsgChannelAnnouncement(channel_proposal);
+        var message = new MsgChannelAnnouncement(channel_proposal,uvm.getTimechain().getCurrent_block());
+        broadcastToPeers(message);
 
-        broadcastAnnounceChannel(message);
         log("<<< End opening channel with "+ peer_UV_node.getPubKey());
 
         return true;
@@ -348,7 +359,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      * @return true if accepted
      */
     public synchronized boolean acceptChannel(UVChannel new_UV_channel) {
-        log(">>> Start Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        log(">>> Start Accepting channel "+ new_UV_channel.getId());
         if (this.hasChannelWith(new_UV_channel.getInitiatorPubKey())) {
             return false;
         }
@@ -358,13 +369,10 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         this.addPeer(new_UV_channel.getInitiator());
         channel_graph.addChannel(new_UV_channel);
 
-        log("Adding and Announcing channel to others: " + new_UV_channel.getId());
+        var message = new MsgChannelAnnouncement(new_UV_channel,uvm.getTimechain().getCurrent_block());
+        broadcastToPeers(message);
 
-        var message = new MsgChannelAnnouncement(new_UV_channel);
-
-        broadcastAnnounceChannel(message);
-
-        log("<<< End Accepting channel from "+ new_UV_channel.getInitiatorPubKey());
+        log("<<< End Accepting channel "+ new_UV_channel.getId());
         return true;
     }
 
@@ -372,37 +380,72 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      *
      * @param msg
      */
-    public void broadcastAnnounceChannel(MsgChannelAnnouncement msg) {
-        var peer_list = new ArrayList<>(peers.values());
-        // not including itself
-        peer_list.removeIf(x->x.getPubKey().equals(this.getPubKey()));
+   public void broadcastToPeers(P2PMessage msg) {
 
-        for (P2PNode peer: peer_list) {
-            peer.receiveAnnounceChannel(this.getPubKey(),msg);
+        for (P2PNode peer: peers.values()) {
+            if (!peer.getPubKey().equals(this.getPubKey()))
+                peer.receiveP2PMessage(msg);
         }
+
     }
 
     /**
      *
-     * @param from_peer
      * @param msg
      */
-    public void receiveAnnounceChannel(String from_peer, MsgChannelAnnouncement msg) {
-        //log.print("Broadcast request for channel "+ch.getChannelId()+ " from peer:"+from_peer);
-        boolean never_seen = false;
-        if (!channel_graph.hasChannel(msg.channel)) {
-            never_seen = true;
-            this.channel_graph.addChannel(msg.channel);
-        }
-        if (never_seen && msg.getForwardings()< ConfigManager.max_gossip_hops) {
-            var new_message = msg.getNext();
-
-            if (ConfigManager.verbose)
-                log("Broadcasting never seen message: "+new_message);
-
-            broadcastAnnounceChannel(new_message);
-        }
+    public void receiveP2PMessage(P2PMessage msg) {
+            this.p2p_messages.add(msg);
     }
+
+    public Queue<P2PMessage> getP2PMsgQueue() {
+        return this.p2p_messages;
+    }
+
+    /**
+     *
+     */
+    public void processMessages() {
+
+        if (p2p_messages.size()>0)
+            log(">>> Message queue not empty, processing "+p2p_messages.size()+" elements..");
+        else return;
+
+        int max_msg = 500;
+        boolean processed = false;
+        while (!this.p2p_messages.isEmpty() && max_msg>0) {
+            max_msg--;
+            processed = true;
+            var msg = p2p_messages.poll();
+            var current_age = uvm.getTimechain().getCurrent_block() -msg.getTimeStamp();
+
+            if (current_age>5) continue;
+            if (msg.getForwardings()>=ConfigManager.max_gossip_hops) continue;
+
+            var next = msg.getNext();
+
+            switch (msg.getType()) {
+                case CHANNEL_ANNOUNCE -> {
+                    var channel = (LNChannel)msg.getData();
+                    if (!channel_graph.hasChannel(channel)) {
+                        this.channel_graph.addChannel(channel);
+                        broadcastToPeers(next);
+                    }
+                }
+                case CHANNEL_UPDATE -> {
+
+                }
+            }
+        }
+        if (processed) log("<<< End processing messages");
+    }
+
+    /**
+     *
+     */
+    public void runP2PServices() {
+        processMessages();
+    }
+
 
     private synchronized void updateOnChainBalance(int new_balance) {
         this.onchain_balance = new_balance;
@@ -497,13 +540,13 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
 
     @Override
     public String toString() {
-        return "Node{" +
-                "pubkey='" + pubkey + '\'' +
-                ", alias='" + alias + '\'' +
-                ", nchannels=" + channels.size() +
-                ", onchain_balance=" + onchain_balance +
-                ", lightning_balance=" + getLightningBalance() +
-                ", bootstrapped = "+isBootstrap_completed() +
+        return "{" +
+                "pubkey:'" + pubkey + '\'' +
+                ", channels:" + channels.size() +
+                ", onchain:" + onchain_balance +
+                ", lightning:" + getLightningBalance() +
+                ", boot:"+isBootstrap_completed() +
+                ", p2pq:"+getP2PMsgQueue().size() +
                 '}';
     }
 
@@ -514,5 +557,20 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     @Override
     public int compareTo(UVNode uvNode) {
         return this.getPubKey().compareTo(uvNode.getPubKey());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        UVNode uvNode = (UVNode) o;
+
+        return pubkey.equals(uvNode.pubkey);
+    }
+
+    @Override
+    public int hashCode() {
+        return pubkey.hashCode();
     }
 }

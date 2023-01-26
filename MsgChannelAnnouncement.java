@@ -1,14 +1,31 @@
-public class MsgChannelAnnouncement {
-    final LNChannel channel;
-    private int forwardings = 0;
+public class MsgChannelAnnouncement implements P2PMessage{
+    String ID;
+    private final LNChannel channel;
+    private final int forwardings;
+    private final Type type = Type.CHANNEL_ANNOUNCE;
+    private final int timestamp;
+    
+    
 
-    public MsgChannelAnnouncement(LNChannel channel) {
+    public MsgChannelAnnouncement(LNChannel channel,int timestamp) {
+        this.ID = "ANN_"+channel.getId();
         this.channel = channel;
+        this.timestamp = timestamp;
+        this.forwardings = 0;
+    }
+    private MsgChannelAnnouncement(LNChannel channel,int timestamp, int forwardings) {
+        this.ID = "ANN_"+channel.getId();
+        this.channel = channel;
+        this.timestamp = timestamp;
+        this.forwardings = forwardings;
+    }
+
+    public Object getData() {
+        return channel;
     }
 
     public MsgChannelAnnouncement getNext() {
-        var next = new MsgChannelAnnouncement(this.channel);
-        next.forwardings = this.forwardings+1;
+        var next = new MsgChannelAnnouncement(this.channel,this.timestamp,this.forwardings+1);
         return next;
     }
 
@@ -16,11 +33,29 @@ public class MsgChannelAnnouncement {
         return forwardings;
     }
 
+    /**
+     * @return 
+     */
     @Override
-    public String toString() {
-        return "MsgChannelAnnouncement{" +
-                "channel_id=" + channel.getId() +
-                ", forwardings=" + forwardings +
-                '}';
+    public String getID() {
+        return ID;
     }
+
+    /**
+     * @return 
+     */
+    @Override
+    public Type getType() {
+        return type;
+    }
+
+    /**
+     * @return
+     */
+    @Override
+    public int getTimeStamp() {
+        return timestamp;
+    }
+
+
 }
