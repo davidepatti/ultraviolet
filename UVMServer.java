@@ -104,15 +104,18 @@ public class UVMServer implements Runnable {
                             send_to_client("END_DATA");
                         }
                         case "STATS" -> {
-                            var max = uvm.getStats().getMaxGraphSizeNode();
-                            var min = uvm.getStats().getMinGraphSizeNode();
-                            StringBuilder s = new StringBuilder();
-                            s.append("Max Graph size:").append(max).append(" (node/channels) ");
-                            s.append(max.getChannelGraph().getNodeCount()).append("/").append(max.getChannelGraph().getChannelCount());
-                            s.append("\nMin Graph size:").append(min).append(" (node/channels) ");
-                            s.append(min.getChannelGraph().getNodeCount()).append("/").append(min.getChannelGraph().getChannelCount());
-
-                            send_to_client(s.toString());
+                            if (uvm.bootstrapCompleted())  {
+                                var max = uvm.getStats().getMaxGraphSizeNode();
+                                var min = uvm.getStats().getMinGraphSizeNode();
+                                StringBuilder s = new StringBuilder();
+                                s.append("Max Graph size:").append(max).append(" (node/channels) ");
+                                s.append(max.getChannelGraph().getNodeCount()).append("/").append(max.getChannelGraph().getChannelCount());
+                                s.append("\nMin Graph size:").append(min).append(" (node/channels) ");
+                                s.append(min.getChannelGraph().getNodeCount()).append("/").append(min.getChannelGraph().getChannelCount());
+                                s.append("Average graph size (nodes): "+uvm.getStats().getAverageGraphSize());
+                                send_to_client(s.toString());
+                            }
+                            else send_to_client("Bootstrap not completed!");
                             send_to_client("END_DATA");
                         }
                         default -> {

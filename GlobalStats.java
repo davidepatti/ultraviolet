@@ -11,12 +11,19 @@ public class GlobalStats {
     public UVNode getMaxGraphSizeNode() {
 
         Optional<UVNode> max = uvm.getUVnodes().values().stream().max((e1, e2)->Integer.compare(e1.getChannelGraph().getNodeCount(), e2.getChannelGraph().getNodeCount()));
-        return max.get();
+        if (max.isPresent()) return max.get();
+        else return null;
     }
     public UVNode getMinGraphSizeNode() {
 
         Optional<UVNode> max = uvm.getUVnodes().values().stream().min((e1, e2)->Integer.compare(e1.getChannelGraph().getNodeCount(), e2.getChannelGraph().getNodeCount()));
-        return max.get();
+        if (max.isPresent())
+            return max.get();
+        else return null;
+    }
+
+    public double getAverageGraphSize() {
+        return uvm.getUVnodes().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).average().getAsDouble();
     }
 
 }
