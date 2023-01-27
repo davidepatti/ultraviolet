@@ -1,9 +1,12 @@
+import java.lang.reflect.Member;
+
 public class MsgChannelAnnouncement implements P2PMessage{
     String ID;
     private final LNChannel channel;
     private final int forwardings;
     private final Type type = Type.CHANNEL_ANNOUNCE;
     private final int timestamp;
+    MsgChannelAnnouncement next;
     
     
 
@@ -24,8 +27,10 @@ public class MsgChannelAnnouncement implements P2PMessage{
         return channel;
     }
 
-    public MsgChannelAnnouncement getNext() {
-        var next = new MsgChannelAnnouncement(this.channel,this.timestamp,this.forwardings+1);
+    public synchronized MsgChannelAnnouncement getNext() {
+        if (next==null) {
+            next = new MsgChannelAnnouncement(this.channel,this.timestamp,this.forwardings+1);
+        }
         return next;
     }
 

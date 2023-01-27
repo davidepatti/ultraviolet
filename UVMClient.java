@@ -54,8 +54,6 @@ public class UVMClient {
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
 
-        //var executor = Executors.newSingleThreadScheduledExecutor();
-        //executor.scheduleAtFixedRate(()->initConnection(UVM_SERVER_HOST,PORT),0,2, TimeUnit.SECONDS);
         initConnection(UVM_SERVER_HOST,PORT);
 
         menuItems.add(new MenuItem("boot", "Bootstrap Lightning Network from scratch", (x) -> {
@@ -81,12 +79,14 @@ public class UVMClient {
         }));
         menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
             System.out.print("insert node public key:");
-            send_cmd.accept("SHOW_NODE\n" + scanner.nextLine());
+            send_cmd.accept("SHOW_NODE\n"+scanner.nextLine());
             wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("rand", "Generate Random Events ", x -> {
             System.out.print("Number of events:");
-            send_cmd.accept("MSG_RANDOM_EVENTS\n" + scanner.nextLine());
+            String n = scanner.nextLine();
+            send_cmd.accept("MSG_RANDOM_EVENTS");
+            send_cmd.accept(n);
             wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("r", "Reconnect to Server", x -> {
@@ -154,8 +154,6 @@ public class UVMClient {
             }
         }
         System.out.println("Disconnecting client");
-
-
     }
 
     public static boolean isConnected(Socket socket) {
