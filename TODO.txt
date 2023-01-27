@@ -1,15 +1,16 @@
 - implement the update channel message for fees and lock delta
-- set a proper gossip propagation policy (stop after hops? periodically broadcast from thread?)
 
 - channel confirmation delay, also similar blockchain related events
 - importing real topology (e.g. lncli describegraph)
-- saving state
-- restart uvm network (DONE)
 - profiles in properties
-- deterministic random in nodes:
+- initial_routing_sync to query for past gossip:
+https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#initial-sync
 
-warmup, but in general, starting time of bootstrap creates a race condition on which p2p message will be received
+DONE
+- set a proper gossip propagation policy (stop after hops? periodically broadcast from thread?)
+- saving state
+- deterministic random in nodes
+note: warmup, but in general, starting time of bootstrap creates a race condition on which p2p message will be received
 for example: node x opens a channel, announce to peers, but peers that opened the channel towwards x will be
 in the list only if their channel has been opened from their side, which depend on bootstrap timing
-- the list of channel should not depend on this, for each channel
-
+- restart uvm network

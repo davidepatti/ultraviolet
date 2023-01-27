@@ -3,22 +3,37 @@ import java.util.Properties;
 
 public class ConfigManager implements Serializable {
 
+    private static Properties properties;
+
     @Serial
     private static final long serialVersionUID = 120678L;
+    private static final String DEFAULT_BLOCKTIME = "1000";
+    private static final String DEFAULT_SERVERPORT = "7777";
+    private static final String DEFAULT_LOGFILE = "uvm.log";
+    private static final String DEFAULT_SEED = "0";
+
+    // bootstrap
     private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
     private static final String DEFAULT_TOTAL_NODES = "10";
     private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
     private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
-    private static final String DEFAULT_LOGFILE = "uvm.log";
-    private static final String DEFAULT_SERVERPORT = "7777";
     private static final String DEFAULT_MIN_CHANNELS = "3";
     private static final String DEFAULT_MAX_CHANNELS = "5";
     private static final String DEFAULT_MIN_CHANNEL_SIZE = "1000000"; //1M
     private static final String DEFAULT_MAX_CHANNEL_SIZE = "10000000"; //10M
-    private static final String DEFAULT_SEED = "0";
-    private static final String DEFAULT_BLOCK_TIMING = "1000";
-    private static final String DEFAULT_MAX_GOSSIP_HOPS = "2";
 
+
+    // p2p
+    private static final String DEFAULT_MAX_P2P_HOPS = "3";
+    private static final String DEFAULT_MAX_P2P_AGE = "5";
+    private static final String DEFAULT_P2P_PERIOD = "100";
+
+    public static int blocktime;
+    public static int server_port;
+    public static String logfile;
+    public static int seed;
+
+    // bootstrap
     public static int bootstrap_warmup;
     public static int total_nodes;
     public static int min_funding;
@@ -27,17 +42,24 @@ public class ConfigManager implements Serializable {
     public static int max_channels;
     public static int min_channel_size;
     public static int max_channel_size;
-    public static int server_port;
-    public static String logfile;
-    public static int seed;
-    public static final boolean verbose = false;
-    public static int blocktiming;
-    public static int max_gossip_hops;
-    public static boolean debug = false;
 
+
+    // p2p
+    public static int max_p2p_hops;
+    public static int max_p2p_age;
+    public static int p2p_period;
+
+    public static final boolean verbose = false;
+    public static boolean debug = false;
 
     public static void setDefaults() {
         // default values when not config file is provided
+        blocktime = Integer.parseInt(DEFAULT_BLOCKTIME);
+        server_port = Integer.parseInt(DEFAULT_SERVERPORT);
+        logfile = DEFAULT_LOGFILE;
+        seed = Integer.parseInt(DEFAULT_SEED);
+
+        // bootstrap
         bootstrap_warmup = Integer.parseInt(DEFAULT_BOOTSTRAP_WARMUP);
         total_nodes = Integer.parseInt(DEFAULT_TOTAL_NODES);
         min_funding = Integer.parseInt(DEFAULT_MIN_FUNDING);
@@ -48,35 +70,43 @@ public class ConfigManager implements Serializable {
 
         min_channel_size = Integer.parseInt(DEFAULT_MIN_CHANNEL_SIZE);
         max_channel_size = Integer.parseInt(DEFAULT_MAX_CHANNEL_SIZE);
-        server_port = Integer.parseInt(DEFAULT_SERVERPORT);
 
-        logfile = DEFAULT_LOGFILE;
-
-        seed = Integer.parseInt(DEFAULT_SEED);
-        blocktiming = Integer.parseInt(DEFAULT_BLOCK_TIMING);
-        max_gossip_hops = Integer.parseInt(DEFAULT_MAX_GOSSIP_HOPS);
+        // p2p
+        max_p2p_hops = Integer.parseInt(DEFAULT_MAX_P2P_HOPS);
+        max_p2p_age = Integer.parseInt(DEFAULT_MAX_P2P_AGE);
+        p2p_period = Integer.parseInt(DEFAULT_P2P_PERIOD);
         debug = true;
     }
 
+
+    public static void setConfig (Properties properties) {
+        ConfigManager.properties = properties;
+    }
+
     public static void loadConfig(String config_file) {
+        properties = new Properties();
         try {
             var config_file_reader = new FileReader(config_file);
-            var config = new Properties();
-            config.load(config_file_reader);
-            ///String profile = config.getProperty("profile")
-            bootstrap_warmup = Integer.parseInt(config.getProperty("bootstrap_warmup", DEFAULT_BOOTSTRAP_WARMUP));
-            total_nodes = Integer.parseInt(config.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
-            min_funding = Integer.parseInt(config.getProperty("min_funding", DEFAULT_MIN_FUNDING));
-            max_funding = Integer.parseInt(config.getProperty("max_funding", DEFAULT_MAX_FUNDING));
-            min_channels = Integer.parseInt(config.getProperty("min_channels", DEFAULT_MIN_CHANNELS));
-            max_channels = Integer.parseInt(config.getProperty("max_channels", DEFAULT_MAX_CHANNELS));
-            min_channel_size = Integer.parseInt(config.getProperty("min_channel_size", DEFAULT_MIN_CHANNEL_SIZE));
-            max_channel_size = Integer.parseInt(config.getProperty("max_channel_size", DEFAULT_MAX_CHANNEL_SIZE));
-            server_port = Integer.parseInt(config.getProperty("server_port", DEFAULT_SERVERPORT));
-            logfile = config.getProperty("logfile", DEFAULT_LOGFILE);
-            seed = Integer.parseInt(config.getProperty("seed",DEFAULT_SEED));
-            blocktiming = Integer.parseInt(config.getProperty("blocktiming", DEFAULT_BLOCK_TIMING));
-            max_gossip_hops = Integer.parseInt(config.getProperty("max_gossip_hops", DEFAULT_MAX_GOSSIP_HOPS));
+            properties.load(config_file_reader);
+            blocktime = Integer.parseInt(properties.getProperty("blocktime", DEFAULT_BLOCKTIME));
+            server_port = Integer.parseInt(properties.getProperty("server_port", DEFAULT_SERVERPORT));
+            logfile = properties.getProperty("logfile", DEFAULT_LOGFILE);
+            seed = Integer.parseInt(properties.getProperty("seed",DEFAULT_SEED));
+
+            // bootstrap
+            bootstrap_warmup = Integer.parseInt(properties.getProperty("bootstrap_warmup", DEFAULT_BOOTSTRAP_WARMUP));
+            total_nodes = Integer.parseInt(properties.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
+            min_funding = Integer.parseInt(properties.getProperty("min_funding", DEFAULT_MIN_FUNDING));
+            max_funding = Integer.parseInt(properties.getProperty("max_funding", DEFAULT_MAX_FUNDING));
+            min_channels = Integer.parseInt(properties.getProperty("min_channels", DEFAULT_MIN_CHANNELS));
+            max_channels = Integer.parseInt(properties.getProperty("max_channels", DEFAULT_MAX_CHANNELS));
+            min_channel_size = Integer.parseInt(properties.getProperty("min_channel_size", DEFAULT_MIN_CHANNEL_SIZE));
+            max_channel_size = Integer.parseInt(properties.getProperty("max_channel_size", DEFAULT_MAX_CHANNEL_SIZE));
+
+            // p2p
+            max_p2p_hops = Integer.parseInt(properties.getProperty("max_p2p_hops", DEFAULT_MAX_P2P_HOPS));
+            max_p2p_age = Integer.parseInt(properties.getProperty("max_p2p_age", DEFAULT_MAX_P2P_AGE));
+            max_p2p_hops = Integer.parseInt(properties.getProperty("p2p_period", DEFAULT_P2P_PERIOD));
             config_file_reader.close();
             debug = true;
 
@@ -92,17 +122,13 @@ public class ConfigManager implements Serializable {
 
     }
 
-    public static String printConfig() {
-        return
-        ", tot_nodes:"+ total_nodes+
-        ", min_funding:"+min_funding+
-        ", max_funding:"+max_funding+
-        ", min_channels:"+min_channels+
-        ", max_channels:"+max_channels+
-        ", min_channel_size:"+min_channel_size+
-        ", max_channel_size:"+max_channel_size+
-        ", server_port:"+server_port+
-        ", logfile:"+logfile+
-        ", seed:"+seed;
+    @Override
+    public String toString() {
+        return properties.toString();
     }
+
+    public static Properties getConfig() {
+        return properties;
+    }
+
 }

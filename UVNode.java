@@ -30,84 +30,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     transient Queue<P2PMessage> p2p_messages = new ConcurrentLinkedQueue<>();
 
 
-    /**
-     * Custom Serialized format: number of element / objects
-     * @param s
-     */
-    @Serial
-    private void writeObject(ObjectOutputStream s) {
-        try {
-            // savig non transient data
-            s.defaultWriteObject();
-
-            s.writeInt(channels.size());
-            for (UVChannel c:channels.values()) {
-                s.writeObject(c);
-            }
-            // saving only pubkey
-            s.writeInt(peers.size());
-            for (P2PNode p:peers.values()) {
-                s.writeObject(p.getPubKey());
-            }
-
-            s.writeObject(channel_graph);
-
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    /**
-     * Restoring that can performed after all UVNodes have be loaded from UVM load (after all
-     * readObject have been invoked on all UVNodes
-     */
-    public void restorePersistentData() {
-        //channel_graph = new ChannelGraph();
-        // restore channel partners
-        for (UVChannel c:channels.values()) {
-            c.initiatorNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
-            c.channelPeerNode = uvm.getUVnodes().get(c.getPeerPubKey());
-        }
-
-        // restore peers
-        peers = new ConcurrentHashMap<>();
-        for (String p: saved_peer_list)
-           peers.put(p,uvm.getUVnodes().get(p));
-
-        //channel_graph.restoreChannelGraph(uvm);
-
-    }
-
-    /**
-     * Read custom serialization of UVNode: num channels + sequence of channels object
-     * Notice that internal UVNodes are restored separately to avoid stack overflow
-     * @param s
-     */
-    @Serial
-    private void readObject(ObjectInputStream s) {
-        channels = new ConcurrentHashMap<>();
-        saved_peer_list = new ArrayList<>();
-
-        try {
-            s.defaultReadObject();
-            int num_channels = s.readInt();
-            for (int i=0;i<num_channels;i++) {
-                UVChannel c = (UVChannel)s.readObject();
-                channels.put(c.getId(),c);
-            }
-            int num_peers = s.readInt();
-            for (int i=0;i<num_peers;i++) {
-                saved_peer_list.add((String)s.readObject());
-            }
-
-            channel_graph = (ChannelGraph) s.readObject();
-
-        }
-         catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -214,6 +136,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         var warmup = ConfigManager.bootstrap_warmup;
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
+        // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
         if (warmup!=0) {
             var ready_to_go = uvm.getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(0,warmup));
             log(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
@@ -224,14 +147,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             }
         }
         log("Starting bootstrap!");
-
-        /*
-        // p2p services like broadcasting new message announcement etc should be processed not too oftern to avoid gossip
-        // here the period is expressed in blocks using the gettimedelay function
-        var p2p_executor =Executors.newSingleThreadScheduledExecutor();
-        p2p_executor.scheduleAtFixedRate(()->P2PService(),0,uvm.getTimechain().getBlockToMillisecTimeDelay(1),TimeUnit.MILLISECONDS);
-         */
-
 
         while (behavior.getBoostrapChannels() > initiated_channels) {
 
@@ -402,9 +317,11 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     /**
-     *
+     * Internal processing of the queue of p2p gossip messages
+     * A max number of messages is processed periodically to avoid execessive overloading
+     * Messages older than a given number of blocks are discarded
      */
-    public void processMessages() {
+    private void processGossipMessages() {
 
         if (p2p_messages.size()>0)
             log(">>> Message queue not empty, processing "+p2p_messages.size()+" elements..");
@@ -418,8 +335,8 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             var msg = p2p_messages.poll();
             var current_age = uvm.getTimechain().getCurrent_block() -msg.getTimeStamp();
 
-            if (current_age>5) continue;
-            if (msg.getForwardings()>=ConfigManager.max_gossip_hops) continue;
+            if (current_age>ConfigManager.max_p2p_age) continue;
+            if (msg.getForwardings()>=ConfigManager.max_p2p_hops) continue;
 
             var next = msg.getNext();
 
@@ -440,10 +357,11 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     /**
-     *
+     * All the services and actions that are periodically performed by the node
+     * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
      */
     public void runP2PServices() {
-        processMessages();
+        processGossipMessages();
     }
 
 
@@ -540,13 +458,19 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
 
     @Override
     public String toString() {
+
+        int size;
+        if (getP2PMsgQueue()!=null)
+            size = getP2PMsgQueue().size();
+        else size = 0;
+
         return "{" +
                 "pubkey:'" + pubkey + '\'' +
                 ", channels:" + channels.size() +
                 ", onchain:" + onchain_balance +
                 ", lightning:" + getLightningBalance() +
                 ", boot:"+isBootstrap_completed() +
-                ", p2pq:"+getP2PMsgQueue().size() +
+                ", p2pq:"+size+
                 '}';
     }
 
@@ -572,5 +496,82 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     @Override
     public int hashCode() {
         return pubkey.hashCode();
+    }
+/********************************************************************************
+ * Serialization section
+ */
+    /**
+     * Custom Serialized format: number of element / objects
+     * @param s The outputstream, as specified when choosing saving file
+     */
+    @Serial
+    private void writeObject(ObjectOutputStream s) {
+        try {
+            // savig non transient data
+            s.defaultWriteObject();
+
+            s.writeInt(channels.size());
+            for (UVChannel c:channels.values()) {
+                s.writeObject(c);
+            }
+            // saving only pubkey
+            s.writeInt(peers.size());
+            for (P2PNode p:peers.values()) {
+                s.writeObject(p.getPubKey());
+            }
+
+            s.writeObject(channel_graph);
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    /**
+     * Read custom serialization of UVNode: num channels + sequence of channels object
+     * Notice that internal UVNodes are restored separately to avoid stack overflow
+     * @param s
+     */
+    @Serial
+    private void readObject(ObjectInputStream s) {
+        channels = new ConcurrentHashMap<>();
+        saved_peer_list = new ArrayList<>();
+
+        try {
+            s.defaultReadObject();
+            int num_channels = s.readInt();
+            for (int i=0;i<num_channels;i++) {
+                UVChannel c = (UVChannel)s.readObject();
+                channels.put(c.getId(),c);
+            }
+            int num_peers = s.readInt();
+            for (int i=0;i<num_peers;i++) {
+                saved_peer_list.add((String)s.readObject());
+            }
+
+            channel_graph = (ChannelGraph) s.readObject();
+
+        }
+        catch (IOException | ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    /**
+     * Restoring that can performed only after all UVNodes have be loaded from UVM load (after all
+     * readObject have been invoked on all UVNodes
+     */
+    public void restorePersistentData() {
+        //channel_graph = new ChannelGraph();
+        // restore channel partners
+        for (UVChannel c:channels.values()) {
+            c.initiatorNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
+            c.channelPeerNode = uvm.getUVnodes().get(c.getPeerPubKey());
+        }
+
+        // restore peers
+        peers = new ConcurrentHashMap<>();
+        for (String p: saved_peer_list)
+            peers.put(p,uvm.getUVnodes().get(p));
     }
 }

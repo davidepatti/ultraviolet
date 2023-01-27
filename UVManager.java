@@ -1,5 +1,6 @@
 import java.io.*;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -47,7 +48,8 @@ public class UVManager {
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
-           f.writeInt(UVnodes.size());
+            f.writeObject(ConfigManager.getConfig());
+            f.writeInt(UVnodes.size());
 
            for (UVNode n: UVnodes.values())
                 f.writeObject(n);
@@ -66,6 +68,9 @@ public class UVManager {
         UVnodes.clear();
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
+
+            var config = (Properties)s.readObject();
+            ConfigManager.setConfig(config);
 
             int num_nodes = s.readInt();
             for (int i=0;i<num_nodes;i++) {
@@ -126,7 +131,7 @@ public class UVManager {
     public UVManager() {
         initLog();
 
-        timechain = new Timechain(ConfigManager.blocktiming);
+        timechain = new Timechain(ConfigManager.blocktime);
 
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
         log("Initializing UVManager...");
@@ -139,7 +144,7 @@ public class UVManager {
         log("Resetting UVManager (experimental!)");
         random = new Random();
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
-        timechain = new Timechain(ConfigManager.blocktiming);
+        timechain = new Timechain(ConfigManager.blocktime);
         bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
         boostrap_started = false;
         bootstrap_completed = false;
@@ -219,7 +224,7 @@ public class UVManager {
         log("UVM: Starting timechain: "+timechain);
         new Thread(timechain,"timechain").start();
 
-        log("UVM: deploying nodes, configuration: "+ ConfigManager.printConfig());
+        log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
         int max = ConfigManager.max_funding/(int)1e6;
         int min = ConfigManager.min_funding /(int)1e6;
 
@@ -329,7 +334,7 @@ public class UVManager {
     private String getStatus() {
         StringBuilder s = new StringBuilder();
         s.append("\n-------------------------------------------------------------");
-        s.append("\nConfiguration: ").append(ConfigManager.printConfig());
+        s.append("\nConfiguration: ").append(ConfigManager.getConfig());
         s.append("\nTimechain: ").append(timechain);
         s.append("\nBootstrap completed: ").append(bootstrapCompleted());
 
