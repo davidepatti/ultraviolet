@@ -1,3 +1,7 @@
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+
 import java.io.*;
 import java.util.HashMap;
 import java.util.Properties;
@@ -11,7 +15,7 @@ import java.util.function.Consumer;
 public class UVManager {
 
     CountDownLatch bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
-    private final HashMap<String, UVNode> UVnodes = new HashMap<>();
+    private HashMap<String, UVNode> uvnodes = new HashMap<>();
 
     private String[] pubkeys_list;
 
@@ -37,7 +41,7 @@ public class UVManager {
      * Save the current network status to file
      * @param file destination file
      */
-    public void save(String file) {
+    public void saveStatus(String file) {
 
         if (bootstrapStarted() && !bootstrapCompleted())  {
             Log.accept("Bootstrap incomplete, cannot save");
@@ -49,9 +53,9 @@ public class UVManager {
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
             f.writeObject(ConfigManager.getConfig());
-            f.writeInt(UVnodes.size());
+            f.writeInt(uvnodes.size());
 
-           for (UVNode n: UVnodes.values())
+           for (UVNode n: uvnodes.values())
                 f.writeObject(n);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -64,8 +68,8 @@ public class UVManager {
      * @param file
      * @return False if is not possible to read the file
      */
-    public boolean load(String file) {
-        UVnodes.clear();
+    public boolean loadStatus(String file) {
+        uvnodes.clear();
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
@@ -76,11 +80,11 @@ public class UVManager {
             for (int i=0;i<num_nodes;i++) {
                 UVNode n = (UVNode) s.readObject();
                 n.setUVM(this);
-                UVnodes.put(n.getPubKey(),n);
+                uvnodes.put(n.getPubKey(),n);
             }
 
             // must restore channel partners, can be done only after all nodes have been restored in UVM
-            for (UVNode n:UVnodes.values()) {
+            for (UVNode n: uvnodes.values()) {
                 n.restorePersistentData();
             }
             updatePubkeyList();
@@ -140,18 +144,24 @@ public class UVManager {
         stats = new GlobalStats(this);
     }
     // TODO: not guaranteed to work perfectly
-    public synchronized void resetUVM() {
+    public synchronized boolean resetUVM() {
         log("Resetting UVManager (experimental!)");
+        if (bootstrapStarted() && !bootstrapCompleted()) {
+            log("Cannot reset, bootstrap in progress. Please quit UVM");
+            return false;
+        }
+
+        if (timechain!=null && timechain.isRunning()) timechain.stop();
+
         random = new Random();
         if (ConfigManager.seed!=0) random.setSeed(ConfigManager.seed);
         timechain = new Timechain(ConfigManager.blocktime);
         bootstrap_latch= new CountDownLatch(ConfigManager.total_nodes);
         boostrap_started = false;
         bootstrap_completed = false;
-        this.UVnodes.clear();
-
-
+        this.uvnodes = new HashMap<>();
         System.gc();
+        return true;
     }
 
     /**
@@ -184,16 +194,16 @@ public class UVManager {
      * @return
      */
     public LNode getLNode(String pubkey) {
-        return UVnodes.get(pubkey);
+        return uvnodes.get(pubkey);
     }
 
     /**
      *
      * @return
      */
-    public HashMap<String, UVNode> getUVnodes(){
+    public HashMap<String, UVNode> getUvnodes(){
 
-        return this.UVnodes;
+        return this.uvnodes;
     }
 
     /**
@@ -208,8 +218,8 @@ public class UVManager {
      * Updates the list the currently known pubkeys, to be used for genel sim purposes
      */
     private void updatePubkeyList() {
-        pubkeys_list = new String[UVnodes.keySet().size()];
-        pubkeys_list = UVnodes.keySet().toArray(pubkeys_list);
+        pubkeys_list = new String[uvnodes.keySet().size()];
+        pubkeys_list = uvnodes.keySet().toArray(pubkeys_list);
     }
 
     /**
@@ -236,14 +246,14 @@ public class UVManager {
             var n = new UVNode(this,"pk_"+i,"LN"+i,funding);
             var behavior = new NodeBehavior(ConfigManager.min_channels, ConfigManager.min_channel_size, ConfigManager.max_channel_size);
             n.setBehavior(behavior);
-            UVnodes.put(n.getPubKey(),n);
+            uvnodes.put(n.getPubKey(),n);
         }
 
         updatePubkeyList();
 
         log("Starting node threads...");
         ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.total_nodes);
-        for (UVNode n : UVnodes.values()) {
+        for (UVNode n : uvnodes.values()) {
            bootexec.submit(n::bootstrapNode);
         }
 
@@ -263,7 +273,7 @@ public class UVManager {
         log("Launching p2p nodes services...");
         var p2p_executor = Executors.newScheduledThreadPool(ConfigManager.total_nodes);
         var delay = getTimechain().getBlockToMillisecTimeDelay(1);
-        for (UVNode n : UVnodes.values()) {
+        for (UVNode n : uvnodes.values()) {
             //p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,getTimechain().getBlockToMillisecTimeDelay(1),TimeUnit.MILLISECONDS);
             p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,delay,TimeUnit.MILLISECONDS);
         }
@@ -283,12 +293,12 @@ public class UVManager {
         // TODO: to change if nodes will be closed in future versions
         var n = random.nextInt(pubkeys_list.length);
         var some_random_key = pubkeys_list[n];
-        return UVnodes.get(some_random_key);
+        return uvnodes.get(some_random_key);
     }
 
     public UVNode getDeterministicNode(int n) {
        var some_key = pubkeys_list[n];
-       return UVnodes.get(some_key);
+       return uvnodes.get(some_key);
 
     }
 
@@ -328,6 +338,50 @@ public class UVManager {
             some_node.pushSats(some_channel_id,some_amount);
         }
         log("Random events generation ended!");
+    }
+
+
+    public void importTopology(String json_file) {
+        JSONParser parser = new JSONParser();
+        log("Beginning importing file "+json_file);
+        try {
+            Object obj = parser.parse(new FileReader(json_file));
+            JSONObject jsonObject = (JSONObject) obj;
+
+            JSONArray nodes = (JSONArray) jsonObject.get("nodes");
+            for (Object node : nodes ) {
+                JSONObject nodeObject = (JSONObject) node;
+                String pub_key = (String) nodeObject.get("pub_key");
+                String alias = (String) nodeObject.get("alias");
+
+                var uvNode = new UVNode(this,pub_key,alias,999);
+                uvnodes.put(pub_key,uvNode);
+            }
+            log("Node import ended, importing channels...");
+
+            JSONArray edges = (JSONArray) jsonObject.get("edges");
+            for (Object edge : edges) {
+                JSONObject edgeObject = (JSONObject) edge;
+                String channel_id = (String) edgeObject.get("channel_id");
+                System.out.println("channel_id: " + channel_id);
+                String node1_pub = (String) edgeObject.get("node1_pub");
+                String node2_pub = (String) edgeObject.get("node2_pub");
+                var uvnode1 = uvnodes.get(node1_pub);
+                var uvnode2 = uvnodes.get(node2_pub);
+                int capacity = Integer.parseInt((String) edgeObject.get("capacity"));
+
+                UVChannel ch = new UVChannel(uvnode1,uvnode2,capacity,0,channel_id,-1,-1,-1,-1,0);
+
+                uvnodes.get(node1_pub).getChannelGraph().addChannel(ch);
+                uvnodes.get(node2_pub).getChannelGraph().addChannel(ch);
+            }
+
+            log("Import completed");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
 

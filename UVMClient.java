@@ -19,10 +19,34 @@ public class UVMClient {
     final Consumer<String> send_cmd = x-> { os.println(x); os.flush();};
     final Consumer<String> wait_msg = (x)-> {
         String s;
+        System.out.println("WAIT");
         while (is.hasNextLine() && !((s=is.nextLine()).equals(x))) {
             System.out.println(s);
         }
+        System.out.println("END WAIT");
     };
+
+    private void sendCmd(String s) {
+        os.println(s);
+        os.flush();
+    }
+
+    private void waitMsg(String x) {
+        String s;
+
+        /*
+        while (is.hasNextLine() && !((s=is.nextLine()).equals(x))) {
+            System.out.println(s);
+        }
+         */
+        System.out.println("WAIT");
+        while (is.hasNextLine()) {
+            s = is.nextLine();
+            System.out.println(s);
+            if (s.equals(x)) break;
+        }
+        System.out.println("END WAIT");
+    }
 
     private static class MenuItem {
         public final String key, description;
@@ -76,6 +100,11 @@ public class UVMClient {
         menuItems.add(new MenuItem("status", "UVM Status ", x -> {
             send_cmd.accept("STATUS");
             wait_msg.accept("END_DATA");
+            /*
+            sendCmd("STATUS");
+            waitMsg("END_DATA");
+
+             */
         }));
         menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
             System.out.print("insert node public key:");
@@ -89,8 +118,12 @@ public class UVMClient {
             send_cmd.accept(n);
             wait_msg.accept("END_DATA");
         }));
-        menuItems.add(new MenuItem("r", "Reconnect to Server", x -> {
-            initConnection(UVM_SERVER_HOST,PORT);
+        menuItems.add(new MenuItem("imp", "Import Network Topology", x -> {
+            System.out.print("Enter a JSON file: ");
+            String f = scanner.nextLine();
+            send_cmd.accept("IMPORT");
+            send_cmd.accept(f);
+            wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("route", "Get routing paths between nodes", x -> {
             System.out.print("Starting node public key:");

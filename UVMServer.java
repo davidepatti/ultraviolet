@@ -60,16 +60,16 @@ public class UVMServer implements Runnable {
                             send_to_client("END_DATA");
                         }
                         case "DISCONNECT" -> disconnect = true;
-                        case "SHOW_NETWORK" -> showNetwork();
+                        case "SHOW_NETWORK" -> showNetworkCmd();
                         case "TEST" -> send_to_client("END_DATA");
                         case "SAVE" -> {
                             String file_to_save = is.nextLine();
-                            uvm.save(file_to_save);
+                            uvm.saveStatus(file_to_save);
                             send_to_client("END_DATA");
                         }
                         case "LOAD" -> {
                             String file_to_load = is.nextLine();
-                            if (uvm.load(file_to_load))
+                            if (uvm.loadStatus(file_to_load))
                                 send_to_client("UVM LOADED");
                             else send_to_client("ERROR LOADING UVM from " + file_to_load);
                             send_to_client("END_DATA");
@@ -84,12 +84,12 @@ public class UVMServer implements Runnable {
                             }
                             send_to_client("END_DATA");
                         }
-                        case "STATUS" -> getStatus();
+                        case "STATUS" -> getStatusCommand();
                         case "SHOW_NODE" -> {
                             String node = is.nextLine();
-                            showNode(node);
+                            showNodeCommand(node);
                         }
-                        case "SHOW_NODES" -> showNodes();
+                        case "SHOW_NODES" -> showNodesCommand();
                         case "FREE" -> {
                             uvm.free();
                             send_to_client("END_DATA");
@@ -97,12 +97,25 @@ public class UVMServer implements Runnable {
                         case "ROUTE" -> {
                             String start = is.nextLine();
                             String end = is.nextLine();
-                            route(start, end);
+                            routeCommand(start, end);
+                        }
+                        case "IMPORT" -> {
+                            //String json = is.nextLine();
+                            /*
+                             */
+                            String json = is.nextLine();
+                            send_to_client(json);
+                            new Thread(()->uvm.importTopology(json)).start();
+                            send_to_client("END_DATA");
+                            //importCommand(json);
+
+                            //send_to_client("END_DATA");
                         }
                         case "RESET" -> {
                             uvm.resetUVM();
                             send_to_client("END_DATA");
                         }
+
                         case "STATS" -> {
                             if (uvm.bootstrapCompleted())  {
                                 var max = uvm.getStats().getMaxGraphSizeNode();
@@ -131,9 +144,20 @@ public class UVMServer implements Runnable {
         }
     }
 
-    private void route(String start, String end) {
-        UVNode start_node = uvm.getUVnodes().get(start);
-        UVNode end_node = uvm.getUVnodes().get(end);
+    private void importCommand(String json_file) {
+        /*
+        if (!uvm.resetUVM()) {
+            send_to_client("Cannot reset UVM!");
+            send_to_client("END_DATA");
+            return;
+        }
+
+         */
+    }
+
+    private void routeCommand(String start, String end) {
+        UVNode start_node = uvm.getUvnodes().get(start);
+        UVNode end_node = uvm.getUvnodes().get(end);
 
         if (start_node==null || end_node==null) {
             send_to_client("NOT FOUND");
@@ -156,15 +180,15 @@ public class UVMServer implements Runnable {
         send_to_client("END_DATA");
     }
 
-    private void getStatus() {
+    private void getStatusCommand() {
         send_to_client(uvm.toString());
         send_to_client("END_DATA");
     }
 
-    private void showNetwork() {
-        if (uvm.getUVnodes().size()==0)
+    private void showNetworkCmd() {
+        if (uvm.getUvnodes().size()==0)
             send_to_client("EMPTY NODE LIST");
-        for (UVNode n: uvm.getUVnodes().values()) {
+        for (UVNode n: uvm.getUvnodes().values()) {
             send_to_client(n.toString());
             for (UVChannel c:n.getUVChannels().values()) {
                 send_to_client("\t"+c);
@@ -173,19 +197,19 @@ public class UVMServer implements Runnable {
         send_to_client("END_DATA");
     }
 
-    private void showNodes() {
-        if (uvm.getUVnodes().size()==0)
+    private void showNodesCommand() {
+        if (uvm.getUvnodes().size()==0)
             send_to_client("EMPTY NODE LIST");
 
-        uvm.getUVnodes().values().stream().sorted().forEach((n)-> send_to_client(n.toString()));
+        uvm.getUvnodes().values().stream().sorted().forEach((n)-> send_to_client(n.toString()));
         send_to_client("END_DATA");
 
     }
-    private void showNode(String pubkey) {
+    private void showNodeCommand(String pubkey) {
 
-        if (uvm.getUVnodes().size()==0) 
+        if (uvm.getUvnodes().size()==0)
             send_to_client("EMPTY NODE LIST");
-        var node = uvm.getUVnodes().get(pubkey);
+        var node = uvm.getUvnodes().get(pubkey);
         if (node==null) {
             send_to_client("ERROR: NODE NOT FOUND");
             send_to_client("END_DATA");

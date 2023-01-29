@@ -14,6 +14,10 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(s, new LinkedList<>());
     }
 
+    public void clear() {
+        this.adj_map.clear();
+    }
+
     /**
      * This function adds the edge between source to destination
      * @param source
@@ -25,6 +29,8 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(source, new LinkedList<>());
         adj_map.putIfAbsent(destination, new LinkedList<>());
 
+        // do not add channel edge if source and destination area already connected
+        // TODO: in theory, multiple channel could be opened with differen id
         if (this.hasEdge(source,destination)) return;
 
         adj_map.get(source).add(destination);
@@ -214,7 +220,10 @@ public class ChannelGraph implements Serializable  {
     }
     // edges of graph
     public synchronized void addChannel(LNChannel channel) {
-        addEdge(channel.getNode1().getPubKey(),channel.getNode2().getPubKey(),true);
+        addChannel(channel.getNode1().getPubKey(),channel.getNode2().getPubKey());
+    }
+    public synchronized void addChannel(String node1, String node2) {
+        addEdge(node1,node2,true);
     }
     // to edge properties
     @SuppressWarnings("EmptyMethod")

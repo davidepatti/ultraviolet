@@ -6,6 +6,13 @@
 - initial_routing_sync to query for past gossip:
 https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#initial-sync
 
+lncli describegraph > graph.json
+
+cat graph.json | grep "pub_key" | wc -l
+16184
+cat graph.json | grep "channel_id" | wc -l
+76347
+
 DONE
 - set a proper gossip propagation policy (stop after hops? periodically broadcast from thread?)
 - saving state
@@ -14,3 +21,8 @@ note: warmup, but in general, starting time of bootstrap creates a race conditio
 for example: node x opens a channel, announce to peers, but peers that opened the channel towwards x will be
 in the list only if their channel has been opened from their side, which depend on bootstrap timing
 - restart uvm network
+
+
+DEBUG:
+
+with breakpoint on server function wait(END_DATA) does not work on client

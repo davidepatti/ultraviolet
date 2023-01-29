@@ -465,8 +465,9 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         else size = 0;
 
         return "{" +
-                "pubkey:'" + pubkey + '\'' +
-                ", channels:" + channels.size() +
+                "pk:'" + pubkey + '\'' +
+                "("+alias+")"+
+                ", ch:" + channels.size() +
                 ", onchain:" + onchain_balance +
                 ", lightning:" + getLightningBalance() +
                 ", boot:"+isBootstrap_completed() +
@@ -565,13 +566,13 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         //channel_graph = new ChannelGraph();
         // restore channel partners
         for (UVChannel c:channels.values()) {
-            c.initiatorNode = uvm.getUVnodes().get(c.getInitiatorPubKey());
-            c.channelPeerNode = uvm.getUVnodes().get(c.getPeerPubKey());
+            c.initiatorNode = uvm.getUvnodes().get(c.getInitiatorPubKey());
+            c.channelPeerNode = uvm.getUvnodes().get(c.getPeerPubKey());
         }
 
         // restore peers
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peer_list)
-            peers.put(p,uvm.getUVnodes().get(p));
+            peers.put(p,uvm.getUvnodes().get(p));
     }
 }
