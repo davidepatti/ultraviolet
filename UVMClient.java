@@ -13,6 +13,7 @@ public class UVMClient {
     Socket client;
     final String UVM_SERVER_HOST = "127.0.0.1";
     final int PORT = 7777;
+    private String imported_graph_root;
 
     final Consumer<String> send_cmd = x-> { os.println(x); os.flush();};
     final Consumer<String> wait_msg = (x)-> {
@@ -88,18 +89,34 @@ public class UVMClient {
             wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("import", "Import Network Topology", x -> {
+            System.out.println("A graph topology will be imported using the json output of 'lncli describegraph' command on some root node");
             System.out.print("Enter a JSON file: ");
-            String f = scanner.nextLine();
+            String json = scanner.nextLine();
+            System.out.print("Enter root node pubkey:");
+            String root = scanner.nextLine();
+            imported_graph_root = root;
             send_cmd.accept("IMPORT");
-            send_cmd.accept(f);
+            send_cmd.accept(json);
+            send_cmd.accept(root);
             wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("route", "Get routing paths between nodes", x -> {
-            System.out.print("Starting node public key:");
-            String start = scanner.nextLine();
-            System.out.print("End node public key:");
+            String start;
+            if (imported_graph_root!=null) {
+                System.out.println("Imported graph detected...");
+                System.out.println("Using "+imported_graph_root+ " as starting point");
+                start = imported_graph_root;
+            }
+            else {
+                System.out.print("Starting node public key:");
+                start = scanner.nextLine();
+            }
+
+            System.out.print("Destination node public key:");
             String end = scanner.nextLine();
-            send_cmd.accept("ROUTE\n" + start + "\n" + end);
+            System.out.print("Single[1] or All [any key] paths?");
+            String choice = scanner.nextLine();
+            send_cmd.accept("ROUTE\n" + start + "\n" + end+"\n"+choice);
             wait_msg.accept("END_DATA");
         }));
         menuItems.add(new MenuItem("save", "Save UVM status", x -> {

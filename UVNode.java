@@ -20,7 +20,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     // serialized and restored manually, to avoid stack overflow
     transient private UVManager uvm;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
-    transient private ChannelGraph channel_graph = new ChannelGraph();
+    transient private ChannelGraph channel_graph;
     transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
     private boolean bootstrap_completed = false;
@@ -44,7 +44,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         this.alias = alias;
         this.onchain_balance = onchain_balance;
         // change lamba function here to log to a different target
-        channel_graph.addNode(this);
+        channel_graph = new ChannelGraph(pubkey);
     }
 
     private void log(String s) {
@@ -227,19 +227,15 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     /**
-     * Configure a channel for the node. If the channel does not exist creates a new one.
+     * Configure a channel for the node, replacing any existing one with same key
      * Mainly used for importing channels from a previously exported real topology, e.g. lncli describegraph
      * As compared to openChannel method using in bootstrapping;
+     * - it does not create a new object
      * - it does not involve any further p2p action: e.g., asking to the peer to acknowledge the opening, broadcasting, updating channel graph
      * - it does not check actual onchain balances
-     * @param id
-     * @param node1 the initiator node
-     * @param node2 the peer conterpart
-     * @param capacity initial balance, all on the initiator's side
      */
-    public void configureChannel(String id, UVNode node1, UVNode node2, int capacity ) {
-        var new_channel = new UVChannel(id, node1,node2,capacity);
-        channels.put(id,new_channel);
+    public void configureChannel(UVChannel channel) {
+        channels.put(channel.getId(),channel);
     }
     /**
      * Open a channel with a peer node, with the features defined by the node behavior and configuration

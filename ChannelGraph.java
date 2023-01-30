@@ -14,6 +14,8 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(s, new LinkedList<>());
     }
 
+    private String root_node;
+
     public void clear() {
         this.adj_map.clear();
     }
@@ -85,8 +87,61 @@ public class ChannelGraph implements Serializable  {
         return adj_map.containsKey(s);
     }
 
-    // prints BFS traversal from a given source s
+    public ArrayList<ArrayList<String>> findPath(String start,String end, boolean stopfirst)
+    {
+        var visited = new ArrayList<String>();
+        var queue = new LinkedList<String>();
+        var paths = new ArrayList<ArrayList<String>>();
 
+        var last_parent = new HashMap<String,String>();
+        last_parent.put(start,"ROOT");
+
+        visited.add(start);
+        queue.add(start);
+
+        while (queue.size() != 0) {
+            var s = queue.poll();
+
+            var list_neighbors =adj_map.get(s);
+            System.out.println("STARTING neighbors of  "+s);
+
+            for (String n :list_neighbors) {
+                System.out.println("LOOK "+n);
+                if (n.equals(end))  {
+                    var path = new ArrayList<String>();
+                    path.add(end);
+                    path.add(s);
+
+                    String current = last_parent.get(s);
+                    while (!current.equals("ROOT")) {
+                        path.add(current);
+                        current = last_parent.get(current);
+                    }
+                    paths.add(path);
+                    if (stopfirst) return paths;
+
+
+                    // no need to go deeper along that path
+                    visited.add(n);
+                    continue;
+                }
+                if (!visited.contains(n)) {
+                    last_parent.put(n,s);
+                    visited.add(n);
+                    queue.add(n);
+                }
+            }
+            System.out.println("ENDED neighbors of  "+s);
+        }
+        return paths;
+    }
+
+    /**
+     * prints BFS traversal
+     * @param start
+     * @param end
+     * @return
+     */
     public ArrayList<ArrayList<String>> BFS(String start,String end)
     {
         var visited = new ArrayList<String>();
@@ -216,7 +271,11 @@ public class ChannelGraph implements Serializable  {
 
     // nodes of graph
     public synchronized void addNode(LNode node) {
-        addVertex(node.getPubKey());
+        addNode(node.getPubKey());
+    }
+
+    public synchronized void addNode(String pubkey) {
+        addVertex(pubkey);
     }
     // edges of graph
     public synchronized void addChannel(LNChannel channel) {
@@ -234,8 +293,11 @@ public class ChannelGraph implements Serializable  {
        return hasEdge(channel.getNode1().getPubKey(),channel.getNode2().getPubKey());
     }
 
-    public ChannelGraph(){
+    private ChannelGraph() {};
 
+    public ChannelGraph(String root_node){
+        this.root_node = root_node;
+        addNode(root_node);
     }
 
     public int getNodeCount() {

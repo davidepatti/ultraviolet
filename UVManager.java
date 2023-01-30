@@ -5,10 +5,7 @@ import org.json.simple.parser.JSONParser;
 import java.io.*;
 import java.net.ServerSocket;
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 public class UVManager {
@@ -24,6 +21,7 @@ public class UVManager {
 
     private boolean boostrap_started = false;
     private boolean bootstrap_completed = false;
+    private String imported_rootnode_graph;
     private FileWriter logfile;
     private static Consumer<String> Log = System.out::println;
 
@@ -31,9 +29,6 @@ public class UVManager {
 
     static void log(String s) {
         Log.accept(s);
-    }
-    private void free() {
-        System.gc();
     }
 
 
@@ -340,7 +335,7 @@ public class UVManager {
      *
      * @param json_file
      */
-    public void importTopology(String json_file) {
+    public void importTopology(String json_file, String root_node) {
         JSONParser parser = new JSONParser();
         log("Beginning importing file "+json_file);
         try {
@@ -358,6 +353,8 @@ public class UVManager {
             }
             log("Node import ended, importing channels...");
 
+            var root= uvnodes.get(root_node);
+
             JSONArray edges = (JSONArray) jsonObject.get("edges");
             for (Object edge : edges) {
                 JSONObject edgeObject = (JSONObject) edge;
@@ -370,11 +367,12 @@ public class UVManager {
 
                 UVChannel ch = new UVChannel(channel_id, uvnode1,uvnode2,capacity);
 
-                uvnode1.configureChannel(channel_id,uvnode1,uvnode2,capacity);
-                uvnode2.configureChannel(channel_id,uvnode1,uvnode2,capacity);
-
+                uvnode1.configureChannel(ch);
+                uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addChannel(ch);
                 uvnode2.getChannelGraph().addChannel(ch);
+
+                root.getChannelGraph().addChannel(ch);
             }
 
             log("Import completed");
@@ -444,6 +442,7 @@ public class UVManager {
                     boolean disconnect = false;
 
                     while (!disconnect) {
+                        while (!is.hasNextLine());
                         String command = is.nextLine();
                         // workaround for removing the null bytes that are received from client checking  connection
                         command = command.replace("\0","");
@@ -485,26 +484,44 @@ public class UVManager {
                                 }
                                 send_to_client("END_DATA");
                             }
-                            case "STATUS" -> getStatusCommand();
+                            case "STATUS" -> {
+                                send_to_client(getStatus());
+                                send_to_client("END_DATA");
+                            }
                             case "SHOW_NODE" -> {
                                 String node = is.nextLine();
                                 showNodeCommand(node);
                             }
-                            case "SHOW_NODES" -> showNodesCommand();
+                            case "SHOW_NODES" -> {
+                                if (uvnodes.size()==0)
+                                    send_to_client("EMPTY NODE LIST");
+
+                                uvnodes.values().stream().sorted().forEach((n)-> send_to_client(n.toString()));
+                                send_to_client("END_DATA");
+
+                            }
                             case "FREE" -> {
-                                free();
+                                System.gc();
                                 send_to_client("END_DATA");
                             }
                             case "ROUTE" -> {
                                 String start = is.nextLine();
                                 String end = is.nextLine();
-                                routeCommand(start, end);
+                                String n = is.nextLine();
+                                routeCommand(start, end,n.equals("1"));
                             }
                             case "IMPORT" -> {
-                                String json = is.nextLine();
-                                send_to_client(json);
-                                new Thread(()->importTopology(json)).start();
-                                send_to_client("END_DATA");
+                                if (resetUVM()) {
+                                    String json = is.nextLine();
+                                    String root = is.nextLine();
+                                    new Thread(()->importTopology(json,root)).start();
+                                    imported_rootnode_graph = root;
+                                    send_to_client("END_DATA");
+                                }
+                                else {
+                                    send_to_client("Cannot reset UVM");
+                                    send_to_client("END_DATA");
+                                }
                             }
                             case "RESET" -> {
                                 resetUVM();
@@ -527,8 +544,11 @@ public class UVManager {
                                 send_to_client("END_DATA");
                             }
                             default -> {
+                                /*
                                 send_to_client("Unknown command __" + command+"_____");
                                 send_to_client("END_DATA");
+                                 */
+                                log("WARNING: ignoring unknown command "+command);
                             }
                         }
                     }
@@ -540,7 +560,7 @@ public class UVManager {
         }
 
 
-        private void routeCommand(String start, String end) {
+        private void routeCommand(String start, String end,boolean stopfirst) {
             UVNode start_node = uvnodes.get(start);
             UVNode end_node = uvnodes.get(end);
 
@@ -550,7 +570,30 @@ public class UVManager {
                 return;
             }
 
-            var paths = start_node.getChannelGraph().BFS(start,end);
+
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            Future<ArrayList<ArrayList<String>>> arrayListFuture = executor.submit(()->{
+                var lpaths = start_node.getChannelGraph().findPath(start,end,stopfirst);
+                return lpaths;
+            });
+
+            while (!arrayListFuture.isDone()) {
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            ArrayList<ArrayList<String>> paths = null;
+            try {
+                paths = arrayListFuture.get();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+
             if (paths.size()!=0) {
                 send_to_client("FOUND");
                 for (ArrayList<String> p: paths) {
@@ -565,10 +608,6 @@ public class UVManager {
             send_to_client("END_DATA");
         }
 
-        private void getStatusCommand() {
-            send_to_client(getStatus());
-            send_to_client("END_DATA");
-        }
 
         private void showNetworkCmd() {
             if (uvnodes.size()==0)
@@ -582,14 +621,6 @@ public class UVManager {
             send_to_client("END_DATA");
         }
 
-        private void showNodesCommand() {
-            if (uvnodes.size()==0)
-                send_to_client("EMPTY NODE LIST");
-
-            uvnodes.values().stream().sorted().forEach((n)-> send_to_client(n.toString()));
-            send_to_client("END_DATA");
-
-        }
         private void showNodeCommand(String pubkey) {
 
             if (uvnodes.size()==0)
@@ -601,20 +632,28 @@ public class UVManager {
                 return;
             }
             send_to_client(node.toString());
-
             node.getUVChannels().values().stream().sorted().forEach((c)-> send_to_client(c.toString()));
-            send_to_client("Peers:");
-            node.getPeers().values().stream().sorted().forEach((p)-> send_to_client(p.toString()));
 
-            send_to_client("Channel Graph:");
-            send_to_client(node.getChannelGraph().toString());
+            if (false) {
+                send_to_client("Peers:");
+                node.getPeers().values().stream().sorted().forEach((p)-> send_to_client(p.toString()));
+
+            }
 
             int edges = node.getChannelGraph().getChannelCount();
             int vertex = node.getChannelGraph().getNodeCount();
             os.println("Graph nodes:"+vertex);
             os.println("Graph channels:"+edges);
-            os.println("Current p2p message queue:"+node.getP2PMsgQueue().size());
+            if (node.getP2PMsgQueue()!=null)
+                os.println("Current p2p message queue:"+node.getP2PMsgQueue().size());
+            else
+                os.println("No p2p queued messages");
+
+            if (false){
+                send_to_client("Channel Graph:");
+                send_to_client(node.getChannelGraph().toString());
+            }
             send_to_client("END_DATA");
-        }
+    }
     }
 }
