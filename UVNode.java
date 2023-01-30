@@ -183,7 +183,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         } // while
 
         bootstrap_completed = true;
-        uvm.bootstrap_latch.countDown();
+        uvm.getBootstrapLatch().countDown();
         log("Bootstrap completed");
 
     }
@@ -227,19 +227,31 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     /**
+     * Configure a channel for the node. If the channel does not exist creates a new one.
+     * Mainly used for importing channels from a previously exported real topology, e.g. lncli describegraph
+     * As compared to openChannel method using in bootstrapping;
+     * - it does not involve any further p2p action: e.g., asking to the peer to acknowledge the opening, broadcasting, updating channel graph
+     * - it does not check actual onchain balances
+     * @param id
+     * @param node1 the initiator node
+     * @param node2 the peer conterpart
+     * @param capacity initial balance, all on the initiator's side
+     */
+    public void configureChannel(String id, UVNode node1, UVNode node2, int capacity ) {
+        var new_channel = new UVChannel(id, node1,node2,capacity);
+        channels.put(id,new_channel);
+    }
+    /**
      * Open a channel with a peer node, with the features defined by the node behavior and configuration
+     * Mainly used when bootstrapping: autogenerates channel id, fees, and takes all the necessary p2p actions
      * @param peer_UV_node the target node partner to open the channel
      * @return true if the channel has been successful opened
      */
     public boolean openChannel(UVNode peer_UV_node, int channel_size) {
         log(">>> Start Opening "+channel_size+ " sats channel to "+ peer_UV_node.getPubKey());
 
-        /* UV NOTE: is not computed with the block number + tx index + output index.
-           There is no need to locate the funding multisig tx on the chain, nor to validate signatures etc
-           But we still want some id that locate the block height and gives hint about the signers pubkeys
-         */
-        var channel_id = "CH_"+ uvm.getTimechain().getCurrent_block()+"_"+this.getPubKey()+"->"+ peer_UV_node.getPubKey();
-        var channel_proposal = new UVChannel(this, peer_UV_node,channel_size,0,channel_id,0,10,0,10,50);
+        var channel_id = uvm.getTimechain().getCurrent_block()+"_"+this.getPubKey()+"_"+ peer_UV_node.getPubKey();
+        var channel_proposal = new UVChannel(channel_id, this, peer_UV_node,channel_size);
 
         // onchain balance is changed only from initiator, so no problems of sync
         if (channel_size>getOnChainBalance()) {
@@ -566,13 +578,13 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         //channel_graph = new ChannelGraph();
         // restore channel partners
         for (UVChannel c:channels.values()) {
-            c.initiatorNode = uvm.getUvnodes().get(c.getInitiatorPubKey());
-            c.channelPeerNode = uvm.getUvnodes().get(c.getPeerPubKey());
+            c.initiatorNode = uvm.getUVNodes().get(c.getInitiatorPubKey());
+            c.channelPeerNode = uvm.getUVNodes().get(c.getPeerPubKey());
         }
 
         // restore peers
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peer_list)
-            peers.put(p,uvm.getUvnodes().get(p));
+            peers.put(p,uvm.getUVNodes().get(p));
     }
 }

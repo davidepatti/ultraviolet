@@ -12,7 +12,7 @@ The major components of the UV architecture can be summarized as follows:
 - UVChannel (one instance for each channel)
 
 Also, to facilitate the interaction with simulation environment, two further components are being provided:
-- UVMServer: used to interact with UVManager via socket
+- UVManager.UVMServer: used to interact with UVManager via socket
 - UVMClient: a command line interface
 
 ![what is](uv.png)
@@ -66,9 +66,9 @@ A global class thread that:
   listen to events:
   I’m UVNode X find me a peer with these features etc…
   I’m UVNode X I want to open/close a channel to Y
-- starts a separate UVMServer thread to accept commands via socket (when not used as a library)
+- starts a separate UVManager.UVMServer thread to accept commands via socket (when not used as a library)
 
-An simple UVMClient to interact with UVMServer is provided, but different client implementations are possible (e.g. GUI)
+An simple UVMClient to interact with UVManager.UVMServer is provided, but different client implementations are possible (e.g. GUI)
 
 # Timechain
 This component consistis of that thread modeling a running blockchain, just to model the timing. 

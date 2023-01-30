@@ -46,9 +46,8 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
     private int peer_pending;
     private int reserve;
 
-    // TODO: update_channel p2p
     // constructor only fill the "proposal" for the channel
-    public UVChannel(UVNode initiatorNode, UVNode channelPeerNode, int initiator_balance, int peer_balance, String channel_id, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
+    public UVChannel(String channel_id,UVNode initiatorNode, UVNode channelPeerNode, int initiator_balance, int peer_balance, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
         this.initiatorNode = initiatorNode;
         this.channelPeerNode = channelPeerNode;
         this.initiator_balance = initiator_balance;
@@ -63,6 +62,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
         this.status = ChannelStatus.NONE;
         this.initiator_pubkey = initiatorNode.getPubKey();
         this.peer_pubkey = channelPeerNode.getPubKey();
+    }
+
+    public UVChannel(String id, UVNode node1, UVNode node2, int capacity) {
+        this(id, node1,node2,capacity,0, 0,0,0,0,0);
     }
 
     public String getPeerPubKey() {
