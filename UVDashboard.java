@@ -165,6 +165,15 @@ public class UVDashboard {
                 wait(bootstrap);
             }
         }));
+        menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {
+            if (!networkManager.isBootstrapCompleted()) {
+                System.out.println("ERROR: must bootstrap network or load/import a network!");
+                return;
+            }
+            new Thread(networkManager.getTimechain()).start();
+            System.out.println("Starting P2P, check " + ConfigManager.logfile);
+            new Thread(()->networkManager.startP2PNetwork()).start();
+        }));
 
         menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
             if (networkManager.getUVNodes().size()== 0) {

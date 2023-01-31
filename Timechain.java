@@ -8,7 +8,7 @@ public class Timechain implements Runnable, Serializable  {
 
     @Serial
     private static final long serialVersionUID = 1207897L;
-    private int current_block;
+    private static int current_block;
     private final int blocktime;
     private final Set<CountDownLatch> timers = new HashSet<>();
 
@@ -43,7 +43,7 @@ public class Timechain implements Runnable, Serializable  {
         this.running = false;
     }
 
-    public synchronized void start() {
+    private synchronized void start() {
         this.running = true;
     }
 
@@ -71,6 +71,7 @@ public class Timechain implements Runnable, Serializable  {
             }
             tictocNextBlock();
         }
+        System.out.println("Timechain stopped");
     }
 
     @Override

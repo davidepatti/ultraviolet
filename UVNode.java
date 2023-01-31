@@ -7,7 +7,7 @@ import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.*;
 
-public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<UVNode> {
+public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     @Serial
     private static final long serialVersionUID = 120675L;
@@ -115,19 +115,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         this.behavior = behavior;
     }
 
-    private void setDeterministicRandom() {
-        deterministic_random = new Random();
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-        byte[] encodedhash = digest.digest(getPubKey().getBytes(StandardCharsets.UTF_8));
-        int s = encodedhash[0]+128;
-        deterministic_random.setSeed(s);
-        log("Deterministic Randome set to: "+s);
-    }
 
     public void bootstrapNode() {
         int initiated_channels =0;
@@ -185,20 +172,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         bootstrap_completed = true;
         uvm.getBootstrapLatch().countDown();
         log("Bootstrap completed");
-
-    }
-
-    /**
-     * This is the main method running while the node is considered active on the network
-     */
-    @Override
-    public void run() {
-
-        log("Starting node "+this.pubkey+" on thread "+Thread.currentThread().getName()+" Onchain funding: "+getOnChainBalance());
-        // UV notes: a p2p node thread is also started, managing all the events related to the peer to peer messaging network
-
-        // UV notes: in the initial phase, the node will always try to reach some minimum number of channels, as defined by the behavior
-        //bootstrapNode();
     }
 
     /**
@@ -309,7 +282,6 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             if (!peer.getPubKey().equals(this.getPubKey()))
                 peer.receiveP2PMessage(msg);
         }
-
     }
 
     /**
@@ -361,7 +333,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
                 }
             }
         }
-        if (processed) log("<<< End processing messages");
+        //if (processed) log("<<< End processing messages");
     }
 
     /**

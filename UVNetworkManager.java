@@ -111,7 +111,8 @@ public class UVNetworkManager {
 
         log("UVM: Bootstrapping network from scratch...");
         log("UVM: Starting timechain: "+timechain);
-        new Thread(timechain,"timechain").start();
+        Executor timechain_exec = Executors.newSingleThreadExecutor();
+        timechain_exec.execute(timechain);;
 
         log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
         int max = ConfigManager.getMaxFunding() /(int)1e6;
@@ -136,8 +137,13 @@ public class UVNetworkManager {
            bootexec.submit(n::bootstrapNode);
         }
 
+        try {
+            bootstrap_latch.await();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("UVNode deployment completed.");
         bootexec.shutdown();
-
         boolean term;
 
         try {
@@ -149,11 +155,16 @@ public class UVNetworkManager {
         else
             log("Bootstrap ended correctly");
 
+        timechain.stop();
+    }
+
+
+    public void startP2PNetwork() {
+        if (!isBootstrapCompleted()) return;
         log("Launching p2p nodes services...");
         var p2p_executor = Executors.newScheduledThreadPool(ConfigManager.getTotalNodes());
         var delay = getTimechain().getBlockToMillisecTimeDelay(1);
         for (UVNode n : uvnodes.values()) {
-            //p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,getTimechain().getBlockToMillisecTimeDelay(1),TimeUnit.MILLISECONDS);
             p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,delay,TimeUnit.MILLISECONDS);
         }
     }
