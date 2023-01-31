@@ -31,26 +31,33 @@ public class ConfigManager implements Serializable {
     public static int blocktime;
     public static int server_port;
     public static String logfile;
-    public static int seed;
+    private static int seed;
+
+    private static boolean initialized = false;
 
     // bootstrap
-    public static int bootstrap_warmup;
-    public static int total_nodes;
-    public static int min_funding;
-    public static int max_funding;
-    public static int min_channels;
-    public static int max_channels;
-    public static int min_channel_size;
-    public static int max_channel_size;
+    private static int bootstrap_warmup;
+    private static int total_nodes;
+    private static int min_funding;
+    private static int max_funding;
+    private static int min_channels;
+    private static int max_channels;
+    private static int min_channel_size;
+    private static int max_channel_size;
 
 
     // p2p
-    public static int max_p2p_hops;
-    public static int max_p2p_age;
-    public static int p2p_period;
+    private static int max_p2p_hops;
+    private static int max_p2p_age;
+    private static int p2p_period;
 
-    public static final boolean verbose = false;
-    public static boolean debug = false;
+    private static final boolean verbose = false;
+    private static boolean debug = false;
+
+
+    public static boolean isInitialized() {
+        return initialized;
+    }
 
     public static void setDefaults() {
         // default values when not config file is provided
@@ -76,6 +83,7 @@ public class ConfigManager implements Serializable {
         max_p2p_age = Integer.parseInt(DEFAULT_MAX_P2P_AGE);
         p2p_period = Integer.parseInt(DEFAULT_P2P_PERIOD);
         debug = true;
+        initialized = true;
     }
 
 
@@ -109,9 +117,9 @@ public class ConfigManager implements Serializable {
             max_p2p_hops = Integer.parseInt(properties.getProperty("p2p_period", DEFAULT_P2P_PERIOD));
             config_file_reader.close();
             debug = true;
+            initialized = true;
 
-        } catch (
-                FileNotFoundException e) {
+        } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
             System.out.println("Setting defaults...");
             setDefaults();
@@ -120,6 +128,62 @@ public class ConfigManager implements Serializable {
             throw new RuntimeException(e);
         }
 
+    }
+
+    public static int getSeed() {
+        return seed;
+    }
+
+    public static int getBootstrapWarmup() {
+        return bootstrap_warmup;
+    }
+
+    public static int getTotalNodes() {
+        return total_nodes;
+    }
+
+    public static int getMinFunding() {
+        return min_funding;
+    }
+
+    public static int getMaxFunding() {
+        return max_funding;
+    }
+
+    public static int getMinChannels() {
+        return min_channels;
+    }
+
+    public static int getMaxChannels() {
+        return max_channels;
+    }
+
+    public static int getMinChannelSize() {
+        return min_channel_size;
+    }
+
+    public static int getMaxChannelSize() {
+        return max_channel_size;
+    }
+
+    public static int getMaxP2PHops() {
+        return max_p2p_hops;
+    }
+
+    public static int getMaxP2PAge() {
+        return max_p2p_age;
+    }
+
+    public static int getP2PPeriod() {
+        return p2p_period;
+    }
+
+    public static boolean isVerbose() {
+        return verbose;
+    }
+
+    public static boolean isDebug() {
+        return debug;
     }
 
     @Override

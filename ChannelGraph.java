@@ -103,10 +103,8 @@ public class ChannelGraph implements Serializable  {
             var s = queue.poll();
 
             var list_neighbors =adj_map.get(s);
-            System.out.println("STARTING neighbors of  "+s);
 
             for (String n :list_neighbors) {
-                System.out.println("LOOK "+n);
                 if (n.equals(end))  {
                     var path = new ArrayList<String>();
                     path.add(end);
@@ -131,7 +129,6 @@ public class ChannelGraph implements Serializable  {
                     queue.add(n);
                 }
             }
-            System.out.println("ENDED neighbors of  "+s);
         }
         return paths;
     }

@@ -2,9 +2,9 @@ import java.util.Optional;
 
 public class GlobalStats {
 
-    private UVManager uvm;
+    private UVNetworkManager uvm;
 
-    public GlobalStats(UVManager uv_manager) {
+    public GlobalStats(UVNetworkManager uv_manager) {
         uvm = uv_manager;
     }
 

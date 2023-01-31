@@ -6,24 +6,24 @@ Ultraviolet (UV) makes a massive usage of threads to make each Lightning UVNode 
 
 The major components of the UV architecture can be summarized as follows:
 
-- UVManager (a global thread, interacting with other thread via syncronized methods when necessary)
+- UVNetworkManager (a global thread, interacting with other thread via syncronized methods when necessary)
 - UVNode (multiple thread instances, one per Ligthning UVNode)
 - Timechain (thread)
 - UVChannel (one instance for each channel)
 
 Also, to facilitate the interaction with simulation environment, two further components are being provided:
-- UVManager.UVMServer: used to interact with UVManager via socket
-- UVMClient: a command line interface
+- UVNetworkManager.UVMServer: used to interact with UVNetworkManager via socket
+- UVDashboard: a command line interface
 
 ![what is](uv.png)
 
 # Quick Start
 
 from some terminal:
-*java UVManager*
+*java UVNetworkManager*
 
 from some other terminal:
-*java UVMClient*
+*java UVDashboard*
 
 
 
@@ -54,10 +54,10 @@ Single object instance, one per existing channel, accessed from both initiator a
 - CURRENT IDEA: some kind of static approach is required, transient development of a growing network beginning with no nodes is not part of the focus for UV -> we model a topology that has some “stability” and remain quite structurally similar, even if we can introduce some variability, UVNode failures etc.
 - Some topology configuration file is needed 
  e.g.: I’m UVNode X I want to move some sats to Y
-- The topology seen and managed via UVManager is referred to the channel graph, not the underlying peer-to-peer network
+- The topology seen and managed via UVNetworkManager is referred to the channel graph, not the underlying peer-to-peer network
 manage the graph structure locally or globally?
 
-# UVManager 
+# UVNetworkManager 
 A global class thread that:
 - Bootstrap the network: creates nodes with id and onchain funds, according to some distribution probabilities
 - assign a “behavior” to each UVNode and run the associated thread: then each UVNode will invoke methods like “findPeer()”
@@ -66,9 +66,9 @@ A global class thread that:
   listen to events:
   I’m UVNode X find me a peer with these features etc…
   I’m UVNode X I want to open/close a channel to Y
-- starts a separate UVManager.UVMServer thread to accept commands via socket (when not used as a library)
+- starts a separate UVNetworkManager.UVMServer thread to accept commands via socket (when not used as a library)
 
-An simple UVMClient to interact with UVManager.UVMServer is provided, but different client implementations are possible (e.g. GUI)
+An simple UVDashboard to interact with UVNetworkManager.UVMServer is provided, but different client implementations are possible (e.g. GUI)
 
 # Timechain
 This component consistis of that thread modeling a running blockchain, just to model the timing. 

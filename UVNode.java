@@ -18,7 +18,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     private int onchain_balance;
 
     // serialized and restored manually, to avoid stack overflow
-    transient private UVManager uvm;
+    transient private UVNetworkManager uvm;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ChannelGraph channel_graph;
     transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
@@ -38,7 +38,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      * @param alias an alias
      * @param onchain_balance initial onchain balance
      */
-    public UVNode(UVManager uvm, String pubkey, String alias, int onchain_balance) {
+    public UVNode(UVNetworkManager uvm, String pubkey, String alias, int onchain_balance) {
         this.uvm = uvm;
         this.pubkey = pubkey;
         this.alias = alias;
@@ -48,10 +48,10 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
     }
 
     private void log(String s) {
-         UVManager.log(this.getPubKey()+":"+s);
+         UVNetworkManager.log(this.getPubKey()+":"+s);
     }
 
-    public void setUVM(UVManager uvm) {
+    public void setUVM(UVNetworkManager uvm) {
         this.uvm = uvm;
     }
 
@@ -133,7 +133,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
         int initiated_channels =0;
         //setDeterministicRandom();
         ///----------------------------------------------------------
-        var warmup = ConfigManager.bootstrap_warmup;
+        var warmup = ConfigManager.getBootstrapWarmup();
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
@@ -158,7 +158,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             var peer_node = uvm.getRandomNode();
             var peer_pubkey = peer_node.getPubKey();
 
-            if (ConfigManager.verbose)
+            if (ConfigManager.isVerbose())
                 log("Trying to open a channel with "+peer_pubkey);
 
             // TODO: add more complex requirements for peers
@@ -208,7 +208,7 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
      */
     // TODO: here
     public boolean hasChannelWith(String node_id) {
-        if (ConfigManager.verbose)
+        if (ConfigManager.isVerbose())
             log(">>> Checking if node has already channel with "+node_id);
 
         for (UVChannel c:this.channels.values()) {
@@ -216,12 +216,12 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             boolean accepted_from_peer = c.getInitiatorPubKey().equals(node_id);
 
             if (initiated_with_peer || accepted_from_peer) {
-                if (ConfigManager.verbose)
+                if (ConfigManager.isVerbose())
                     log("<<< Channel already present with peer "+node_id);
                 return true;
             }
         }
-        if (ConfigManager.verbose)
+        if (ConfigManager.isVerbose())
             log("<<< NO Channel already present with peer "+node_id);
         return false;
     }
@@ -343,8 +343,8 @@ public class UVNode implements Runnable, LNode,P2PNode, Serializable,Comparable<
             var msg = p2p_messages.poll();
             var current_age = uvm.getTimechain().getCurrent_block() -msg.getTimeStamp();
 
-            if (current_age>ConfigManager.max_p2p_age) continue;
-            if (msg.getForwardings()>=ConfigManager.max_p2p_hops) continue;
+            if (current_age> ConfigManager.getMaxP2PAge()) continue;
+            if (msg.getForwardings()>= ConfigManager.getMaxP2PHops()) continue;
 
             var next = msg.getNext();
 
