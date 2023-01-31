@@ -96,6 +96,8 @@ public class ChannelGraph implements Serializable  {
         var last_parent = new HashMap<String,String>();
         last_parent.put(start,"ROOT");
 
+        int nfound = 0;
+
         visited.add(start);
         queue.add(start);
 
@@ -106,6 +108,8 @@ public class ChannelGraph implements Serializable  {
 
             for (String n :list_neighbors) {
                 if (n.equals(end))  {
+                    nfound++;
+                    System.out.println("Found "+nfound+" path(s)");
                     var path = new ArrayList<String>();
                     path.add(end);
                     path.add(s);
@@ -117,8 +121,6 @@ public class ChannelGraph implements Serializable  {
                     }
                     paths.add(path);
                     if (stopfirst) return paths;
-
-
                     // no need to go deeper along that path
                     visited.add(n);
                     continue;

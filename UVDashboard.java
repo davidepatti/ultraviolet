@@ -4,6 +4,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 
 public class UVDashboard {
@@ -23,16 +24,13 @@ public class UVDashboard {
         if (networkManager.getUVNodes().size() == 0)
             System.out.println("EMPTY NODE LIST");
         var node = networkManager.getUVNodes().get(pubkey);
-        if (node == null) {
-            System.out.println("ERROR: NODE NOT FOUND");
-            return;
-        }
+        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+
         node.getUVChannels().values().stream().sorted().forEach(System.out::println);
 
         if (false) {
             System.out.println("Peers:");
             node.getPeers().values().stream().sorted().forEach(System.out::println);
-
         }
 
         int edges = node.getChannelGraph().getChannelCount();
@@ -47,20 +45,6 @@ public class UVDashboard {
         if (false) {
             System.out.println("Channel Graph:");
             System.out.println(node.getChannelGraph().toString());
-        }
-    }
-
-    /**
-     *
-     */
-    private void showNetworkCmd() {
-        if (networkManager.getUVNodes().size() == 0)
-            System.out.println("EMPTY NODE LIST");
-        for (UVNode n : networkManager.getUVNodes().values()) {
-            System.out.println(n);
-            for (UVChannel c : n.getUVChannels().values()) {
-                System.out.println(c);
-            }
         }
     }
 
@@ -113,6 +97,9 @@ public class UVDashboard {
         UVNode start_node = networkManager.getUVNodes().get(start);
         UVNode end_node = networkManager.getUVNodes().get(end);
 
+        boolean stopfirst = choice.equals("1");
+        System.out.println(stopfirst);
+
         if (start_node==null || end_node==null) {
             System.out.println("NOT FOUND");
             return;
@@ -120,19 +107,12 @@ public class UVDashboard {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<ArrayList<ArrayList<String>>> arrayListFuture = executor.submit(()->{
-            var lpaths = start_node.getChannelGraph().findPath(start,end,true);
-            return lpaths;
+            return start_node.getChannelGraph().findPath(start,end,stopfirst);
         });
 
         System.out.print("Waiting for path finding...");
-        while (!arrayListFuture.isDone()) {
-            try {
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        System.out.println("DONE!");
+
+        wait(arrayListFuture);
 
         ArrayList<ArrayList<String>> paths = null;
         try {
@@ -142,15 +122,27 @@ public class UVDashboard {
         }
 
         if (paths.size()!=0) {
-            System.out.println("FOUND");
             for (ArrayList<String> p: paths) {
-                System.out.println("\nPATH:");
+                System.out.println("PATH: ");
                 for (String n:p) {
                     System.out.print(n+" ");
                 }
             }
         }
-        else System.out.println("NOT FOUND");
+        else System.out.println("NO PATH FOUND");
+    }
+
+
+    private void wait(Future f) {
+        while (!f.isDone()) {
+            System.out.print(".");
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        System.out.println("COMPLETED!");
     }
 
     /**
@@ -167,12 +159,31 @@ public class UVDashboard {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
                 System.out.println("Bootstrap Started, check " + ConfigManager.logfile);
-                new Thread(() -> networkManager.bootstrapNetwork()).start();
+                ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
+                Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetwork());
+                System.out.println("waiting bootstrap to finish...");
+                wait(bootstrap);
             }
         }));
 
         menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
-            showNetworkCmd();
+            if (networkManager.getUVNodes().size()== 0) {
+                System.out.println("EMPTY NODE LIST");
+                return;
+            }
+            var ln = networkManager.getUVNodes().values().stream().sorted().collect(Collectors.toList());
+
+            for (UVNode n : ln) {
+                System.out.println(n);
+                n.getUVChannels().values().stream().forEach(System.out::println);
+
+            /*
+            if ((++count)%10==0)  {
+                System.out.println("MORE [press enter]");
+                new Scanner(System.in).nextLine();
+            }
+             */
+            }
         }));
 
         menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> {
@@ -274,6 +285,7 @@ public class UVDashboard {
             scanner.nextLine();
         }
         System.out.println("Disconnecting client");
+        System.exit(0);
     }
 
     public static void main(String[] args) {
