@@ -10,15 +10,16 @@ import java.util.function.Consumer;
 public class UVNetworkManager {
 
 
-    private CountDownLatch bootstrap_latch= new CountDownLatch(ConfigManager.getTotalNodes());
-    private HashMap<String, UVNode> uvnodes = new HashMap<>();
+    private CountDownLatch bootstrap_latch;
+    private HashMap<String, UVNode> uvnodes;
 
     private String[] pubkeys_list;
 
-    private Random random = new Random();
+    private Random random;
     private Timechain timechain;
 
     private boolean boostrap_started = false;
+    private boolean p2pRunning = false;
     private boolean bootstrap_completed = false;
     private String imported_rootnode_graph;
     private FileWriter logfile;
@@ -26,24 +27,9 @@ public class UVNetworkManager {
 
     private GlobalStats stats;
 
+    private ScheduledExecutorService p2pExecutor;
+    private ScheduledFuture<?> p2pHandler;
 
-    /**
-     *
-     * @param args
-     */
-    public static void main(String[] args) {
-
-        if (args.length == 1) {
-            log("Loading configuration file:"+args[0]);
-            ConfigManager.loadConfig(args[0]);
-        }
-        else {
-            log("No config file provided, using defaults");
-            ConfigManager.setDefaults();
-        }
-
-        var uvm = new UVNetworkManager();
-    }
 
     /**
      * Initialize the logging functionality
@@ -70,16 +56,23 @@ public class UVNetworkManager {
      */
     public UVNetworkManager() {
         if (!ConfigManager.isInitialized()) ConfigManager.setDefaults();
+        random = new Random();
         if (ConfigManager.getSeed() !=0) random.setSeed(ConfigManager.getSeed());
         initLog();
 
+        this.uvnodes = new HashMap<>();
         timechain = new Timechain(ConfigManager.blocktime);
 
         log("Initializing UVManager...");
         log(this.toString());
         stats = new GlobalStats(this);
+        setP2pRunning(false);
     }
-    // TODO: not guaranteed to work perfectly
+
+    /**
+     * Reset the UV Network Manager
+     * @return
+     */
     public synchronized boolean resetUVM() {
         log("Resetting UVManager (experimental!)");
         if (isBootstrapStarted() && !isBootstrapCompleted()) {
@@ -87,19 +80,29 @@ public class UVNetworkManager {
             return false;
         }
 
+        if (isP2pRunning()) stopP2PNetwork();
         if (timechain!=null && timechain.isRunning()) timechain.stop();
 
         random = new Random();
         if (ConfigManager.getSeed() !=0) random.setSeed(ConfigManager.getSeed());
         timechain = new Timechain(ConfigManager.blocktime);
-        bootstrap_latch= new CountDownLatch(ConfigManager.getTotalNodes());
         boostrap_started = false;
         bootstrap_completed = false;
         this.uvnodes = new HashMap<>();
+
+        if (p2pExecutor!=null) {
+            p2pExecutor.shutdown();
+            try {
+                p2pExecutor.awaitTermination(60,TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        p2pExecutor = null;
+
         System.gc();
         return true;
     }
-
 
     /**
      * Bootstraps the Lightning Network from scratch starting from configuration file
@@ -113,6 +116,7 @@ public class UVNetworkManager {
         log("UVM: Starting timechain: "+timechain);
         Executor timechain_exec = Executors.newSingleThreadExecutor();
         timechain_exec.execute(timechain);;
+        bootstrap_latch = new CountDownLatch(ConfigManager.getTotalNodes());
 
         log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
         int max = ConfigManager.getMaxFunding() /(int)1e6;
@@ -142,7 +146,7 @@ public class UVNetworkManager {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("UVNode deployment completed.");
+        log("UVNode deployment completed.");
         bootexec.shutdown();
         boolean term;
 
@@ -151,7 +155,7 @@ public class UVNetworkManager {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        if (!term) log("Bootstrap timout! terminating...") ;
+        if (!term) log("Bootstrap timeout! terminating...") ;
         else
             log("Bootstrap ended correctly");
 
@@ -159,14 +163,35 @@ public class UVNetworkManager {
     }
 
 
+    /**
+     * If not yet started, schedule the p2p threads to be executed periodically for each node
+     */
     public void startP2PNetwork() {
         if (!isBootstrapCompleted()) return;
         log("Launching p2p nodes services...");
-        var p2p_executor = Executors.newScheduledThreadPool(ConfigManager.getTotalNodes());
-        var delay = getTimechain().getBlockToMillisecTimeDelay(1);
-        for (UVNode n : uvnodes.values()) {
-            p2p_executor.scheduleAtFixedRate(()->n.runP2PServices(),100,delay,TimeUnit.MILLISECONDS);
+        // start p2p actions around every block
+        var period = getTimechain().getBlockToMillisecTimeDelay(1);
+        if (p2pExecutor==null) {
+            log("Initializing p2p scheduled executor...");
+            p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getTotalNodes());
         }
+        for (UVNode n : uvnodes.values()) {
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,period,TimeUnit.MILLISECONDS);
+        }
+        setP2pRunning(true);
+    }
+    public void stopP2PNetwork() {
+        if (!isBootstrapCompleted()) return;
+        log("Stopping p2p nodes services...");
+
+        for (UVNode n : uvnodes.values()) {
+            n.stopP2PServices();
+            n.p2pHandler.cancel(false);
+        }
+
+        log("P2P Services stopped");
+
+        setP2pRunning(false);
     }
 
 
@@ -274,6 +299,7 @@ public class UVNetworkManager {
      */
     public synchronized boolean isBootstrapCompleted() {
         if (bootstrap_completed) return true;
+        if (bootstrap_latch==null) return false;
 
         if (bootstrap_latch.getCount()==0) {
             bootstrap_completed = true;
@@ -405,5 +431,13 @@ public class UVNetworkManager {
             throw new RuntimeException(e);
         }
         return true;
+    }
+
+    public synchronized boolean isP2pRunning() {
+        return p2pRunning;
+    }
+
+    public synchronized void setP2pRunning(boolean p2pRunning) {
+        this.p2pRunning = p2pRunning;
     }
 }

@@ -1,7 +1,4 @@
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Queue;
 import java.util.Random;
@@ -17,6 +14,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private final String alias;
     private int onchain_balance;
 
+
     // serialized and restored manually, to avoid stack overflow
     transient private UVNetworkManager uvm;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
@@ -24,10 +22,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
 
     private boolean bootstrap_completed = false;
+    private boolean p2p_running = false;
     transient Random deterministic_random;
     transient ArrayList<String> saved_peer_list;
 
     transient Queue<P2PMessage> p2p_messages = new ConcurrentLinkedQueue<>();
+    transient ScheduledFuture<?> p2pHandler;
 
 
 
@@ -148,12 +148,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             if (ConfigManager.isVerbose())
                 log("Trying to open a channel with "+peer_pubkey);
 
-            // TODO: add more complex requirements for peers
             if (peer_pubkey.equals(this.getPubKey())) continue;
-
-            if (this.hasChannelWith(peer_pubkey)) {
-                continue;
-            }
+            if (this.hasChannelWith(peer_pubkey)) continue;
 
             int max = Math.min(behavior.getMax_channel_size(),onchain_balance);
             int min = behavior.getMin_channel_size();
@@ -163,7 +159,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             if (openChannel(peer_node,channel_size)) {
                 log("Successufull opened channel to "+peer_node.getPubKey());
-                //+ " balance onchain:"+onchain_balance+ " ln:"+getLightningBalance());
                 initiated_channels++;
             }
             else log("Failed opening channel to "+peer_node.getPubKey());
@@ -296,6 +291,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return this.p2p_messages;
     }
 
+    public synchronized void stopP2PServices() {
+       this.p2p_running = false;
+    }
+
+    public synchronized boolean isP2PRunning() {
+        return p2p_running;
+    }
+
     /**
      * Internal processing of the queue of p2p gossip messages
      * A max number of messages is processed periodically to avoid execessive overloading
@@ -308,10 +311,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         else return;
 
         int max_msg = 500;
-        boolean processed = false;
-        while (!this.p2p_messages.isEmpty() && max_msg>0) {
+        while (isP2PRunning() && !this.p2p_messages.isEmpty() && max_msg>0) {
             max_msg--;
-            processed = true;
             var msg = p2p_messages.poll();
             var current_age = uvm.getTimechain().getCurrent_block() -msg.getTimeStamp();
 
@@ -333,7 +334,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 }
             }
         }
-        //if (processed) log("<<< End processing messages");
     }
 
     /**
@@ -341,6 +341,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
      */
     public void runP2PServices() {
+        synchronized (this) {
+            this.p2p_running = true;
+        }
         processGossipMessages();
     }
 

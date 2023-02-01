@@ -142,7 +142,7 @@ public class UVDashboard {
                 throw new RuntimeException(e);
             }
         }
-        System.out.println("COMPLETED!");
+        System.out.println("Done!");
     }
 
     /**
@@ -170,9 +170,26 @@ public class UVDashboard {
                 System.out.println("ERROR: must bootstrap network or load/import a network!");
                 return;
             }
+            if (networkManager.isP2pRunning()) {
+                System.out.println("P2P already running...");
+                return;
+            }
             new Thread(networkManager.getTimechain()).start();
             System.out.println("Starting P2P, check " + ConfigManager.logfile);
             new Thread(()->networkManager.startP2PNetwork()).start();
+        }));
+        menuItems.add(new MenuItem("p2ps", "Stop P2P Network", (x) -> {
+            if (!networkManager.isBootstrapCompleted()) {
+                System.out.println("ERROR: must bootstrap network or load/import a network!");
+                return;
+            }
+            if (!networkManager.isP2pRunning()) {
+                System.out.println("P2P not running...");
+                return;
+            }
+            System.out.print("Waiting for P2P services to stop...");
+            networkManager.getTimechain().stop();
+            networkManager.stopP2PNetwork();
         }));
 
         menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
@@ -185,13 +202,6 @@ public class UVDashboard {
             for (UVNode n : ln) {
                 System.out.println(n);
                 n.getUVChannels().values().stream().forEach(System.out::println);
-
-            /*
-            if ((++count)%10==0)  {
-                System.out.println("MORE [press enter]");
-                new Scanner(System.in).nextLine();
-            }
-             */
             }
         }));
 
@@ -281,6 +291,12 @@ public class UVDashboard {
             System.out.println("-------------------------------------------------");
             menuItems.stream().forEach(System.out::println);
             System.out.println("-------------------------------------------------");
+            System.out.print("Timechain :"+networkManager.getTimechain().getCurrent_block());
+            if (!networkManager.getTimechain().isRunning()) System.out.println("[Not running]");
+
+            //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
+
+
             System.out.print(" -> ");
             var ch = scanner.nextLine();
 
