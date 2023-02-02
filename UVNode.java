@@ -1,8 +1,5 @@
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
@@ -29,6 +26,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     transient Queue<P2PMessage> p2PMessageQueue = new ConcurrentLinkedQueue<>();
     transient ScheduledFuture<?> p2pHandler;
+
+    transient HashSet<LNInvoice> pendingInvoices = new HashSet<>();
 
 
 
@@ -116,8 +115,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public LNInvoice generateInvoice(int amount) {
         int r = ThreadLocalRandom.current().nextInt();
         var invoice = new LNInvoice(r,amount,this.getPubKey(), Optional.empty());
+        pendingInvoices.add(invoice);
         return invoice;
     }
+
+
 
     /**
      * @param invoice 
@@ -125,9 +127,36 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @return
      */
     @Override
-    public boolean RouteInvoice(LNInvoice invoice, LNode destination) {
+    public boolean routeInvoice(LNInvoice invoice, LNode destination) {
+        //var paylooad = new OnionLayer.Payload(invoice.)
         return false;
     }
+
+    public boolean routeInvoiceOnPath(LNInvoice invoice, LNode destination, ArrayList<String> path) {
+        System.out.println("Routing invoice on path:");
+        path.stream().forEach(System.out::println);
+
+        // the last hop payload is special, the only having the secret
+        var hopPayload = new OnionLayer.Payload(path.get(0),invoice.getAmount(),99,Optional.of(invoice.getHash()));
+        var layer = new OnionLayer(hopPayload,null);
+        path.remove(0);
+        for (String n:path) {
+            hopPayload = new OnionLayer.Payload(n,invoice.getAmount(),99,null);
+            layer = new OnionLayer(hopPayload,layer);
+        }
+
+
+        System.out.println("ONION");
+        while (layer!=null) {
+            System.out.println("---------------------------------------------");
+            System.out.println(layer);
+            System.out.println("---------------------------------------------");
+            layer = layer.innerLayer;
+        }
+
+        return false;
+    }
+
 
 
     /**

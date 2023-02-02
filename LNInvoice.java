@@ -1,4 +1,5 @@
 import java.math.BigInteger;
+import java.util.Objects;
 import java.util.Optional;
 
 public class LNInvoice {
@@ -16,6 +17,18 @@ public class LNInvoice {
         this.message = message;
     }
 
+    public String getHash() {
+       return H;
+    }
+
+    public int getAmount() {
+        return amount;
+    }
+
+    public String getRecipient() {
+        return recipient;
+    }
+
     @Override
     public String toString() {
         return "LNInvoice{" +
@@ -24,5 +37,18 @@ public class LNInvoice {
                 ", recipient='" + recipient + '\'' +
                 ", message=" + message +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        LNInvoice lnInvoice = (LNInvoice) o;
+        return H.equals(lnInvoice.H);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(H);
     }
 }

@@ -90,13 +90,11 @@ public class UVDashboard {
         var paths = findPathList(start,end,true);
 
         var dest = networkManager.getUVNodes().get(end);
+        var sender = networkManager.getUVNodes().get(start);
         var invoice = dest.generateInvoice(700);
+        System.out.println("Generated  "+invoice);
 
-
-
-
-
-
+        sender.routeInvoiceOnPath(invoice,dest,paths.get(0));
     }
 
     /**
