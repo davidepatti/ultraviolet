@@ -1,5 +1,6 @@
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.*;
@@ -26,7 +27,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient Random deterministic_random;
     transient ArrayList<String> saved_peer_list;
 
-    transient Queue<P2PMessage> p2p_messages = new ConcurrentLinkedQueue<>();
+    transient Queue<P2PMessage> p2PMessageQueue = new ConcurrentLinkedQueue<>();
     transient ScheduledFuture<?> p2pHandler;
 
 
@@ -106,6 +107,28 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public String getAlias() {
         return alias;
     }
+
+    /**
+     * @param amount
+     * @return
+     */
+    @Override
+    public LNInvoice generateInvoice(int amount) {
+        int r = ThreadLocalRandom.current().nextInt();
+        var invoice = new LNInvoice(r,amount,this.getPubKey(), Optional.empty());
+        return invoice;
+    }
+
+    /**
+     * @param invoice 
+     * @param destination
+     * @return
+     */
+    @Override
+    public boolean RouteInvoice(LNInvoice invoice, LNode destination) {
+        return false;
+    }
+
 
     /**
      *
@@ -236,7 +259,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.addChannel(channel_proposal);
         updateOnChainBalance(getOnChainBalance()-channel_proposal.getInitiatorBalance());
 
-        var message = new MsgChannelAnnouncement(channel_proposal,uvm.getTimechain().getCurrent_block());
+        var message = new MsgChannelAnnouncement(channel_proposal,uvm.getTimechain().getCurrent_block(),0);
         broadcastToPeers(message);
 
         log("<<< End opening channel with "+ peer_UV_node.getPubKey());
@@ -260,7 +283,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         this.addPeer(new_UV_channel.getInitiator());
         channel_graph.addChannel(new_UV_channel);
 
-        var message = new MsgChannelAnnouncement(new_UV_channel,uvm.getTimechain().getCurrent_block());
+        var message = new MsgChannelAnnouncement(new_UV_channel,uvm.getTimechain().getCurrent_block(),0);
         broadcastToPeers(message);
 
         log("<<< End Accepting channel "+ new_UV_channel.getId());
@@ -284,11 +307,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param msg
      */
     public void receiveP2PMessage(P2PMessage msg) {
-            this.p2p_messages.add(msg);
+            this.p2PMessageQueue.add(msg);
     }
 
     public Queue<P2PMessage> getP2PMsgQueue() {
-        return this.p2p_messages;
+        return this.p2PMessageQueue;
     }
 
     public synchronized void stopP2PServices() {
@@ -306,29 +329,30 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void processGossipMessages() {
 
-        if (p2p_messages.size()>0)
-            log(">>> Message queue not empty, processing "+p2p_messages.size()+" elements..");
+        if (p2PMessageQueue.size()>0)
+            log(">>> Message queue not empty, processing "+ p2PMessageQueue.size()+" elements..");
         else return;
 
         int max_msg = 500;
-        while (isP2PRunning() && !this.p2p_messages.isEmpty() && max_msg>0) {
+        while (isP2PRunning() && !p2PMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
-            var msg = p2p_messages.poll();
+            var msg = p2PMessageQueue.poll();
             var current_age = uvm.getTimechain().getCurrent_block() -msg.getTimeStamp();
 
             if (current_age> ConfigManager.getMaxP2PAge()) continue;
             if (msg.getForwardings()>= ConfigManager.getMaxP2PHops()) continue;
 
-            var next = msg.getNext();
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
-                    var channel = (LNChannel)msg.getData();
+                    var next = (MsgChannelAnnouncement) msg.getNext();
+                    var channel = next.getLNChannel();
                     if (!channel_graph.hasChannel(channel)) {
                         this.channel_graph.addChannel(channel);
                         broadcastToPeers(next);
                     }
                 }
+                // TODO: 4 times per day, per channel (antonopoulos)
                 case CHANNEL_UPDATE -> {
 
                 }

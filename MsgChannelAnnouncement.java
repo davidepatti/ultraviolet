@@ -1,66 +1,19 @@
-import java.lang.reflect.Member;
+public class MsgChannelAnnouncement extends P2PMessage{
 
-public class MsgChannelAnnouncement implements P2PMessage{
-    String ID;
-    private final LNChannel channel;
-    private final int forwardings;
-    private final Type type = Type.CHANNEL_ANNOUNCE;
-    private final int timestamp;
-    MsgChannelAnnouncement next;
-    
-    
+    private final LNChannel announced_channel;
 
-    public MsgChannelAnnouncement(LNChannel channel,int timestamp) {
-        this.ID = "ANN_"+channel.getId();
-        this.channel = channel;
-        this.timestamp = timestamp;
-        this.forwardings = 0;
-    }
-    private MsgChannelAnnouncement(LNChannel channel,int timestamp, int forwardings) {
-        this.ID = "ANN_"+channel.getId();
-        this.channel = channel;
-        this.timestamp = timestamp;
-        this.forwardings = forwardings;
+    public MsgChannelAnnouncement(LNChannel channel,int timestamp, int forwardings) {
+        super("ANN:"+channel.getId(),forwardings,timestamp);
+        this.announced_channel = channel;
+        this.msgType = Type.CHANNEL_ANNOUNCE;
     }
 
-    public Object getData() {
-        return channel;
+    public LNChannel getLNChannel() {
+        return announced_channel;
     }
 
     public synchronized MsgChannelAnnouncement getNext() {
-        if (next==null) {
-            next = new MsgChannelAnnouncement(this.channel,this.timestamp,this.forwardings+1);
-        }
-        return next;
+        return new MsgChannelAnnouncement(this.announced_channel,this.timestamp,this.forwardings+1);
     }
-
-    public int getForwardings() {
-        return forwardings;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public String getID() {
-        return ID;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public Type getType() {
-        return type;
-    }
-
-    /**
-     * @return
-     */
-    @Override
-    public int getTimeStamp() {
-        return timestamp;
-    }
-
 
 }

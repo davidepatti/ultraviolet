@@ -75,34 +75,45 @@ public class UVDashboard {
         }
     }
 
+
     /**
      *
      */
-    private void routeCommand() {
-        Scanner scanner = new Scanner(System.in);
-        String start;
-        if (imported_graph_root != null) {
-            System.out.println("Imported graph detected...");
-            System.out.println("Using " + imported_graph_root + " as starting point");
-            start = imported_graph_root;
-        } else {
-            System.out.print("Starting node public key:");
-            start = scanner.nextLine();
-        }
+    private void routeCmd() {
 
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Starting node public key:");
+        String start = scanner.nextLine();
         System.out.print("Destination node public key:");
         String end = scanner.nextLine();
-        System.out.print("Single[1] or All [any key] paths?");
-        String choice = scanner.nextLine();
+
+        var paths = findPathList(start,end,true);
+
+        var dest = networkManager.getUVNodes().get(end);
+        var invoice = dest.generateInvoice(700);
+
+
+
+
+
+
+    }
+
+    /**
+     *
+     * @param start
+     * @param end
+     * @param stopfirst
+     * @return
+     */
+    private ArrayList<ArrayList<String>> findPathList(String start, String end, boolean stopfirst) {
+
         UVNode start_node = networkManager.getUVNodes().get(start);
         UVNode end_node = networkManager.getUVNodes().get(end);
 
-        boolean stopfirst = choice.equals("1");
-        System.out.println(stopfirst);
-
         if (start_node==null || end_node==null) {
             System.out.println("NOT FOUND");
-            return;
+            return null;
         }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -121,6 +132,31 @@ public class UVDashboard {
             throw new RuntimeException(e);
         }
 
+        return paths;
+    }
+
+    /**
+     *
+     */
+    private void findPathsCmd() {
+        Scanner scanner = new Scanner(System.in);
+        String start;
+        if (imported_graph_root != null) {
+            System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
+            start = imported_graph_root;
+        } else {
+            System.out.print("Starting node public key:");
+            start = scanner.nextLine();
+        }
+
+        System.out.print("Destination node public key:");
+        String end = scanner.nextLine();
+        System.out.print("Single[1] or All [any key] paths?");
+        String choice = scanner.nextLine();
+        boolean stopfirst = choice.equals("1");
+
+        var paths = findPathList(start,end,stopfirst);
+
         if (paths.size()!=0) {
             for (ArrayList<String> p: paths) {
                 System.out.println("PATH: ");
@@ -133,6 +169,10 @@ public class UVDashboard {
     }
 
 
+    /**
+     *
+     * @param f
+     */
     private void wait(Future f) {
         while (!f.isDone()) {
             System.out.print(".");
@@ -242,8 +282,8 @@ public class UVDashboard {
             imported_graph_root = root;
             new Thread(()-> networkManager.importTopology(json,root)).start();
         }));
-        menuItems.add(new MenuItem("route", "Get routing paths between nodes", x -> {
-            routeCommand();
+        menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> {
+            findPathsCmd();
         }));
         menuItems.add(new MenuItem("save", "Save UVM status", x -> {
             System.out.print("Save to:");
@@ -271,6 +311,9 @@ public class UVDashboard {
             }
             else System.out.println("Bootstrap not completed!");
         } ));
+        menuItems.add(new MenuItem("route", "Route Payment", x -> {
+            routeCmd();
+        }));
 
         menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> {
             networkManager.resetUVM();
@@ -293,11 +336,12 @@ public class UVDashboard {
             System.out.println("-------------------------------------------------");
             System.out.print("Timechain :"+networkManager.getTimechain().getCurrent_block());
             if (!networkManager.getTimechain().isRunning()) System.out.println("[Not running]");
+            System.out.println("-------------------------------------------------");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
 
 
-            System.out.print(" -> ");
+            System.out.print("\n -> ");
             var ch = scanner.nextLine();
 
             for (MenuItem item : menuItems) {
