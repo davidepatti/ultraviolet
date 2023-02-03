@@ -121,7 +121,7 @@ public class UVDashboard {
 
         System.out.print("Waiting for path finding...");
 
-        wait(arrayListFuture);
+        waitForFuture(arrayListFuture);
 
         ArrayList<ArrayList<String>> paths = null;
         try {
@@ -171,7 +171,7 @@ public class UVDashboard {
      *
      * @param f
      */
-    private void wait(Future f) {
+    private void waitForFuture(Future f) {
         while (!f.isDone()) {
             System.out.print(".");
             try {
@@ -200,7 +200,7 @@ public class UVDashboard {
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetwork());
                 System.out.println("waiting bootstrap to finish...");
-                wait(bootstrap);
+                waitForFuture(bootstrap);
             }
         }));
         menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {
@@ -332,8 +332,9 @@ public class UVDashboard {
             System.out.println("-------------------------------------------------");
             menuItems.stream().forEach(System.out::println);
             System.out.println("-------------------------------------------------");
-            System.out.print("Timechain :"+networkManager.getTimechain().getCurrent_block());
+            System.out.print("Timechain :");
             if (!networkManager.getTimechain().isRunning()) System.out.println("[Not running]");
+            else System.out.println(networkManager.getTimechain().getCurrent_block());
             System.out.println("-------------------------------------------------");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());

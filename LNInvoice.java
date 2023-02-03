@@ -3,18 +3,21 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class LNInvoice {
+    // antonop 339
     private final long r;
     private final String H;
     private final int amount;
-    private final String recipient;
+    private final String destination;
     private final Optional<String> message;
+    private final int min_cltv_expiry = 9;
 
     public LNInvoice(long r, int amount, String recipient, Optional<String> message) {
         this.r = r;
         H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(r).toByteArray()));
         this.amount = amount;
-        this.recipient = recipient;
+        this.destination = recipient;
         this.message = message;
+
     }
 
     public String getHash() {
@@ -25,8 +28,12 @@ public class LNInvoice {
         return amount;
     }
 
-    public String getRecipient() {
-        return recipient;
+    public String getDestination() {
+        return destination;
+    }
+
+    public int getMin_cltv_expiry() {
+        return min_cltv_expiry;
     }
 
     @Override
@@ -34,7 +41,7 @@ public class LNInvoice {
         return "LNInvoice{" +
                 "H='" + H + '\'' +
                 ", amount=" + amount +
-                ", recipient='" + recipient + '\'' +
+                ", recipient='" + destination + '\'' +
                 ", message=" + message +
                 '}';
     }

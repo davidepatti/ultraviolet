@@ -38,7 +38,7 @@ public class OnionLayer {
     public String toString() {
         return "OnionLayer{" +
                 "payload=" + payload +
-                ", innerLayer=" + innerLayer +
+                //", innerLayer=" + innerLayer +
                 '}';
     }
 }

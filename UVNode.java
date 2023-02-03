@@ -136,27 +136,53 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         System.out.println("Routing invoice on path:");
         path.stream().forEach(System.out::println);
 
-        // the last hop payload is special, the only having the secret
-        var hopPayload = new OnionLayer.Payload(path.get(0),invoice.getAmount(),99,Optional.of(invoice.getHash()));
-        var layer = new OnionLayer(hopPayload,null);
-        path.remove(0);
-        for (String n:path) {
-            hopPayload = new OnionLayer.Payload(n,invoice.getAmount(),99,null);
-            layer = new OnionLayer(hopPayload,layer);
-        }
+
+        // if Alice is the sender, and Dina the receiver
+        // paths = Dina, Carol, Bob, Alice    with Dina in position 0
+
+        // the last hop payload for destination Dina is special, the only having the secret and null as channel id
+
+        var amount = invoice.getAmount();
+        var base_block_height = uvm.getTimechain().getCurrent_block();
+        var outgoing_cltv_value = base_block_height+invoice.getMin_cltv_expiry();
+        var short_channel_id = "00000000";
+        var hopPayload = new OnionLayer.Payload(short_channel_id,amount,outgoing_cltv_value,Optional.of(invoice.getHash()));
+        // this is the inner layer, for the final destination
+        var onionLayer = new OnionLayer(hopPayload,null);
+
+        // make the remaning hop payloads, starting with the payload for Carol
+        // we must find the related connecting channels
 
 
-        System.out.println("ONION");
-        while (layer!=null) {
-            System.out.println("---------------------------------------------");
-            System.out.println(layer);
-            System.out.println("---------------------------------------------");
-            layer = layer.innerLayer;
+        // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
+        // Carol will take the forwarding fees specified in the payload for Bob
+        int forwarding_fees=0;
+
+        System.out.println("Final layer:");
+        System.out.println(onionLayer);
+
+
+        for (int n=1;n<path.size()-1;n++) {
+
+            var to_node = path.get(n-1);
+            var from_node = path.get(n);
+            var channel = uvm.getChannelFromNodes(to_node,from_node);
+            var channel_id = channel.getId();
+            hopPayload = new OnionLayer.Payload(channel_id,amount+forwarding_fees,outgoing_cltv_value,null);
+            onionLayer = new OnionLayer(hopPayload,onionLayer);
+
+            System.out.println("------------------------------------------------------------");
+            System.out.println("Onion for "+from_node);
+            System.out.println(onionLayer);
+            // TODO: get the proper values, to be used in next iteration
+            // the forwarding fees information in the carol->dina channel are put in the Bob payload
+            // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
+            forwarding_fees += channel.getNode1FeeBase();
+            outgoing_cltv_value+=channel.getNode1TimeLockDelta();
         }
 
         return false;
     }
-
 
 
     /**

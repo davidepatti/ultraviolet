@@ -28,8 +28,6 @@ public class UVNetworkManager {
     private GlobalStats stats;
 
     private ScheduledExecutorService p2pExecutor;
-    private ScheduledFuture<?> p2pHandler;
-
 
     /**
      * Initialize the logging functionality
@@ -204,6 +202,20 @@ public class UVNetworkManager {
         var n = random.nextInt(pubkeys_list.length);
         var some_random_key = pubkeys_list[n];
         return uvnodes.get(some_random_key);
+    }
+
+    /**
+     *
+     */
+    public LNChannel getChannelFromNodes(String pub1, String pub2) {
+
+        var n1 = getUVNodes().get(pub1);
+
+        for (LNChannel c: n1.getLNChannelList()) {
+            if (c.getNode1().getPubKey().equals(pub2) || c.getNode2().getPubKey().equals(pub2))
+                return c;
+        }
+        return null;
     }
 
     /**
