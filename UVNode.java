@@ -132,6 +132,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return false;
     }
 
+    /**
+     *
+     * @param invoice
+     * @param destination
+     * @param path
+     * @return
+     */
     public boolean routeInvoiceOnPath(LNInvoice invoice, LNode destination, ArrayList<String> path) {
         System.out.println("Routing invoice on path:");
         path.stream().forEach(System.out::println);
@@ -181,7 +188,60 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             outgoing_cltv_value+=channel.getNode1TimeLockDelta();
         }
 
-        return false;
+        var first_hop = path.get(path.size()-2);
+        System.out.println("Sending Onion to first hop: "+first_hop);
+
+        boolean b = uvm.getUVNodes().get(first_hop).updateAddHTLC(onionLayer);
+
+        return b;
+
+    }
+
+    /**
+     *
+     * @param onionLayer
+     * @return
+     */
+    public boolean updateAddHTLC(OnionLayer onionLayer) {
+        // TODO: check if you are the destination, and start the update_fulfill_htcl
+        var forwarding_channel_id = onionLayer.getPayload().getShort_channel_id();
+        System.out.println("Received onion, will forward along channel "+forwarding_channel_id);
+        var forwarding_channel = getUVChannels().get(forwarding_channel_id);
+
+        if (onionLayer.getPayload().getAmt_to_forward()>getLocalBalance(forwarding_channel)) {
+            System.out.println("Not enought liquidity ");
+            return false;
+        }
+        else {
+            var channel_peer = getChannelPeer(forwarding_channel_id);
+            return channel_peer.updateAddHTLC(onionLayer.getInnerLayer());
+        }
+    }
+
+    /**
+     *
+     * @param channel_id
+     * @return
+     */
+    private LNode getChannelPeer(String channel_id) {
+        var channel = channels.get(channel_id);
+        if (isInitiatorOf(channel_id)) return channel.getInitiator();
+        else
+            return channel.getChannelPeer();
+    }
+
+    /**
+     *
+     * @param channel
+     * @return
+     */
+    public synchronized int getLocalBalance(UVChannel channel) {
+        if (isInitiatorOf(channel.getId())) {
+            return channel.getInitiatorBalance();
+        }
+        else {
+           return channel.getPeer_balance();
+        }
     }
 
 

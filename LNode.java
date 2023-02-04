@@ -6,4 +6,5 @@ public interface LNode {
     LNInvoice generateInvoice(int amount);
     boolean routeInvoice(LNInvoice invoice, LNode destination);
     ArrayList<LNChannel> getLNChannelList();
+    boolean updateAddHTLC(OnionLayer onionLayer);
 }
