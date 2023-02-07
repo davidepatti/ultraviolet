@@ -8,7 +8,6 @@ public class ConfigManager implements Serializable {
     @Serial
     private static final long serialVersionUID = 120678L;
     private static final String DEFAULT_BLOCKTIME = "1000";
-    private static final String DEFAULT_SERVERPORT = "7777";
     private static final String DEFAULT_LOGFILE = "uvm.log";
     private static final String DEFAULT_SEED = "0";
 
@@ -29,7 +28,6 @@ public class ConfigManager implements Serializable {
     private static final String DEFAULT_P2P_PERIOD = "100";
 
     public static int blocktime;
-    public static int server_port;
     public static String logfile;
     private static int seed;
 
@@ -62,7 +60,6 @@ public class ConfigManager implements Serializable {
     public static void setDefaults() {
         // default values when not config file is provided
         blocktime = Integer.parseInt(DEFAULT_BLOCKTIME);
-        server_port = Integer.parseInt(DEFAULT_SERVERPORT);
         logfile = DEFAULT_LOGFILE;
         seed = Integer.parseInt(DEFAULT_SEED);
 
@@ -97,7 +94,6 @@ public class ConfigManager implements Serializable {
             var config_file_reader = new FileReader(config_file);
             properties.load(config_file_reader);
             blocktime = Integer.parseInt(properties.getProperty("blocktime", DEFAULT_BLOCKTIME));
-            server_port = Integer.parseInt(properties.getProperty("server_port", DEFAULT_SERVERPORT));
             logfile = properties.getProperty("logfile", DEFAULT_LOGFILE);
             seed = Integer.parseInt(properties.getProperty("seed",DEFAULT_SEED));
 

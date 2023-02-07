@@ -278,7 +278,7 @@ public class ChannelGraph implements Serializable  {
     }
     // edges of graph
     public synchronized void addChannel(LNChannel channel) {
-        addChannel(channel.getNode1().getPubKey(),channel.getNode2().getPubKey());
+        addChannel(channel.getNode1PubKey(),channel.getNode2PubKey());
     }
     public synchronized void addChannel(String node1, String node2) {
         addEdge(node1,node2,true);
@@ -289,7 +289,7 @@ public class ChannelGraph implements Serializable  {
     }
 
     public synchronized boolean hasChannel(LNChannel channel) {
-       return hasEdge(channel.getNode1().getPubKey(),channel.getNode2().getPubKey());
+       return hasEdge(channel.getNode1PubKey(),channel.getNode2PubKey());
     }
 
     private ChannelGraph() {};

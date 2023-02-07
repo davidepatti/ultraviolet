@@ -212,7 +212,7 @@ public class UVNetworkManager {
         var n1 = getUVNodes().get(pub1);
 
         for (LNChannel c: n1.getLNChannelList()) {
-            if (c.getNode1().getPubKey().equals(pub2) || c.getNode2().getPubKey().equals(pub2))
+            if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2))
                 return c;
         }
         return null;
@@ -269,12 +269,12 @@ public class UVNetworkManager {
                 String channel_id = (String) edgeObject.get("channel_id");
                 String node1_pub = (String) edgeObject.get("node1_pub");
                 String node2_pub = (String) edgeObject.get("node2_pub");
-                var uvnode1 = uvnodes.get(node1_pub);
-                var uvnode2 = uvnodes.get(node2_pub);
                 int capacity = Integer.parseInt((String) edgeObject.get("capacity"));
 
-                UVChannel ch = new UVChannel(channel_id, uvnode1,uvnode2,capacity);
+                UVChannel ch = new UVChannel(channel_id, node1_pub,node2_pub,capacity,0,0);
 
+                var uvnode1 = uvnodes.get(node1_pub);
+                var uvnode2 = uvnodes.get(node2_pub);
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addChannel(ch);
@@ -436,6 +436,7 @@ public class UVNetworkManager {
             }
             updatePubkeyList();
             bootstrap_completed = true;
+
 
         } catch (IOException e) {
             return false;

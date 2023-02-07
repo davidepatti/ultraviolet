@@ -1,93 +1,66 @@
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Objects;
 
-public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel> {
+public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel> {
 
     @Serial
     private static final long serialVersionUID = 120897L;
-
-    /**
-     * @param uvChannel 
-     * @return
-     */
-    @Override
-    public int compareTo(UVChannel uvChannel) {
-        return Integer.compare(this.getCapacity(),uvChannel.getCapacity());
-    }
 
     enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
 
     private ChannelStatus status;
 
-    // TODO: made public to restore on load, fix later calling constructor
-    // CAN THIS BE LNODE?
-    transient public UVNode initiatorNode;
-    transient public UVNode channelPeerNode;
+    final private String initiatorPubkey;
+    final private String peerPubkey;
+    private final String channelId;
 
-    final private String initiator_pubkey;
-    final private String peer_pubkey;
-    private final String channel_id;
+    private int commitNumber = 0;
 
-    private int commit_number = 0;
-
-    private int initiator_fee_ppm;
-    private int peer_fee_ppm;
-    @SuppressWarnings({"FieldMayBeFinal", "CanBeFinal"})
-    private int initiator_base_fee;
-    @SuppressWarnings({"FieldMayBeFinal", "CanBeFinal"})
-    private int peer_base_fee;
-    private int initiator_locktimedelta;
-    private int peer_locktimedelta;
-    private int initiator_balance;
-    private int peer_balance;
-    @SuppressWarnings("FieldMayBeFinal")
-    private int initiator_pending;
-    @SuppressWarnings("FieldMayBeFinal")
-    private int peer_pending;
+    private Policy node1Policy;
+    private Policy node2Policy;
+    
+    private int initiatorBalance;
+    private int peerBalance;
+    private int initiatorPending;
+    private int peerPending;
     private int reserve;
 
     // constructor only fill the "proposal" for the channel
-    public UVChannel(String channel_id,UVNode initiatorNode, UVNode channelPeerNode, int initiator_balance, int peer_balance, int initiator_base_fee, int initiator_fee_ppm, int peer_base_fee, int peer_fee_ppm, int reserve) {
-        this.initiatorNode = initiatorNode;
-        this.channelPeerNode = channelPeerNode;
-        this.initiator_balance = initiator_balance;
-        this.peer_balance = peer_balance;
-        this.channel_id = channel_id;
-        this.initiator_fee_ppm = initiator_fee_ppm;
-        this.peer_fee_ppm = peer_fee_ppm;
-        this.initiator_base_fee = initiator_base_fee;
-        this.peer_base_fee = peer_base_fee;
-        this.initiator_pending = 0;
-        this.peer_pending = 0;
+    public UVChannel(String channel_id, String initiatorPubkey, String peerPubkey, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
+        this.initiatorPubkey = initiatorPubkey;
+        this.peerPubkey = peerPubkey;
+        this.initiatorBalance = fundingSatoshis;
+        this.peerBalance = pushMsat;
+        this.channelId = channel_id;
+        this.initiatorPending = 0;
+        this.peerPending = 0;
         this.status = ChannelStatus.NONE;
-        this.initiator_pubkey = initiatorNode.getPubKey();
-        this.peer_pubkey = channelPeerNode.getPubKey();
+        this.reserve = channelReserveSatoshis;
     }
 
-    public UVChannel(String id, UVNode node1, UVNode node2, int capacity) {
-        this(id, node1,node2,capacity,0, 0,0,0,0,0);
+    public boolean setPolicy(String node, Policy policy) {
+        if (node.equals(initiatorPubkey))  {
+            node1Policy = policy;
+            return true;
+        }
+        if (node.equals(peerPubkey)) {
+            node2Policy = policy;
+            return true;
+        }
+        return false;
     }
 
-    public String getPeerPubKey() {
-        return peer_pubkey;
-    }
 
-    public String getInitiatorPubKey() {
-        return initiator_pubkey;
+    public String getInitiatorPubkey() {
+        return initiatorPubkey;
     }
-
-    public UVNode getInitiator() {
-        return initiatorNode;
+    public String getPeerPubkey() {
+        return peerPubkey;
     }
-
-    public UVNode getChannelPeer() {
-        return channelPeerNode;
-    }
-
     public void setStatus(ChannelStatus status) {
         this.status = status;
     }
-
     public ChannelStatus getStatus() {
         return status;
     }
@@ -97,7 +70,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
      */
     @Override
     public String getId() {
-        return this.channel_id;
+        return this.channelId;
     }
 
     /**
@@ -105,7 +78,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
      */
     @Override
     public String getNode1PubKey() {
-        return getInitiatorPubKey();
+        return getInitiatorPubkey();
     }
 
     /**
@@ -113,27 +86,11 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
      */
     @Override
     public String getNode2PubKey() {
-        return getPeerPubKey();
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public LNode getNode1() {
-        return initiatorNode;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public LNode getNode2() {
-        return channelPeerNode;
+        return getPeerPubkey();
     }
 
     public synchronized int getCapacity() {
-        return initiator_balance+peer_balance;
+        return initiatorBalance + peerBalance;
     }
 
     /**
@@ -148,83 +105,38 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
      * @return 
      */
     @Override
-    public int getNode1TimeLockDelta() {
-        return initiator_locktimedelta;
+    public Policy getNode1Policy() {
+        return node1Policy;
     }
 
     /**
      * @return 
      */
     @Override
-    public int getNode2TimeLockDelta() {
-        return peer_locktimedelta;
+    public Policy getNode2Policy() {
+        return node2Policy;
     }
 
-    /**
-     * @return 
-     */
-    @Override
-    public int getNode1FeeBase() {
-        return initiator_base_fee;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public int getNode1FeePpm() {
-        return initiator_fee_ppm;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public int getNode2FeeBase() {
-        return peer_base_fee;
-    }
-
-    /**
-     * @return 
-     */
-    @Override
-    public int getNode2FeePpm() {
-        return peer_fee_ppm;
-    }
 
     public synchronized int getLastCommit_number() {
-        return this.commit_number;
+        return this.commitNumber;
     }
 
     public synchronized int getInitiatorBalance() {
-        return initiator_balance;
+        return initiatorBalance;
     }
-    public synchronized int getPeer_balance() {
-        return peer_balance;
-    }
-
-    public synchronized int getInitiator_pending() {
-        return initiator_pending;
+    public synchronized int getPeerBalance() {
+        return peerBalance;
     }
 
-    public synchronized int getPeer_pending() {
-        return peer_pending;
+    public synchronized int getInitiatorPending() {
+        return initiatorPending;
     }
 
-
-    public synchronized int getInitiator_fee_ppm() {
-        return initiator_fee_ppm;
-    }
-    public synchronized void setInitiator_fee_ppm(int initiator_fee_ppm) {
-        this.initiator_fee_ppm = initiator_fee_ppm;
+    public synchronized int getPeerPending() {
+        return peerPending;
     }
 
-    public synchronized int getPeer_fee_ppm() {
-        return peer_fee_ppm;
-    }
-    public synchronized void setPeer_fee_ppm(int peer_fee_ppm) {
-        this.peer_fee_ppm = peer_fee_ppm;
-    }
 
     public synchronized int getReserve() {
         return reserve;
@@ -240,7 +152,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
 
     public synchronized  int getInitatorLiquidity() {
 
-        return getInitiatorBalance()-getReserve()-getInitiator_pending();
+        return getInitiatorBalance()-getReserve()- getInitiatorPending();
     }
 
     /**
@@ -248,7 +160,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
      * @return the amount of sats that could actually be received from peer
      */
     public synchronized int getPeerLiquidity() {
-        return getPeer_balance()-getReserve()-getPeer_pending();
+        return getPeerBalance()-getReserve()- getPeerPending();
     }
 
     /**
@@ -262,21 +174,45 @@ public class UVChannel implements LNChannel, Serializable, Comparable<UVChannel>
         if (initiator_balance+peer_balance != this.getCapacity())
             return false;
 
-        this.initiator_balance = initiator_balance;
-        this.peer_balance = peer_balance;
-        this.commit_number = getLastCommit_number()+1;
+        this.initiatorBalance = initiator_balance;
+        this.peerBalance = peer_balance;
+        this.commitNumber = getLastCommit_number()+1;
         return true;
     }
 
-
     @Override
     public String toString() {
-        return "Ch{" +
-                " status:"+this.status.toString()+
-                " initiator:'" + initiatorNode.getPubKey() + '\'' +
-                ", peer:" + channelPeerNode.getPubKey() + '\'' +
-                ", balance:(" + initiator_balance +
-                "," + peer_balance +
-                "), id:" + channel_id + ", initiator_fee:" + initiator_fee_ppm + ", peer_fee:" + peer_fee_ppm + ", ncommits:"+commit_number+'}';
+        return "UVChannel{" +
+                " Id:'" + channelId + '\'' +
+                ", status:" + status +
+                ", init:'" + initiatorPubkey + '\'' +
+                ", peer:'" + peerPubkey + '\'' +
+                ", init_sat=" + initiatorBalance +
+                ", peer_sat=" + peerBalance +
+                ", commit:" + commitNumber +
+                ", n1:" + node1Policy +
+                ", n2:" + node2Policy +
+                '}';
+    }
+
+    /**
+     * @param channel
+     * @return
+     */
+    public int compareTo(LNChannel channel) {
+        return this.getId().compareTo(channel.getId());
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UVChannel uvChannel = (UVChannel) o;
+        return channelId.equals(uvChannel.channelId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(channelId);
     }
 }
