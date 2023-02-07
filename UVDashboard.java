@@ -12,13 +12,7 @@ public class UVDashboard {
     private final UVNetworkManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
-    /**
-     *
-     */
-    /**
-     *
-     * @param pubkey
-     */
+
     private void showNodeCommand(String pubkey) {
 
         if (networkManager.getUVNodes().size() == 0)
@@ -48,9 +42,6 @@ public class UVDashboard {
         }
     }
 
-    /**
-     *
-     */
     private static class MenuItem {
         public final String key, description;
         private final String entry;
@@ -94,7 +85,7 @@ public class UVDashboard {
         var invoice = dest.generateInvoice(700);
         System.out.println("Generated  "+invoice);
 
-        sender.routeInvoiceOnPath(invoice,dest,paths.get(0));
+        sender.routeInvoiceOnPath(invoice,paths.get(0));
     }
 
     /**
@@ -104,26 +95,24 @@ public class UVDashboard {
      * @param stopfirst
      * @return
      */
-    private ArrayList<ArrayList<String>> findPathList(String start, String end, boolean stopfirst) {
+    private ArrayList<ArrayList<ChannelGraph.Edge>> findPathList(String start, String end, boolean stopfirst) {
 
         UVNode start_node = networkManager.getUVNodes().get(start);
         UVNode end_node = networkManager.getUVNodes().get(end);
 
         if (start_node==null || end_node==null) {
-            System.out.println("NOT FOUND");
+            System.out.println("NODES NOT FOUND");
             return null;
         }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<ArrayList<ArrayList<String>>> arrayListFuture = executor.submit(()->{
-            return start_node.getChannelGraph().findPath(start,end,stopfirst);
-        });
+        Future<ArrayList<ArrayList<ChannelGraph.Edge>>> arrayListFuture = executor.submit(()-> start_node.getChannelGraph().findPath(start,end,stopfirst));
 
         System.out.print("Waiting for path finding...");
 
-        waitForFuture(arrayListFuture);
+        _waitForFuture(arrayListFuture);
 
-        ArrayList<ArrayList<String>> paths = null;
+        ArrayList<ArrayList<ChannelGraph.Edge>> paths = null;
         try {
             paths = arrayListFuture.get();
         } catch (InterruptedException | ExecutionException e) {
@@ -155,12 +144,12 @@ public class UVDashboard {
 
         var paths = findPathList(start,end,stopfirst);
 
+        if (paths==null) return;
+
         if (paths.size()!=0) {
-            for (ArrayList<String> p: paths) {
-                System.out.println("PATH: ");
-                for (String n:p) {
-                    System.out.print(n+" ");
-                }
+            for (ArrayList<ChannelGraph.Edge> p: paths) {
+                System.out.println("PATH------------------------------------- ");
+                p.stream().forEach(System.out::println);
             }
         }
         else System.out.println("NO PATH FOUND");
@@ -171,7 +160,7 @@ public class UVDashboard {
      *
      * @param f
      */
-    private void waitForFuture(Future f) {
+    private void _waitForFuture(Future f) {
         while (!f.isDone()) {
             System.out.print(".");
             try {
@@ -200,7 +189,7 @@ public class UVDashboard {
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetwork());
                 System.out.println("waiting bootstrap to finish...");
-                waitForFuture(bootstrap);
+                _waitForFuture(bootstrap);
             }
         }));
         menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {

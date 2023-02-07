@@ -182,16 +182,14 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     @Override
     public String toString() {
-        return "UVChannel{" +
+        return "Ch{" +
                 " Id:'" + channelId + '\'' +
-                ", status:" + status +
-                ", init:'" + initiatorPubkey + '\'' +
-                ", peer:'" + peerPubkey + '\'' +
-                ", init_sat=" + initiatorBalance +
-                ", peer_sat=" + peerBalance +
-                ", commit:" + commitNumber +
-                ", n1:" + node1Policy +
-                ", n2:" + node2Policy +
+                ", init:" + initiatorPubkey + '\'' +
+                ", peer:" + peerPubkey + '\'' +
+                ", [" + initiatorBalance + "," + peerBalance +"]"+
+                ", "+ node1Policy +
+                ", " + node2Policy +
+                ", ups:" + commitNumber +
                 '}';
     }
 

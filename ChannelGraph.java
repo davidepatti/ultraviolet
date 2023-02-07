@@ -3,55 +3,60 @@ import java.util.*;
 
 public class ChannelGraph implements Serializable  {
 
-    private static final boolean DEBUG = true;
+    private String root_node;
+    public record Edge(String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
+        @Override
+        public String toString() {
+            return "{ source='" + source + '\'' + ", destination='" + destination + '\'' + ", capacity=" + capacity + '}';
+        }
+    }
+
+    transient private static final boolean DEBUG = true;
     @Serial
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph
-    transient private Map<String, List<String>> adj_map = new HashMap<>();
+    transient private Map<String, List<Edge>> adj_map = new HashMap<>();
 
     // This function adds a new vertex to the graph
     private void addVertex(String s) {
         adj_map.putIfAbsent(s, new LinkedList<>());
     }
 
-    private String root_node;
-
-    public void clear() {
-        this.adj_map.clear();
-    }
-
     /**
-     * This function adds the edge between source to destination
-     * @param source
-     * @param destination
-     * @param bidirectional
+     *
+     * @param channel
      */
-    private void addEdge(String source, String destination, boolean bidirectional) {
+    public void addChannel(LNChannel channel) {
 
-        adj_map.putIfAbsent(source, new LinkedList<>());
-        adj_map.putIfAbsent(destination, new LinkedList<>());
+        var node1pub = channel.getNode1PubKey();
+        var node2pub = channel.getNode2PubKey();
+
+
+        adj_map.putIfAbsent(node1pub, new LinkedList<>());
+        adj_map.putIfAbsent(node2pub, new LinkedList<>());
 
         // do not add channel edge if source and destination area already connected
         // TODO: in theory, multiple channel could be opened with differen id
-        if (this.hasEdge(source,destination)) return;
+        if (this.hasEdge(node1pub, node2pub)) return;
 
-        adj_map.get(source).add(destination);
+        var edge1 = new Edge(node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
+        var edge2 = new Edge(node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
 
-        if (bidirectional) {
-            adj_map.get(destination).add(source);
-        }
+        adj_map.get(channel.getNode1PubKey()).add(edge1);
+        adj_map.get(channel.getNode2PubKey()).add(edge2);
+
     }
 
     // TODO: assuming symmetric adjcency map (see above)
     private boolean hasEdge(String n1, String n2) {
 
-        boolean x1 = false;
+        boolean from_n1_to_n2 = false;
 
         if (adj_map.containsKey(n1)) {
-            x1 = adj_map.get(n1).stream().anyMatch((e)->e.equals(n2));
+            from_n1_to_n2 = adj_map.get(n1).stream().anyMatch((e)->e.destination().equals(n2));
         }
 
-        return x1;
+        return from_n1_to_n2;
     }
 
     /**
@@ -87,118 +92,60 @@ public class ChannelGraph implements Serializable  {
         return adj_map.containsKey(s);
     }
 
-    public ArrayList<ArrayList<String>> findPath(String start,String end, boolean stopfirst)
+    public ArrayList<ArrayList<Edge>> findPath(String start,String end, boolean stopfirst)
     {
-        var visited = new ArrayList<String>();
-        var queue = new LinkedList<String>();
-        var paths = new ArrayList<ArrayList<String>>();
+        var visited_vertex = new ArrayList<String>();
+        var queue_vertex = new LinkedList<String>();
+        var paths = new ArrayList<ArrayList<Edge>>();
 
-        var last_parent = new HashMap<String,String>();
-        last_parent.put(start,"ROOT");
+        var last_parent = new HashMap<String,Edge>();
+        last_parent.put("ROOT",null);
 
         int nfound = 0;
 
-        visited.add(start);
-        queue.add(start);
+        visited_vertex.add(start);
+        queue_vertex.add(start);
 
-        while (queue.size() != 0) {
-            var s = queue.poll();
+        while (queue_vertex.size() != 0) {
+            var current_vertex = queue_vertex.poll();
 
-            var list_neighbors =adj_map.get(s);
+            var list_edges =adj_map.get(current_vertex);
 
-            for (String n :list_neighbors) {
-                if (n.equals(end))  {
+            for (Edge e :list_edges) {
+                if (e.destination().equals(end))  {
                     nfound++;
                     System.out.println("Found "+nfound+" path(s)");
-                    var path = new ArrayList<String>();
-                    path.add(end);
-                    path.add(s);
+                    var path = new ArrayList<Edge>();
+                    path.add(e);
 
-                    String current = last_parent.get(s);
-                    while (!current.equals("ROOT")) {
+                    Edge current = last_parent.get(e.source());
+                    while (current!=null) {
                         path.add(current);
-                        current = last_parent.get(current);
+                        current = last_parent.get(current.source());
                     }
                     paths.add(path);
                     if (stopfirst) return paths;
                     // no need to go deeper along that path
-                    visited.add(n);
+                    visited_vertex.add(e.destination());
                     continue;
                 }
-                if (!visited.contains(n)) {
-                    last_parent.put(n,s);
-                    visited.add(n);
-                    queue.add(n);
+                if (!visited_vertex.contains(e.destination())) {
+                    last_parent.put(e.destination(),e);
+                    visited_vertex.add(e.destination());
+                    queue_vertex.add(e.destination());
                 }
             }
         }
         return paths;
     }
 
-    /**
-     * prints BFS traversal
-     * @param start
-     * @param end
-     * @return
-     */
-    public ArrayList<ArrayList<String>> BFS(String start,String end)
-    {
-        var visited = new ArrayList<String>();
-        var queue = new LinkedList<String>();
-        var paths = new ArrayList<ArrayList<String>>();
-
-        var last_parent = new HashMap<String,String>();
-        last_parent.put(start,"ROOT");
-
-        // Mark the current node as visited and enqueue it
-        visited.add(start);
-        queue.add(start);
-
-        while (queue.size() != 0) {
-            // Dequeue a vertex from queue and print it
-            var s = queue.poll();
-            if (DEBUG) {
-                System.out.println("Visiting "+s);
-                System.out.println("---------------------------------------------");
-            }
-
-            for (String n : adj_map.get(s)) {
-                System.out.println("Looking "+s+"--->"+n);
-
-                if (n.equals(end))  {
-                    if (DEBUG)
-                        System.out.println("FOUND "+end);
-
-                    var path = new ArrayList<String>();
-                    path.add(end);
-                    path.add(s);
-
-                    String current = last_parent.get(s);
-                    while (!current.equals("ROOT")) {
-                       path.add(current);
-                       current = last_parent.get(current);
-                    }
-
-                    paths.add(path);
-                }
-                if (!visited.contains(n)) {
-                    System.out.println("\tWill visit "+n+" (last parent "+s+")");
-                    last_parent.put(n,s);
-                    visited.add(n);
-                    queue.add(n);
-                }
-            }
-            if (DEBUG)
-                System.out.println("---------------------------------------------");
-        }
-        return paths;
-    }
     /**
      *
      * @param current_node
      * @param end_node
      * @param visited
      */
+    /*
     public void DFS_path_util(String current_node, String end_node, HashSet<String> visited) {
         visited.add(current_node);
         if (DEBUG)
@@ -226,10 +173,8 @@ public class ChannelGraph implements Serializable  {
         return  false;
     }
 
+     */
 
-    public Map<String,List<String>> getAdj_map() {
-        return adj_map;
-    }
 
     @Serial
     private void readObject(ObjectInputStream s) {
@@ -241,7 +186,7 @@ public class ChannelGraph implements Serializable  {
 
             for (int i=0;i<n_keys;i++) {
                 var pubkey = (String) s.readObject();
-                var list = (LinkedList<String>)s.readObject();
+                var list = (LinkedList<Edge>)s.readObject();
                 adj_map.put(pubkey,list);
              }
 
@@ -275,13 +220,6 @@ public class ChannelGraph implements Serializable  {
 
     public synchronized void addNode(String pubkey) {
         addVertex(pubkey);
-    }
-    // edges of graph
-    public synchronized void addChannel(LNChannel channel) {
-        addChannel(channel.getNode1PubKey(),channel.getNode2PubKey());
-    }
-    public synchronized void addChannel(String node1, String node2) {
-        addEdge(node1,node2,true);
     }
     // to edge properties
     @SuppressWarnings("EmptyMethod")
@@ -317,7 +255,7 @@ public class ChannelGraph implements Serializable  {
 
         for (String v : list) {
             builder.append(v).append(": ");
-            for (String w : adj_map.get(v)) {
+            for (Edge w : adj_map.get(v)) {
                 builder.append(w).append(" ");
             }
             builder.append("\n");

@@ -133,14 +133,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      *
      * @param invoice
-     * @param destination
      * @param path
      * @return
      */
-    public boolean routeInvoiceOnPath(LNInvoice invoice, LNode destination, ArrayList<String> path) {
+    public boolean routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
         System.out.println("Routing invoice on path:");
         path.stream().forEach(System.out::println);
-
 
         // if Alice is the sender, and Dina the receiver
         // paths = Dina, Carol, Bob, Alice    with Dina in position 0
@@ -169,8 +167,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         for (int n=1;n<path.size()-1;n++) {
 
-            var to_node = path.get(n-1);
-            var from_node = path.get(n);
+            var to_node = path.get(n).destination();
+            var from_node = path.get(n).source();
             var channel = uvm.getChannelFromNodes(to_node,from_node);
             var channel_id = channel.getId();
             hopPayload = new OnionLayer.Payload(channel_id,amount+forwarding_fees,outgoing_cltv_value,null);
