@@ -6,7 +6,7 @@ public abstract class P2PMessage implements Serializable {
     protected final int timestamp;
     protected final Type msgType;
 
-    enum Type { CHANNEL_ANNOUNCE, CHANNEL_UPDATE};
+    enum Type { CHANNEL_ANNOUNCE, CHANNEL_UPDATE}
 
     public int getForwardings() {
         return forwardings;

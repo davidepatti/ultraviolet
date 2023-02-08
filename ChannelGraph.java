@@ -1,21 +1,28 @@
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 public class ChannelGraph implements Serializable  {
 
     private String root_node;
-    public record Edge(String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
+    private Consumer<String> Log = UVNetworkManager.Log;
+    public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
-            return "{ source='" + source + '\'' + ", destination='" + destination + '\'' + ", capacity=" + capacity + '}';
+            return "{"+source + "->"+ destination + "["+capacity +"]"+policy+"}";
         }
     }
 
-    transient private static final boolean DEBUG = true;
+    private void log(String s) {
+        Log.accept(s);
+    }
+
+    private static final boolean DEBUG = true;
     @Serial
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph
-    transient private Map<String, List<Edge>> adj_map = new HashMap<>();
+    transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
 
     // This function adds a new vertex to the graph
     private void addVertex(String s) {
@@ -39,8 +46,8 @@ public class ChannelGraph implements Serializable  {
         // TODO: in theory, multiple channel could be opened with differen id
         if (this.hasEdge(node1pub, node2pub)) return;
 
-        var edge1 = new Edge(node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
-        var edge2 = new Edge(node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
+        var edge1 = new Edge(channel.getId(),node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
+        var edge2 = new Edge(channel.getId(),node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
 
         adj_map.get(channel.getNode1PubKey()).add(edge1);
         adj_map.get(channel.getNode2PubKey()).add(edge2);
@@ -213,24 +220,41 @@ public class ChannelGraph implements Serializable  {
         }
     }
 
-    // nodes of graph
-    public synchronized void addNode(LNode node) {
-        addNode(node.getPubKey());
-    }
 
-    public synchronized void addNode(String pubkey) {
+    public void addNode(String pubkey) {
         addVertex(pubkey);
     }
     // to edge properties
-    @SuppressWarnings("EmptyMethod")
-    public synchronized void updateChannel(String channel_id, int base_fee, int ppm_fee, int cltv_expiry_delta, long timestamp) {
+    public synchronized void updateChannel(String channel_id, String node, LNChannel.Policy policy) {
+        var list_edges = adj_map.get(node);
+        for (Edge e:list_edges){
+            if (e.id().equals(channel_id)) {
+                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
+                if (!adj_map.get(node).remove(e)) {
+                    log("Cannot remove "+e+" for matching channel id"+channel_id);
+                    throw new RuntimeException("Cannot remove "+e+" for matching channel id"+channel_id);
+
+                }
+                adj_map.get(node).add(new_edge);
+                return;
+            }
+        }
+        log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" from "+node+" in "+this.root_node);
+        throw new RuntimeException("Cannot find matching edge for channel:"+channel_id+" from "+node+" in "+this.root_node);
     }
 
-    public synchronized boolean hasChannel(LNChannel channel) {
+    public boolean hasChannel(LNChannel channel) {
        return hasEdge(channel.getNode1PubKey(),channel.getNode2PubKey());
     }
+    public boolean hasChannel(String channel_id) {
+        for (List<Edge> list:adj_map.values() ) {
+           for (Edge e:list)
+               if (e.id().equals(channel_id)) return true;
+        }
+        return false;
+    }
 
-    private ChannelGraph() {};
+    private ChannelGraph() {}
 
     public ChannelGraph(String root_node){
         this.root_node = root_node;

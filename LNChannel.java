@@ -1,7 +1,7 @@
 import java.io.Serializable;
 
 public interface LNChannel {
-    public static record Policy(int cltv,int base_fee, int fee_ppm) implements Serializable {
+    record Policy(int cltv,int base_fee, int fee_ppm) implements Serializable {
         @Override
         public String toString() {
             return "{" + "cltv:" + cltv + ", base_fee:" + base_fee + ", fee_ppm:" + fee_ppm + '}';

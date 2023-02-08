@@ -1,4 +1,3 @@
-import java.util.Optional;
 
 public class OnionLayer {
 
@@ -9,9 +8,9 @@ public class OnionLayer {
         final private String short_channel_id;
         final private int amt_to_forward;
         final private int outgoing_cltv_value;
-        final private Optional<String> payment_secret;
+        final private String payment_secret;
 
-        public Payload(String short_channel_id, int amt_to_forward, int outgoing_cltv_value, Optional<String> payment_secret) {
+        public Payload(String short_channel_id, int amt_to_forward, int outgoing_cltv_value, String payment_secret) {
             this.short_channel_id = short_channel_id;
             this.amt_to_forward = amt_to_forward;
             this.outgoing_cltv_value = outgoing_cltv_value;
@@ -30,7 +29,7 @@ public class OnionLayer {
             return short_channel_id;
         }
 
-        public Optional<String> getPayment_secret() {
+        public String getPayment_secret() {
             return payment_secret;
         }
 

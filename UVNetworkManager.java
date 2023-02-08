@@ -23,9 +23,9 @@ public class UVNetworkManager {
     private boolean bootstrap_completed = false;
     private String imported_rootnode_graph;
     private FileWriter logfile;
-    private static Consumer<String> Log = System.out::println;
+    public static Consumer<String> Log = System.out::println;
 
-    private GlobalStats stats;
+    private final GlobalStats stats;
 
     private ScheduledExecutorService p2pExecutor;
 
@@ -61,7 +61,7 @@ public class UVNetworkManager {
         this.uvnodes = new HashMap<>();
         timechain = new Timechain(ConfigManager.blocktime);
 
-        log("Initializing UVManager...");
+        log(new Date().toString()+":Initializing UVManager...");
         log(this.toString());
         stats = new GlobalStats(this);
         setP2pRunning(false);
@@ -113,7 +113,7 @@ public class UVNetworkManager {
         log("UVM: Bootstrapping network from scratch...");
         log("UVM: Starting timechain: "+timechain);
         Executor timechain_exec = Executors.newSingleThreadExecutor();
-        timechain_exec.execute(timechain);;
+        timechain_exec.execute(timechain);
         bootstrap_latch = new CountDownLatch(ConfigManager.getTotalNodes());
 
         log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
@@ -139,12 +139,14 @@ public class UVNetworkManager {
            bootexec.submit(n::bootstrapNode);
         }
 
+        System.out.println("Waiting for nodes to complete bootstrap...");
         try {
             bootstrap_latch.await();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
         log("UVNode deployment completed.");
+        System.out.println("WAIT SHUTDOWN");
         bootexec.shutdown();
         boolean term;
 

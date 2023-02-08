@@ -85,7 +85,9 @@ public class UVDashboard {
         var invoice = dest.generateInvoice(700);
         System.out.println("Generated  "+invoice);
 
-        sender.routeInvoiceOnPath(invoice,paths.get(0));
+        if (paths != null) {
+            sender.routeInvoiceOnPath(invoice,paths.get(0));
+        }
     }
 
     /**
@@ -235,16 +237,21 @@ public class UVDashboard {
         menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> {
             networkManager.getUVNodes().values().stream().sorted().forEach(System.out::println);
         }));
-
-        menuItems.add(new MenuItem("status", "UVM Status ", x -> {
-            System.out.println(networkManager.getStatusString());
-        }));
-
         menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showNodeCommand(node);
         }));
+        menuItems.add(new MenuItem("graph", "Show a node graph", x -> {
+            System.out.print("insert node public key:");
+            String node = scanner.nextLine();
+            showGraphCommand(node);
+        }));
+
+        menuItems.add(new MenuItem("status", "UVM Status ", x -> {
+            System.out.println(networkManager.getStatusString());
+        }));
+
 
         menuItems.add(new MenuItem("rand", "Generate Random Events ", x -> {
             System.out.print("Number of events:");
@@ -293,7 +300,7 @@ public class UVDashboard {
                 s.append(max.getChannelGraph().getNodeCount()).append("/").append(max.getChannelGraph().getChannelCount());
                 s.append("\nMin Graph size:").append(min).append(" (node/channels) ");
                 s.append(min.getChannelGraph().getNodeCount()).append("/").append(min.getChannelGraph().getChannelCount());
-                s.append("Average graph size (nodes): "+ networkManager.getStats().getAverageGraphSize());
+                s.append("Average graph size (nodes): ").append(networkManager.getStats().getAverageGraphSize());
                 System.out.println(s);
             }
             else System.out.println("Bootstrap not completed!");
@@ -343,6 +350,13 @@ public class UVDashboard {
         }
         System.out.println("Disconnecting client");
         System.exit(0);
+    }
+
+    private void showGraphCommand(String node) {
+
+        if (!networkManager.isBootstrapCompleted()) return;
+        var g = networkManager.getUVNodes().get(node).getChannelGraph();
+        System.out.println(g);
     }
 
     public static void main(String[] args) {
