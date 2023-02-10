@@ -1,5 +1,9 @@
 Notes:
 
+IMPORTANT:
+- making internal method parameterized on keys rather thant objects avoid unauthorized access to
+global structures: e.g. getLocalBalance (String channel_id) must first get the channel object from local hashmap, instead
+of having directly access to some LNChannle object
 - all LN prefixed components are directly mapped to LN protocol (messages, elements)
 - action that could be taken only admin of the component, should be not be exposed from LN but UV.
  example: update policy for a channel, should not be a commonly available LN method

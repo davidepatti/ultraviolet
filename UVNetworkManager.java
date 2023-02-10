@@ -41,7 +41,7 @@ public class UVNetworkManager {
         }
         Log = (s) ->  {
             try {
-                logfile.write("\n["+timechain.getCurrent_block()+"]"+getClass().getName()+":"+s);
+                logfile.write("\n["+timechain.getCurrentBlock()+"]"+getClass().getName()+":"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -344,7 +344,6 @@ public class UVNetworkManager {
      * @return
      */
     public HashMap<String, UVNode> getUVNodes(){
-
         return this.uvnodes;
     }
 

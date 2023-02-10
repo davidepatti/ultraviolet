@@ -31,4 +31,14 @@ public abstract class P2PMessage implements Serializable {
         this.timestamp = timestamp;
         this.msgType = msgType;
     }
+
+    @Override
+    public String toString() {
+        return "P2PMessage{" +
+                "ID='" + ID + '\'' +
+                ", forwardings=" + forwardings +
+                ", timestamp=" + timestamp +
+                ", msgType=" + msgType +
+                '}';
+    }
 }

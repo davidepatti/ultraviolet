@@ -10,7 +10,7 @@ public class ChannelGraph implements Serializable  {
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
-            return "{"+source + "->"+ destination + "["+capacity +"]"+policy+"}";
+            return "{ch:"+id+"("+source + "-"+ destination + ")["+capacity +"]"+policy+"}";
         }
     }
 
@@ -21,12 +21,12 @@ public class ChannelGraph implements Serializable  {
     private static final boolean DEBUG = true;
     @Serial
     private static final long serialVersionUID = 120676L;
-    // We use Hashmap to store the edges in the graph
+    // We use Hashmap to store the edges in the graph, indexed by node id as keys
     transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
 
     // This function adds a new vertex to the graph
-    private void addVertex(String s) {
-        adj_map.putIfAbsent(s, new LinkedList<>());
+    private void addVertex(String node_id) {
+        adj_map.putIfAbsent(node_id, new LinkedList<>());
     }
 
     /**
@@ -44,7 +44,7 @@ public class ChannelGraph implements Serializable  {
 
         // do not add channel edge if source and destination area already connected
         // TODO: in theory, multiple channel could be opened with differen id
-        if (this.hasEdge(node1pub, node2pub)) return;
+        if (this.hasEdge(channel.getId())) return;
 
         var edge1 = new Edge(channel.getId(),node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
         var edge2 = new Edge(channel.getId(),node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
@@ -55,15 +55,14 @@ public class ChannelGraph implements Serializable  {
     }
 
     // TODO: assuming symmetric adjcency map (see above)
-    private boolean hasEdge(String n1, String n2) {
+    private boolean hasEdge(String channel_id) {
 
-        boolean from_n1_to_n2 = false;
-
-        if (adj_map.containsKey(n1)) {
-            from_n1_to_n2 = adj_map.get(n1).stream().anyMatch((e)->e.destination().equals(n2));
+        for (String node: adj_map.keySet()) {
+            var list = adj_map.get(node);
+            for (Edge e:list)
+                if (e.id.equals(channel_id)) return true;
         }
-
-        return from_n1_to_n2;
+        return false;
     }
 
     /**
@@ -244,7 +243,7 @@ public class ChannelGraph implements Serializable  {
     }
 
     public boolean hasChannel(LNChannel channel) {
-       return hasEdge(channel.getNode1PubKey(),channel.getNode2PubKey());
+       return hasEdge(channel.getId());
     }
     public boolean hasChannel(String channel_id) {
         for (List<Edge> list:adj_map.values() ) {

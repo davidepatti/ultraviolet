@@ -3,14 +3,11 @@ public class P2PMsgChannelUpdate extends P2PMessage {
     private final String node;
     private final String channel_id;
     private final LNChannel.Policy updated_policy;
-    // TODO: to replace older msg
-    private final int timestamp;
 
 
     public P2PMsgChannelUpdate(String node, String channel_id, int timestamp, int forwardings, LNChannel.Policy policy) {
         super("UP:"+channel_id,forwardings,timestamp, Type.CHANNEL_UPDATE);
         this.node = node;
-        this.timestamp = timestamp;
         this.channel_id = channel_id;
         this.updated_policy = policy;
     }
@@ -23,11 +20,19 @@ public class P2PMsgChannelUpdate extends P2PMessage {
         return node;
     }
 
-    public String getChannel_id() {
+    public String getChannelId() {
         return channel_id;
     }
 
     public LNChannel.Policy getUpdatedPolicy() {
         return updated_policy;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder s = new StringBuilder();
+        s.append(super.toString());
+        s.append("{node:").append(node).append("channel_id:").append(channel_id).append("}");
+        return s.toString();
     }
 }

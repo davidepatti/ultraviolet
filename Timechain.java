@@ -16,7 +16,7 @@ public class Timechain implements Runnable, Serializable  {
        current_block++;
     }
 
-    public synchronized int getCurrent_block() {
+    public synchronized int getCurrentBlock() {
         return current_block;
     }
 

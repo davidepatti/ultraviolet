@@ -8,10 +8,10 @@ public class LNInvoice {
     private final String H;
     private final int amount;
     private final String destination;
-    private final String message;
+    private final Optional<String> message;
     private final int min_cltv_expiry = 9;
 
-    public LNInvoice(long r, int amount, String recipient, String message) {
+    public LNInvoice(long r, int amount, String recipient, Optional<String> message) {
         this.r = r;
         H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(r).toByteArray()));
         this.amount = amount;
@@ -34,6 +34,10 @@ public class LNInvoice {
 
     public int getMin_cltv_expiry() {
         return min_cltv_expiry;
+    }
+
+    public Optional<String> getMessage() {
+        return message;
     }
 
     @Override

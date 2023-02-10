@@ -247,6 +247,11 @@ public class UVDashboard {
             String node = scanner.nextLine();
             showGraphCommand(node);
         }));
+        menuItems.add(new MenuItem("p2pq", "Show node queue", x -> {
+            System.out.print("insert node public key:");
+            String node = scanner.nextLine();
+            showQueueCommand(node);
+        }));
 
         menuItems.add(new MenuItem("status", "UVM Status ", x -> {
             System.out.println(networkManager.getStatusString());
@@ -330,7 +335,7 @@ public class UVDashboard {
             System.out.println("-------------------------------------------------");
             System.out.print("Timechain :");
             if (!networkManager.getTimechain().isRunning()) System.out.println("[Not running]");
-            else System.out.println(networkManager.getTimechain().getCurrent_block());
+            else System.out.println(networkManager.getTimechain().getCurrentBlock());
             System.out.println("-------------------------------------------------");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
@@ -350,6 +355,13 @@ public class UVDashboard {
         }
         System.out.println("Disconnecting client");
         System.exit(0);
+    }
+
+    private void showQueueCommand(String node_id) {
+        if (!networkManager.isBootstrapCompleted()) return;
+        var node = networkManager.getUVNodes().get(node_id);
+        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+        node.p2PMessageQueue.stream().forEach(System.out::println);
     }
 
     private void showGraphCommand(String node) {
