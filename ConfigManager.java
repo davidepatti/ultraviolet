@@ -110,7 +110,7 @@ public class ConfigManager implements Serializable {
             // p2p
             max_p2p_hops = Integer.parseInt(properties.getProperty("max_p2p_hops", DEFAULT_MAX_P2P_HOPS));
             max_p2p_age = Integer.parseInt(properties.getProperty("max_p2p_age", DEFAULT_MAX_P2P_AGE));
-            max_p2p_hops = Integer.parseInt(properties.getProperty("p2p_period", DEFAULT_P2P_PERIOD));
+            p2p_period = Integer.parseInt(properties.getProperty("p2p_period", DEFAULT_P2P_PERIOD));
             config_file_reader.close();
             debug = true;
             initialized = true;
