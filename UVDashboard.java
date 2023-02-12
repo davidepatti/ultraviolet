@@ -20,7 +20,7 @@ public class UVDashboard {
         var node = networkManager.getUVNodes().get(pubkey);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
 
-        node.getUVChannels().values().stream().sorted().forEach(System.out::println);
+        node.getChannels().values().stream().sorted().forEach(System.out::println);
 
         if (false) {
             System.out.println("Peers:");
@@ -230,7 +230,7 @@ public class UVDashboard {
 
             for (UVNode n : ln) {
                 System.out.println(n);
-                n.getUVChannels().values().stream().forEach(System.out::println);
+                n.getChannels().values().stream().forEach(System.out::println);
             }
         }));
 
@@ -381,6 +381,15 @@ public class UVDashboard {
             System.out.println("No config, using default...");
             ConfigManager.setDefaults();
         }
+
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread t, Throwable e) {
+                System.err.println("A thread has crashed: " + t);
+                System.err.println("Exception: " + e);
+                System.exit(1);
+            }
+        });
 
         var uvm_client = new UVDashboard(new UVNetworkManager());
     }
