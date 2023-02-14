@@ -375,7 +375,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.updateChannel(channel_id,this.getPubKey(),newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
-        var msg_announcement = new P2PMsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),timestamp,0);
+        var msg_announcement = new P2PMsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
         broadcastToPeers(msg_announcement);
         var msg_update = new P2PMsgChannelUpdate(this.getPubKey(),channel_id,timestamp,0,newPolicy);
         broadcastToPeers(msg_update);
@@ -407,7 +407,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.updateChannel(channel_id,this.getPubKey(),newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
-        var message_ann = new P2PMsgChannelAnnouncement(channel.getId(),channel.getNode1PubKey(),channel.getNode2PubKey(),timestamp,0);
+        var message_ann = new P2PMsgChannelAnnouncement(channel.getId(),channel.getNode1PubKey(),channel.getNode2PubKey(),channel.getCapacity(),timestamp,0);
         broadcastToPeers(message_ann);
 
         var msg_update = new P2PMsgChannelUpdate(this.getPubKey(),channel.getId(),timestamp,0,newPolicy);

@@ -36,7 +36,7 @@ public class ChannelGraph implements Serializable  {
     public void addLNChannel(LNChannel channel) {
 
         if (channel==null) {
-            log("ERROR: null channel ");
+            log("FATAL ERROR: null channel ");
             return;
         }
 
@@ -47,8 +47,6 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new LinkedList<>());
         adj_map.putIfAbsent(node2pub, new LinkedList<>());
 
-        // do not add channel edge if source and destination area already connected
-        // TODO: in theory, multiple channel could be opened with differen id
         if (this.hasEdge(channel.getId())) {
             log("WARNING: calling addChannel with already existing edge for channel "+channel.getId());
             return;
@@ -64,6 +62,13 @@ public class ChannelGraph implements Serializable  {
 
     public void addAnnouncedChannel(P2PMsgChannelAnnouncement msg) {
 
+        var channel_id = msg.getChannelId();
+        var node1 = msg.getNodeId1();
+        var node2 = msg.getNodeId2();
+        adj_map.putIfAbsent(node1, new LinkedList<>());
+        adj_map.putIfAbsent(node2, new LinkedList<>());
+        adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
+        adj_map.get(node1).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
     }
 
     // TODO: assuming symmetric adjcency map (see above)
