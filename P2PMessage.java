@@ -12,10 +12,6 @@ public abstract class P2PMessage implements Serializable {
         return forwardings;
     }
 
-    public String getID() {
-        return ID;
-    }
-
     public Type getType() {
         return msgType;
     }

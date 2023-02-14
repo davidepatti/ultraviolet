@@ -22,9 +22,11 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     
     private int node1Balance;
     private int node2Balance;
+    @SuppressWarnings("FieldMayBeFinal")
     private int node1Pending;
+    @SuppressWarnings("FieldMayBeFinal")
     private int node2Pending;
-    private int reserve;
+    private final int reserve;
     private boolean init_direction; // true -> from 1 to 2
 
     // constructor only fill the "proposal" for the channel

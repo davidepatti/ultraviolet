@@ -189,9 +189,9 @@ public class UVDashboard {
             } else {
                 System.out.println("Bootstrap Started, check " + ConfigManager.logfile);
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
-                Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetwork());
+                Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetworkNodes());
                 System.out.println("waiting bootstrap to finish...");
-                _waitForFuture(bootstrap);
+                //_waitForFuture(bootstrap);
             }
         }));
         menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {
@@ -381,15 +381,6 @@ public class UVDashboard {
             System.out.println("No config, using default...");
             ConfigManager.setDefaults();
         }
-
-        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-            @Override
-            public void uncaughtException(Thread t, Throwable e) {
-                System.err.println("A thread has crashed: " + t);
-                System.err.println("Exception: " + e);
-                System.exit(1);
-            }
-        });
 
         var uvm_client = new UVDashboard(new UVNetworkManager());
     }

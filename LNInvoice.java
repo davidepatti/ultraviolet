@@ -8,16 +8,19 @@ public class LNInvoice {
     private final String H;
     private final int amount;
     private final String destination;
-    private final Optional<String> message;
+    private final String message;
     private final int min_cltv_expiry = 9;
 
-    public LNInvoice(long r, int amount, String recipient, Optional<String> message) {
+    public LNInvoice(long r, int amount, String recipient, String message) {
         this.r = r;
         H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(r).toByteArray()));
         this.amount = amount;
         this.destination = recipient;
         this.message = message;
 
+    }
+    public LNInvoice(long r, int amount, String recipient) {
+        this(r,amount,recipient,null);
     }
 
     public String getHash() {
@@ -37,7 +40,7 @@ public class LNInvoice {
     }
 
     public Optional<String> getMessage() {
-        return message;
+        return Optional.ofNullable(message);
     }
 
     @Override

@@ -41,7 +41,7 @@ public class UVNetworkManager {
         }
         Log = (s) ->  {
             try {
-                logfile.write("\n["+timechain.getCurrentBlock()+"]"+getClass().getName()+":"+s);
+                logfile.write("\n["+timechain.getCurrentBlock()+"]"+Thread.currentThread().getName()+":"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -61,7 +61,7 @@ public class UVNetworkManager {
         this.uvnodes = new HashMap<>();
         timechain = new Timechain(ConfigManager.blocktime);
 
-        log(new Date().toString()+":Initializing UVManager...");
+        log(new Date() +":Initializing UVManager...");
         log(this.toString());
         stats = new GlobalStats(this);
         setP2pRunning(false);
@@ -105,7 +105,7 @@ public class UVNetworkManager {
     /**
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
-    public void bootstrapNetwork() {
+    public void bootstrapNetworkNodes() {
         synchronized (this) {
             boostrap_started = true;
         }
@@ -151,7 +151,7 @@ public class UVNetworkManager {
         boolean term;
 
         try {
-            term = bootexec.awaitTermination(600, TimeUnit.SECONDS);
+            term = bootexec.awaitTermination(60, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -170,13 +170,12 @@ public class UVNetworkManager {
         if (!isBootstrapCompleted()) return;
         log("Launching p2p nodes services...");
         // start p2p actions around every block
-        var period = getTimechain().getBlockToMillisecTimeDelay(1);
         if (p2pExecutor==null) {
             log("Initializing p2p scheduled executor...");
             p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getTotalNodes());
         }
         for (UVNode n : uvnodes.values()) {
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,period,TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,ConfigManager.getP2PPeriod(),TimeUnit.MILLISECONDS);
         }
         setP2pRunning(true);
     }
@@ -209,15 +208,15 @@ public class UVNetworkManager {
     /**
      *
      */
-    public LNChannel getChannelFromNodes(String pub1, String pub2) {
+    public Optional<LNChannel> getChannelFromNodes(String pub1, String pub2) {
 
         var n1 = getUVNodes().get(pub1);
 
         for (LNChannel c: n1.getLNChannelList()) {
             if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2))
-                return c;
+                return Optional.of(c);
         }
-        return null;
+        return Optional.empty();
     }
 
     /**
@@ -279,10 +278,10 @@ public class UVNetworkManager {
                 var uvnode2 = uvnodes.get(node2_pub);
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
-                uvnode1.getChannelGraph().addChannel(ch);
-                uvnode2.getChannelGraph().addChannel(ch);
+                uvnode1.getChannelGraph().addLNChannel(ch);
+                uvnode2.getChannelGraph().addLNChannel(ch);
 
-                root.getChannelGraph().addChannel(ch);
+                root.getChannelGraph().addLNChannel(ch);
             }
             log("Import completed");
 

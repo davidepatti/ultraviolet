@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 public class ChannelGraph implements Serializable  {
 
     private String root_node;
-    private Consumer<String> Log = UVNetworkManager.Log;
+    final transient private Consumer<String> Log = UVNetworkManager.Log;
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
@@ -33,7 +33,12 @@ public class ChannelGraph implements Serializable  {
      *
      * @param channel
      */
-    public void addChannel(LNChannel channel) {
+    public void addLNChannel(LNChannel channel) {
+
+        if (channel==null) {
+            log("ERROR: null channel ");
+            return;
+        }
 
         var node1pub = channel.getNode1PubKey();
         var node2pub = channel.getNode2PubKey();
@@ -44,7 +49,10 @@ public class ChannelGraph implements Serializable  {
 
         // do not add channel edge if source and destination area already connected
         // TODO: in theory, multiple channel could be opened with differen id
-        if (this.hasEdge(channel.getId())) return;
+        if (this.hasEdge(channel.getId())) {
+            log("WARNING: calling addChannel with already existing edge for channel "+channel.getId());
+            return;
+        }
 
         var edge1 = new Edge(channel.getId(),node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
         var edge2 = new Edge(channel.getId(),node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
@@ -54,13 +62,27 @@ public class ChannelGraph implements Serializable  {
 
     }
 
+    public void addAnnouncedChannel(P2PMsgChannelAnnouncement msg) {
+
+    }
+
     // TODO: assuming symmetric adjcency map (see above)
     private boolean hasEdge(String channel_id) {
 
-        for (String node: adj_map.keySet()) {
-            var list = adj_map.get(node);
-            for (Edge e:list)
-                if (e.id.equals(channel_id)) return true;
+        var keys = new HashSet<>(adj_map.keySet());
+
+        for (String node: keys) {
+            try {
+                var list_copy = new ArrayList<>(adj_map.get(node));
+                for (Edge e:list_copy) {
+                    if (e.id.equals(channel_id))  {
+                        return true;
+                    }
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
         return false;
     }
@@ -146,12 +168,6 @@ public class ChannelGraph implements Serializable  {
     }
 
     /**
-     *
-     * @param current_node
-     * @param end_node
-     * @param visited
-     */
-    /*
     public void DFS_path_util(String current_node, String end_node, HashSet<String> visited) {
         visited.add(current_node);
         if (DEBUG)
@@ -192,7 +208,7 @@ public class ChannelGraph implements Serializable  {
 
             for (int i=0;i<n_keys;i++) {
                 var pubkey = (String) s.readObject();
-                var list = (LinkedList<Edge>)s.readObject();
+                @SuppressWarnings("unchecked") var list = (LinkedList<Edge>)s.readObject();
                 adj_map.put(pubkey,list);
              }
 
@@ -230,10 +246,10 @@ public class ChannelGraph implements Serializable  {
             if (e.id().equals(channel_id)) {
                 var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
                 if (!adj_map.get(node).remove(e)) {
-                    log("Cannot remove "+e+" for matching channel id"+channel_id);
-                    throw new RuntimeException("Cannot remove "+e+" for matching channel id"+channel_id);
-
+                    log("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
+                    System.exit(-1);
                 }
+                //log("Adding edge "+new_edge+" on node graph:"+node);
                 adj_map.get(node).add(new_edge);
                 return;
             }

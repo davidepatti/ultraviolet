@@ -8,11 +8,11 @@ public class ConfigManager implements Serializable {
     @Serial
     private static final long serialVersionUID = 120678L;
     private static final String DEFAULT_BLOCKTIME = "1000";
-    private static final String DEFAULT_LOGFILE = "uvm.log";
+    private static final String DEFAULT_LOGFILE = "default.log";
     private static final String DEFAULT_SEED = "0";
 
     // bootstrap
-    private static final String DEFAULT_BOOTSTRAP_WARMUP = "10";
+    private static final String DEFAULT_BOOTSTRAP_WARMUP = "1";
     private static final String DEFAULT_TOTAL_NODES = "10";
     private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
     private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
