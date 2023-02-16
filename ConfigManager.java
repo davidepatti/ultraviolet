@@ -1,5 +1,6 @@
 import java.io.*;
 import java.util.Properties;
+import java.util.Scanner;
 
 public class ConfigManager implements Serializable {
 
@@ -7,82 +8,34 @@ public class ConfigManager implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 120678L;
-    private static final String DEFAULT_BLOCKTIME = "1000";
-    private static final String DEFAULT_LOGFILE = "default.log";
-    private static final String DEFAULT_SEED = "0";
-
-    // bootstrap
-    private static final String DEFAULT_BOOTSTRAP_WARMUP = "1";
-    private static final String DEFAULT_TOTAL_NODES = "10";
-    private static final String DEFAULT_MIN_FUNDING = "10000000"; // 10M
-    private static final String DEFAULT_MAX_FUNDING = "100000000";  // 100M
-    private static final String DEFAULT_MIN_CHANNELS = "3";
-    private static final String DEFAULT_MAX_CHANNELS = "5";
-    private static final String DEFAULT_MIN_CHANNEL_SIZE = "1000000"; //1M
-    private static final String DEFAULT_MAX_CHANNEL_SIZE = "10000000"; //10M
-
-
-    // p2p
-    private static final String DEFAULT_MAX_P2P_HOPS = "3";
-    private static final String DEFAULT_MAX_P2P_AGE = "5";
-    private static final String DEFAULT_P2P_PERIOD = "100";
-
-    public static int blocktime;
-    public static String logfile;
-    private static int seed;
 
     private static boolean initialized = false;
-
-    // bootstrap
-    private static int bootstrap_warmup;
-    private static int total_nodes;
-    private static int min_funding;
-    private static int max_funding;
-    private static int min_channels;
-    private static int max_channels;
-    private static int min_channel_size;
-    private static int max_channel_size;
-
-
-    // p2p
-    private static int max_p2p_hops;
-    private static int max_p2p_age;
-    private static int p2p_period;
-
-    private static final boolean verbose = false;
-    private static boolean debug = false;
-
 
     public static boolean isInitialized() {
         return initialized;
     }
 
     public static void setDefaults() {
-        // default values when not config file is provided
-        blocktime = Integer.parseInt(DEFAULT_BLOCKTIME);
-        logfile = DEFAULT_LOGFILE;
-        seed = Integer.parseInt(DEFAULT_SEED);
-
+        properties.setProperty("blocktime","1000");
+        properties.setProperty("logfile","default.log");
+        properties.setProperty("seed","1");
         // bootstrap
-        bootstrap_warmup = Integer.parseInt(DEFAULT_BOOTSTRAP_WARMUP);
-        total_nodes = Integer.parseInt(DEFAULT_TOTAL_NODES);
-        min_funding = Integer.parseInt(DEFAULT_MIN_FUNDING);
-        max_funding = Integer.parseInt(DEFAULT_MAX_FUNDING);
-
-        min_channels = Integer.parseInt(DEFAULT_MIN_CHANNELS);
-        max_channels = Integer.parseInt(DEFAULT_MAX_CHANNELS);
-
-        min_channel_size = Integer.parseInt(DEFAULT_MIN_CHANNEL_SIZE);
-        max_channel_size = Integer.parseInt(DEFAULT_MAX_CHANNEL_SIZE);
+        properties.setProperty("bootstrap_warmup","1");
+        properties.setProperty("total_nodes","10");
+        properties.setProperty("min_funding","10000000");
+        properties.setProperty("min_funding","100000000");
+        properties.setProperty("min_channels","3");
+        properties.setProperty("max_channels","5");
+        properties.setProperty("min_channel_size","500000");
+        properties.setProperty("max_channel_size","1000000");
 
         // p2p
-        max_p2p_hops = Integer.parseInt(DEFAULT_MAX_P2P_HOPS);
-        max_p2p_age = Integer.parseInt(DEFAULT_MAX_P2P_AGE);
-        p2p_period = Integer.parseInt(DEFAULT_P2P_PERIOD);
-        debug = true;
+        properties.setProperty("max_p2p_hops","2");
+        properties.setProperty("max_p2p_age","3");
+        properties.setProperty("p2p_period","100");
+        properties.setProperty("debug","false");
         initialized = true;
     }
-
 
     public static void setConfig (Properties properties) {
         ConfigManager.properties = properties;
@@ -91,28 +44,7 @@ public class ConfigManager implements Serializable {
     public static void loadConfig(String config_file) {
         properties = new Properties();
         try {
-            var config_file_reader = new FileReader(config_file);
-            properties.load(config_file_reader);
-            blocktime = Integer.parseInt(properties.getProperty("blocktime", DEFAULT_BLOCKTIME));
-            logfile = properties.getProperty("logfile", DEFAULT_LOGFILE);
-            seed = Integer.parseInt(properties.getProperty("seed",DEFAULT_SEED));
-
-            // bootstrap
-            bootstrap_warmup = Integer.parseInt(properties.getProperty("bootstrap_warmup", DEFAULT_BOOTSTRAP_WARMUP));
-            total_nodes = Integer.parseInt(properties.getProperty("total_nodes", DEFAULT_TOTAL_NODES));
-            min_funding = Integer.parseInt(properties.getProperty("min_funding", DEFAULT_MIN_FUNDING));
-            max_funding = Integer.parseInt(properties.getProperty("max_funding", DEFAULT_MAX_FUNDING));
-            min_channels = Integer.parseInt(properties.getProperty("min_channels", DEFAULT_MIN_CHANNELS));
-            max_channels = Integer.parseInt(properties.getProperty("max_channels", DEFAULT_MAX_CHANNELS));
-            min_channel_size = Integer.parseInt(properties.getProperty("min_channel_size", DEFAULT_MIN_CHANNEL_SIZE));
-            max_channel_size = Integer.parseInt(properties.getProperty("max_channel_size", DEFAULT_MAX_CHANNEL_SIZE));
-
-            // p2p
-            max_p2p_hops = Integer.parseInt(properties.getProperty("max_p2p_hops", DEFAULT_MAX_P2P_HOPS));
-            max_p2p_age = Integer.parseInt(properties.getProperty("max_p2p_age", DEFAULT_MAX_P2P_AGE));
-            p2p_period = Integer.parseInt(properties.getProperty("p2p_period", DEFAULT_P2P_PERIOD));
-            config_file_reader.close();
-            debug = true;
+            properties.load(new FileReader(config_file));
             initialized = true;
 
         } catch (FileNotFoundException e) {
@@ -123,63 +55,49 @@ public class ConfigManager implements Serializable {
                 IOException e) {
             throw new RuntimeException(e);
         }
-
     }
 
-    public static int getSeed() {
-        return seed;
+    public static void print() {
+        var l = properties.stringPropertyNames();
+
+        for (String s:l)
+            System.out.println("name: "+s+" val: "+properties.get(s));
     }
 
-    public static int getBootstrapWarmup() {
-        return bootstrap_warmup;
+    public static String get(String parameter) {
+
+        try {
+            if (!properties.containsKey(parameter)) {
+                throw new RuntimeException("Missing parameter "+parameter);
+            }
+        }
+        catch (Exception e) {
+            System.out.print("Please enter value or enter 'q' to exit:");
+            var input = new Scanner(System.in);
+            var val = input.nextLine();
+            if (val.equals("q")) System.exit(-1);
+            properties.setProperty(parameter,val);
+        }
+
+        return properties.get(parameter).toString();
     }
 
-    public static int getTotalNodes() {
-        return total_nodes;
-    }
+    public static int getVal(String parameter) {
 
-    public static int getMinFunding() {
-        return min_funding;
-    }
+        try {
+            if (!properties.containsKey(parameter)) {
+                throw new RuntimeException("Missing parameter "+parameter);
+            }
+        }
+        catch (Exception e) {
+            System.out.print("Please enter value or enter 'q' to exit:");
+            var input = new Scanner(System.in);
+            var val = input.nextLine();
+            if (val.equals("q")) System.exit(-1);
+            properties.setProperty(parameter,val);
+        }
 
-    public static int getMaxFunding() {
-        return max_funding;
-    }
-
-    public static int getMinChannels() {
-        return min_channels;
-    }
-
-    public static int getMaxChannels() {
-        return max_channels;
-    }
-
-    public static int getMinChannelSize() {
-        return min_channel_size;
-    }
-
-    public static int getMaxChannelSize() {
-        return max_channel_size;
-    }
-
-    public static int getMaxP2PHops() {
-        return max_p2p_hops;
-    }
-
-    public static int getMaxP2PAge() {
-        return max_p2p_age;
-    }
-
-    public static int getP2PPeriod() {
-        return p2p_period;
-    }
-
-    public static boolean isVerbose() {
-        return verbose;
-    }
-
-    public static boolean isDebug() {
-        return debug;
+        return Integer.parseInt(properties.get(parameter).toString());
     }
 
     @Override

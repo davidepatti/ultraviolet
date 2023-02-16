@@ -9,7 +9,6 @@ import java.util.function.Consumer;
 
 public class UVNetworkManager {
 
-
     private CountDownLatch bootstrap_latch;
     private HashMap<String, UVNode> uvnodes;
 
@@ -34,9 +33,9 @@ public class UVNetworkManager {
      */
     private void initLog() {
         try {
-            logfile = new FileWriter(ConfigManager.logfile);
+            logfile = new FileWriter(""+ConfigManager.get("logfile"));
         } catch (IOException e) {
-            log("Cannot open logfile for writing:"+ ConfigManager.logfile);
+            log("Cannot open logfile for writing:"+ ConfigManager.get("lofile"));
             throw new RuntimeException(e);
         }
         Log = (s) ->  {
@@ -55,14 +54,13 @@ public class UVNetworkManager {
     public UVNetworkManager() {
         if (!ConfigManager.isInitialized()) ConfigManager.setDefaults();
         random = new Random();
-        if (ConfigManager.getSeed() !=0) random.setSeed(ConfigManager.getSeed());
+        if (ConfigManager.getVal("seed") !=0) random.setSeed(ConfigManager.getVal("seed"));
         initLog();
 
         this.uvnodes = new HashMap<>();
-        timechain = new Timechain(ConfigManager.blocktime);
+        timechain = new Timechain(ConfigManager.getVal("blocktime"));
 
         log(new Date() +":Initializing UVManager...");
-        log(this.toString());
         stats = new GlobalStats(this);
         setP2pRunning(false);
     }
@@ -82,19 +80,27 @@ public class UVNetworkManager {
         if (timechain!=null && timechain.isRunning()) timechain.stop();
 
         random = new Random();
-        if (ConfigManager.getSeed() !=0) random.setSeed(ConfigManager.getSeed());
-        timechain = new Timechain(ConfigManager.blocktime);
+        if (ConfigManager.getVal("seed") !=0) random.setSeed(ConfigManager.getVal("seed"));
+        timechain = new Timechain(ConfigManager.getVal("blocktime"));
         boostrap_started = false;
         bootstrap_completed = false;
         this.uvnodes = new HashMap<>();
 
+
+        boolean no_timeout = true;
+
         if (p2pExecutor!=null) {
             p2pExecutor.shutdown();
             try {
-                p2pExecutor.awaitTermination(60,TimeUnit.SECONDS);
+                no_timeout = p2pExecutor.awaitTermination(600,TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        if (!no_timeout) {
+            log("WARNING: timeout");
+            System.out.println("TIMEOUT!");
         }
         p2pExecutor = null;
 
@@ -114,19 +120,19 @@ public class UVNetworkManager {
         log("UVM: Starting timechain: "+timechain);
         Executor timechain_exec = Executors.newSingleThreadExecutor();
         timechain_exec.execute(timechain);
-        bootstrap_latch = new CountDownLatch(ConfigManager.getTotalNodes());
+        bootstrap_latch = new CountDownLatch(ConfigManager.getVal("total_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
-        int max = ConfigManager.getMaxFunding() /(int)1e6;
-        int min = ConfigManager.getMinFunding() /(int)1e6;
+        int max = ConfigManager.getVal("max_funding") /(int)1e6;
+        int min = ConfigManager.getVal("min_funding") /(int)1e6;
 
-        for (int i = 0; i< ConfigManager.getTotalNodes(); i++) {
+        for (int i = 0; i< ConfigManager.getVal("total_nodes"); i++) {
             int funding;
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
             var n = new UVNode(this,""+i,"LN"+i,funding);
-            var behavior = new NodeBehavior(ConfigManager.getMinChannels(), ConfigManager.getMinChannelSize(), ConfigManager.getMaxChannelSize());
+            var behavior = new NodeBehavior(ConfigManager.getVal("min_channels"), ConfigManager.getVal("min_channel_size"), ConfigManager.getVal("max_channel_size"));
             n.setBehavior(behavior);
             uvnodes.put(n.getPubKey(),n);
         }
@@ -134,7 +140,7 @@ public class UVNetworkManager {
         updatePubkeyList();
 
         log("Starting node threads...");
-        ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.getTotalNodes());
+        ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.getVal("total_nodes"));
         for (UVNode n : uvnodes.values()) {
            bootexec.submit(n::bootstrapNode);
         }
@@ -172,10 +178,10 @@ public class UVNetworkManager {
         // start p2p actions around every block
         if (p2pExecutor==null) {
             log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getTotalNodes());
+            p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getVal("total_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,ConfigManager.getP2PPeriod(),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
         setP2pRunning(true);
     }
@@ -293,23 +299,6 @@ public class UVNetworkManager {
      * Getters/Setters/Helpers
      */
 
-    String getStatusString() {
-        StringBuilder s = new StringBuilder();
-        s.append("\n-------------------------------------------------------------");
-        s.append("\nConfiguration: ").append(ConfigManager.getConfig());
-        s.append("\nTimechain: ").append(timechain);
-        s.append("\nBootstrap completed: ").append(isBootstrapCompleted());
-
-        if (!isBootstrapCompleted() && isBootstrapStarted())
-            s.append("\nBootstrapped in progress for ").append(bootstrap_latch.getCount()).append(" of ").append(ConfigManager.getTotalNodes());
-        s.append("\n-------------------------------------------------------------");
-        return s.toString();
-    }
-
-    /**
-     *
-     * @return
-     */
     public synchronized boolean isBootstrapCompleted() {
         if (bootstrap_completed) return true;
         if (bootstrap_latch==null) return false;
@@ -321,35 +310,18 @@ public class UVNetworkManager {
         return false;
     }
 
-    /**
-     *
-     * @return
-     */
     public synchronized boolean isBootstrapStarted() {
         return boostrap_started;
     }
 
-    /**
-     *
-     * @param pubkey
-     * @return
-     */
     public LNode getLNode(String pubkey) {
         return uvnodes.get(pubkey);
     }
 
-    /**
-     *
-     * @return
-     */
     public HashMap<String, UVNode> getUVNodes(){
         return this.uvnodes;
     }
 
-    /**
-     *
-     * @return
-     */
     public Timechain getTimechain() {
         return timechain;
     }
@@ -362,19 +334,13 @@ public class UVNetworkManager {
         pubkeys_list = uvnodes.keySet().toArray(pubkeys_list);
     }
 
-
     public GlobalStats getStats() {
         return stats;
     }
-
     public CountDownLatch getBootstrapLatch() {
         return bootstrap_latch;
     }
 
-    @Override
-    public String toString() {
-        return getStatusString();
-    }
 
     /**
      *

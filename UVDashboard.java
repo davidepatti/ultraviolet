@@ -187,11 +187,11 @@ public class UVDashboard {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                System.out.println("Bootstrap Started, check " + ConfigManager.logfile);
+                System.out.println("Bootstrap Started, check " + ConfigManager.get("logfile"));
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetworkNodes());
                 System.out.println("waiting bootstrap to finish...");
-                //_waitForFuture(bootstrap);
+                _waitForFuture(bootstrap);
             }
         }));
         menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {
@@ -204,7 +204,7 @@ public class UVDashboard {
                 return;
             }
             new Thread(networkManager.getTimechain()).start();
-            System.out.println("Starting P2P, check " + ConfigManager.logfile);
+            System.out.println("Starting P2P, check " + ConfigManager.get("logfile"));
             new Thread(()->networkManager.startP2PNetwork()).start();
         }));
         menuItems.add(new MenuItem("p2ps", "Stop P2P Network", (x) -> {
@@ -253,8 +253,10 @@ public class UVDashboard {
             showQueueCommand(node);
         }));
 
-        menuItems.add(new MenuItem("status", "UVM Status ", x -> {
-            System.out.println(networkManager.getStatusString());
+        menuItems.add(new MenuItem("conf", "Show configuration ", x -> {
+            System.out.println("-----------------------------------");
+            ConfigManager.print();
+            System.out.println("-----------------------------------");
         }));
 
 
@@ -262,7 +264,7 @@ public class UVDashboard {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
-                System.out.println("Generating events, check " + ConfigManager.logfile);
+                System.out.println("Generating events, check " + ConfigManager.get("logfile"));
                 networkManager.generateRandomEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");
@@ -300,12 +302,11 @@ public class UVDashboard {
             if (networkManager.isBootstrapCompleted())  {
                 var max = networkManager.getStats().getMaxGraphSizeNode();
                 var min = networkManager.getStats().getMinGraphSizeNode();
-                StringBuilder s = new StringBuilder();
-                s.append("Max Graph size:").append(max).append(" (node/channels) ");
-                s.append(max.getChannelGraph().getNodeCount()).append("/").append(max.getChannelGraph().getChannelCount());
-                s.append("\nMin Graph size:").append(min).append(" (node/channels) ");
-                s.append(min.getChannelGraph().getNodeCount()).append("/").append(min.getChannelGraph().getChannelCount());
-                s.append("Average graph size (nodes): ").append(networkManager.getStats().getAverageGraphSize());
+                String s = "Max Graph size:" + max + " (node/channels) " +
+                        max.getChannelGraph().getNodeCount() + "/" + max.getChannelGraph().getChannelCount() +
+                        "\nMin Graph size:" + min + " (node/channels) " +
+                        min.getChannelGraph().getNodeCount() + "/" + min.getChannelGraph().getChannelCount() +
+                        "Average graph size (nodes): " + networkManager.getStats().getAverageGraphSize();
                 System.out.println(s);
             }
             else System.out.println("Bootstrap not completed!");
@@ -333,9 +334,9 @@ public class UVDashboard {
             System.out.println("-------------------------------------------------");
             menuItems.stream().forEach(System.out::println);
             System.out.println("-------------------------------------------------");
-            System.out.print("Timechain :");
-            if (!networkManager.getTimechain().isRunning()) System.out.println("[Not running]");
-            else System.out.println(networkManager.getTimechain().getCurrentBlock());
+            System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
+            if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
+            else System.out.println(" Running...");
             System.out.println("-------------------------------------------------");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());

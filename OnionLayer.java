@@ -42,7 +42,13 @@ public class OnionLayer {
                     ", payment_secret=" + payment_secret +
                     '}';
         }
+
+        public int getOutgoing_cltv_value() {
+            return outgoing_cltv_value;
+        }
     }
+
+
 
     public Payload getPayload() {
         return payload;

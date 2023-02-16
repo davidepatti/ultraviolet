@@ -4,11 +4,13 @@ import java.util.Optional;
 
 public class LNInvoice {
     // antonop 339
+    @SuppressWarnings("FieldCanBeLocal")
     private final long r;
     private final String H;
     private final int amount;
     private final String destination;
     private final String message;
+    @SuppressWarnings("FieldCanBeLocal")
     private final int min_cltv_expiry = 9;
 
     public LNInvoice(long r, int amount, String recipient, String message) {

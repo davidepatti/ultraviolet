@@ -10,6 +10,9 @@ of having directly access to some LNChannle object
 
 
 
+- check for concurrency problems in for loops
+- check for duplicate entries in p2pq
+- use realistic data format when possible without complication (e.g. short channel id, secret, hashes)
 - node1 node2 order should only reflect the alphabetical order, not initiator
 - implement the update channel message for fees and lock delta
 
@@ -37,6 +40,11 @@ in the list only if their channel has been opened from their side, which depend 
 
 
 DEBUG:
+
+
+- node 3 does not update policy sent by peers for channels 3_1 3_0, it remains (seems) stuck processing a 4_2 announce
+- after "Adding non existent" they dont exists anymore
+
 
 with breakpoint on server function wait(END_DATA) does not work on client
 

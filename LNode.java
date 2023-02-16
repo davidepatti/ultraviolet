@@ -4,9 +4,10 @@ public interface LNode {
     String getPubKey();
     String getAlias();
     LNInvoice generateInvoice(int amount);
+    @SuppressWarnings("SameReturnValue")
     boolean routeInvoice(LNInvoice invoice, LNode destination);
     ArrayList<LNChannel> getLNChannelList();
-    boolean updateAddHTLC(OnionLayer onionLayer);
+    boolean updateAddHTLC(MsgUpdateAddHTLC msg);
 
     LNChannel getRandomChannel();
 }

@@ -30,9 +30,7 @@ public class P2PMsgChannelUpdate extends P2PMessage {
 
     @Override
     public String toString() {
-        StringBuilder s = new StringBuilder();
-        s.append(super.toString());
-        s.append("{node:").append(node).append("channel_id:").append(channel_id).append("}");
-        return s.toString();
+        return super.toString() +
+                "{node:" + node + "channel_id:" + channel_id + "}";
     }
 }

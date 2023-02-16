@@ -2,6 +2,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
 
+@SuppressWarnings("CanBeFinal")
 public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel> {
 
     @Serial
@@ -27,7 +28,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     @SuppressWarnings("FieldMayBeFinal")
     private int node2Pending;
     private final int reserve;
-    private boolean init_direction; // true -> from 1 to 2
+    private final boolean init_direction; // true -> from 1 to 2
 
     // constructor only fill the "proposal" for the channel
     public UVChannel(String channel_id, String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
@@ -53,16 +54,14 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.reserve = channelReserveSatoshis;
     }
 
-    public boolean setPolicy(String node, Policy policy) {
+    public void setPolicy(String node, Policy policy) {
         if (node.equals(node_id_1))  {
             node1Policy = policy;
-            return true;
+            return;
         }
         if (node.equals(node_id_2)) {
             node2Policy = policy;
-            return true;
         }
-        return false;
     }
 
 
@@ -130,6 +129,15 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     @Override
     public Policy getNode2Policy() {
         return node2Policy;
+    }
+
+    public Policy getPolicy(String pubkey) {
+        if (pubkey.equals(node_id_1))
+            return getNode1Policy();
+        if (pubkey.equals(node_id_2))
+            return getNode2Policy();
+
+        return null;
     }
 
 
