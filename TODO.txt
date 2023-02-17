@@ -1,5 +1,9 @@
 Notes:
 
+Optional:
+if should not be null, use .get a go with exception if it happens
+if can be null, just manage empty with orELse
+
 IMPORTANT:
 - making internal method parameterized on keys rather thant objects avoid unauthorized access to
 global structures: e.g. getLocalBalance (String channel_id) must first get the channel object from local hashmap, instead

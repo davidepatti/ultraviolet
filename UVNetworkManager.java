@@ -217,6 +217,10 @@ public class UVNetworkManager {
     public Optional<LNChannel> getChannelFromNodes(String pub1, String pub2) {
 
         var n1 = getUVNodes().get(pub1);
+        var n2 = getUVNodes().get(pub2);
+
+        if (n1==null)  throw new IllegalArgumentException("No such node "+pub1);
+        if (n2==null)  throw new IllegalArgumentException("No such node "+pub2);
 
         for (LNChannel c: n1.getLNChannelList()) {
             if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2))

@@ -78,15 +78,18 @@ public class UVDashboard {
         System.out.print("Destination node public key:");
         String end = scanner.nextLine();
 
-        var paths = findPathList(start,end,true);
+        var pathList = findPathList(start,end,true);
 
-        var dest = networkManager.getUVNodes().get(end);
-        var sender = networkManager.getUVNodes().get(start);
-        var invoice = dest.generateInvoice(700);
-        System.out.println("Generated  "+invoice);
+        if (pathList.isPresent()) {
+            var dest = networkManager.getUVNodes().get(end);
+            var sender = networkManager.getUVNodes().get(start);
+            var invoice = dest.generateInvoice(700);
+            System.out.println("Generated  "+invoice);
+            sender.routeInvoiceOnPath(invoice,pathList.get().get(0));
+        }
 
-        if (paths != null) {
-            sender.routeInvoiceOnPath(invoice,paths.get(0));
+        else {
+            System.out.println("No path for routing...");
         }
     }
 
@@ -97,14 +100,16 @@ public class UVDashboard {
      * @param stopfirst
      * @return
      */
-    private ArrayList<ArrayList<ChannelGraph.Edge>> findPathList(String start, String end, boolean stopfirst) {
+    private Optional<ArrayList<ArrayList<ChannelGraph.Edge>>> findPathList(String start, String end, boolean stopfirst) {
 
         UVNode start_node = networkManager.getUVNodes().get(start);
         UVNode end_node = networkManager.getUVNodes().get(end);
 
-        if (start_node==null || end_node==null) {
-            System.out.println("NODES NOT FOUND");
-            return null;
+        if (start_node==null)  {
+            throw new IllegalArgumentException("No such node "+start);
+        }
+        if (end_node==null) {
+            throw new IllegalArgumentException("No such node "+end);
         }
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -121,7 +126,8 @@ public class UVDashboard {
             throw new RuntimeException(e);
         }
 
-        return paths;
+        if (paths.size()>0) return Optional.of(paths);
+        else return Optional.empty();
     }
 
     /**
@@ -146,10 +152,8 @@ public class UVDashboard {
 
         var paths = findPathList(start,end,stopfirst);
 
-        if (paths==null) return;
-
-        if (paths.size()!=0) {
-            for (ArrayList<ChannelGraph.Edge> p: paths) {
+        if (paths.isPresent()) {
+            for (ArrayList<ChannelGraph.Edge> p: paths.get()) {
                 System.out.println("PATH------------------------------------- ");
                 p.stream().forEach(System.out::println);
             }

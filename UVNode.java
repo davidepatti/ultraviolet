@@ -551,7 +551,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     MUST ignore channel_updates that do NOT correspond to one of its own channels.
                      */
                     if (getChannelGraph().hasChannel(channel_id)) {
-                        log("Accepting graph update for "+channel_id+" (origin:"+updater_id+")");
                         getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
                         var next = message.getNext();
                         broadcastToPeers(next);
