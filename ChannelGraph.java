@@ -47,7 +47,7 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new LinkedList<>());
         adj_map.putIfAbsent(node2pub, new LinkedList<>());
 
-        if (this.hasEdge(channel.getId())) {
+        if (this.hasChannel(channel.getId())) {
             log("WARNING: calling addChannel with already existing edge for channel "+channel.getId());
             return;
         }
@@ -69,27 +69,6 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node2, new LinkedList<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
         adj_map.get(node1).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
-    }
-
-    // TODO: assuming symmetric adjcency map (see above)
-    private boolean hasEdge(String channel_id) {
-
-        var keys = new HashSet<>(adj_map.keySet());
-
-        for (String node: keys) {
-            try {
-                var list_copy = new ArrayList<>(adj_map.get(node));
-                for (Edge e:list_copy) {
-                    if (e.id.equals(channel_id))  {
-                        return true;
-                    }
-                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-        return false;
     }
 
     /**
@@ -245,31 +224,31 @@ public class ChannelGraph implements Serializable  {
         addVertex(pubkey);
     }
     // to edge properties
-    public synchronized void updateChannel(String channel_id, String node, LNChannel.Policy policy) {
-        var list_edges = adj_map.get(node);
-        for (Edge e:list_edges){
-            if (e.id().equals(channel_id)) {
-                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
-                if (!adj_map.get(node).remove(e)) {
-                    log("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
-                    System.exit(-1);
+    public synchronized void updateChannel(String channel_id, LNChannel.Policy policy) {
+        for (List<Edge> list:adj_map.values()){
+            for (Edge e:list) {
+                if (e.id().equals(channel_id)) {
+                    var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
+                    if (!list.remove(e)) {
+                        log("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
+                        System.exit(-1);
+                    }
+                    //log("Adding edge "+new_edge+" on node graph:"+node);
+                    list.add(new_edge);
+                    return;
                 }
-                //log("Adding edge "+new_edge+" on node graph:"+node);
-                adj_map.get(node).add(new_edge);
-                return;
             }
         }
-        log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" from "+node+" in "+this.root_node);
-        throw new RuntimeException("Cannot find matching edge for channel:"+channel_id+" from "+node+" in "+this.root_node);
+        log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" in "+this.root_node);
     }
 
-    public boolean hasChannel(LNChannel channel) {
-       return hasEdge(channel.getId());
-    }
     public boolean hasChannel(String channel_id) {
         for (List<Edge> list:adj_map.values() ) {
-           for (Edge e:list)
-               if (e.id().equals(channel_id)) return true;
+           for (Edge e:list) {
+               if (e.id().equals(channel_id)) {
+                   return true;
+               }
+           }
         }
         return false;
     }

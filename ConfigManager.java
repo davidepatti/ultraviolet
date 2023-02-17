@@ -66,12 +66,8 @@ public class ConfigManager implements Serializable {
 
     public static String get(String parameter) {
 
-        try {
-            if (!properties.containsKey(parameter)) {
-                throw new RuntimeException("Missing parameter "+parameter);
-            }
-        }
-        catch (Exception e) {
+        if (!properties.containsKey(parameter)) {
+            System.out.println("Missing parameter "+parameter);
             System.out.print("Please enter value or enter 'q' to exit:");
             var input = new Scanner(System.in);
             var val = input.nextLine();
@@ -84,19 +80,14 @@ public class ConfigManager implements Serializable {
 
     public static int getVal(String parameter) {
 
-        try {
-            if (!properties.containsKey(parameter)) {
-                throw new RuntimeException("Missing parameter "+parameter);
-            }
-        }
-        catch (Exception e) {
+        if (!properties.containsKey(parameter)) {
+            System.out.println("Missing parameter "+parameter);
             System.out.print("Please enter value or enter 'q' to exit:");
             var input = new Scanner(System.in);
             var val = input.nextLine();
             if (val.equals("q")) System.exit(-1);
             properties.setProperty(parameter,val);
         }
-
         return Integer.parseInt(properties.get(parameter).toString());
     }
 

@@ -413,7 +413,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var newPolicy = new LNChannel.Policy(20,1000,50);
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
-        channel_graph.updateChannel(channel_id,this.getPubKey(),newPolicy);
+        channel_graph.updateChannel(channel_id,newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
         var msg_announcement = new P2PMsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
@@ -445,7 +445,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.addLNChannel(channel);
         var newPolicy = new LNChannel.Policy(20,1000,200);
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
-        channel_graph.updateChannel(channel_id,this.getPubKey(),newPolicy);
+        channel_graph.updateChannel(channel_id,newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
         var message_ann = new P2PMsgChannelAnnouncement(channel.getId(),channel.getNode1PubKey(),channel.getNode2PubKey(),channel.getCapacity(),timestamp,0);
@@ -552,7 +552,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                      */
                     if (getChannelGraph().hasChannel(channel_id)) {
                         log("Accepting graph update for "+channel_id+" (origin:"+updater_id+")");
-                        getChannelGraph().updateChannel(channel_id,updater_id,message.getUpdatedPolicy());
+                        getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
                         var next = message.getNext();
                         broadcastToPeers(next);
                     }
