@@ -372,8 +372,7 @@ public class UVNetworkManager {
             f.writeObject(ConfigManager.getConfig());
             f.writeInt(uvnodes.size());
 
-            for (UVNode n: uvnodes.values())
-                f.writeObject(n);
+            for (UVNode n: uvnodes.values()) f.writeObject(n);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

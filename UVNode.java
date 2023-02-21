@@ -25,7 +25,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient Queue<P2PMessage> p2PMessageQueue = new ConcurrentLinkedQueue<>();
     transient ScheduledFuture<?> p2pHandler;
 
-    final transient HashSet<LNInvoice> pendingInvoices = new HashSet<>();
+    transient HashSet<LNInvoice> pendingInvoices = new HashSet<>();
 
 
     /**
@@ -46,6 +46,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private void log(String s) {
          UVNetworkManager.log(this.getPubKey()+":"+s);
+    }
+
+    private void debug(String s) {
+        if (ConfigManager.get("debug").equals("true"))  {
+            UVNetworkManager.log("DEBUG:"+this.getPubKey()+":"+s);
+        }
+
     }
 
     public void setUVM(UVNetworkManager uvm) {
@@ -105,6 +112,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public LNInvoice generateInvoice(int amount) {
         int r = ThreadLocalRandom.current().nextInt();
         var invoice = new LNInvoice(r,amount,this.getPubKey());
+        if (pendingInvoices==null) pendingInvoices = new HashSet<>();
         pendingInvoices.add(invoice);
         return invoice;
     }
@@ -128,82 +136,69 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     @SuppressWarnings("UnusedReturnValue")
     public boolean routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
-        System.out.println("Routing invoice on path:");
-        path.stream().forEach(e->  System.out.println(e.id()));
+        log("Routing invoice on path:");
+        path.stream().forEach(e->  log("("+e.source()+"->"+e.destination()+")"));
 
         // if Alice is the sender, and Dina the receiver
         // paths = Dina, Carol, Bob, Alice    with Dina in position 0
 
         // the last hop payload for destination Dina is special, the only having the secret and null as channel id
 
-        System.out.println("Assembling Onion layer for "+path.get(0).destination());
-        var amount = invoice.getAmount();
-        var base_block_height = uvm.getTimechain().getCurrentBlock();
+        debug("** Assembling final payload for node: "+path.get(0).destination());
+        final int amount = invoice.getAmount();
+        final int base_block_height = uvm.getTimechain().getCurrentBlock();
         var outgoing_cltv_value = base_block_height+invoice.getMin_cltv_expiry();
-        var short_channel_id = "00";
+
         // last layer is the only one with the secret
-        var hopPayload = new OnionLayer.Payload(short_channel_id,amount,outgoing_cltv_value,invoice.getHash());
+        var firstHopPayload = new OnionLayer.Payload("00",amount,outgoing_cltv_value,invoice.getHash());
         // this is the inner layer, for the final destination, so no further inner layer
-        var onionLayer = new OnionLayer(hopPayload,null);
+        var firstOnionLayer = new OnionLayer(firstHopPayload,null);
+        log(firstOnionLayer.toString());
 
-        // make the remaning hop payloads, starting with the payload for Carol
-        // we must find the related connecting channels
-
+        int fees = 0;
+        var onionLayer = firstOnionLayer;
 
         // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
         // Carol will take the forwarding fees specified in the payload for Bob
-        int forwarding_fees=0;
-
-        System.out.println("Final Onion:");
-        System.out.println(onionLayer);
-
-
         // don't need to create the last path segment onion for local node htlc
-        for (int n=1;n<path.size()-1;n++) {
+        for (int n=0;n<path.size()-1;n++) {
 
-            var to_node = path.get(n).destination();
-            var from_node = path.get(n).source();
+            var source = path.get(n).source();
+            var dest = path.get(n).destination();
 
-            var path_channel = uvm.getChannelFromNodes(to_node,from_node);
+            var path_channel = uvm.getChannelFromNodes(source,dest);
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
-                System.out.println("Assembling Payload for path segment "+channel.getId());
-                hopPayload = new OnionLayer.Payload(channel.getId(),amount+forwarding_fees,outgoing_cltv_value);
+                debug("**Assembling Payload for node: "+source);
+                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,outgoing_cltv_value);
                 onionLayer = new OnionLayer(hopPayload,onionLayer);
 
-                System.out.println("------------------------------------------------------------");
-                System.out.println(onionLayer);
-                System.out.println("------------------------------------------------------------");
+                debug(onionLayer.toString());
                 // TODO: get the proper values, to be used in next iteration
-                // the forwarding fees information in the carol->dina channel are put in the Bob payload
+                // the fees in the carol->dina channel will be put in the Bob payload in the next loop
                 // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
-                var policy = channel.getPolicy(to_node);
-                forwarding_fees += policy.fee_ppm();
-                outgoing_cltv_value+=policy.cltv();
+                //fees += channel.getPolicy(source).fee_ppm()+channel.getPolicy(source).base_fee();
+                fees += channel.getPolicy(source).fee_ppm();
+                outgoing_cltv_value += channel.getPolicy(source).cltv();
             }
             else {
-                log("ERROR: No channel from "+from_node+ " to "+to_node);
+                log("ERROR: No channel from "+source+ " to "+source);
                 return false;
             }
-
         }
 
-        var first_hop = path.get(path.size()-2).source();
-        log("Creating HTLC messsage for the first hop: "+first_hop);
+        var first_hop = path.get(path.size()-1).destination();
+        debug("Creating HTLC messsage for the first hop: "+first_hop);
 
-        var first_channel_id = path.get(path.size()-1).id();
-        var first_channel = channels.get(first_channel_id);
-        var id = first_channel.getLastCommitNumber()+1;
-        var amt= invoice.getAmount()+forwarding_fees;
-        var onion_packet = onionLayer;
-        var payhash = invoice.getHash();
-        int cltv = outgoing_cltv_value;
+        var channel_id = path.get(path.size()-1).id();
+        var local_channel = channels.get(channel_id);
+        var id = local_channel.getLastCommitNumber()+1;
+        var amt_to_forward= invoice.getAmount()+fees;
 
-
-        var update_htcl = new MsgUpdateAddHTLC(first_channel.getId(),id,amt,payhash,cltv,onion_packet);
+        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),outgoing_cltv_value,onionLayer);
+        debug(update_htcl.toString());
 
         return uvm.getUVNodes().get(first_hop).updateAddHTLC(update_htcl);
-
     }
 
     /**
@@ -212,12 +207,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     public boolean updateAddHTLC(MsgUpdateAddHTLC msg) {
 
-        log("Processing update_add_htlc");
-        System.out.println(msg);
+        log("Processing update_add_htlc: "+msg);
 
-        var packet = msg.getOnionPacket();
 
-        if (packet.getPayload().getShort_channel_id().equals("00")) {
+        var hop_payload = msg.getOnionPacket().getPayload();
+
+        if (hop_payload.getShort_channel_id().equals("00")) {
             log("RECEIVED ONION, RETURNING");
             return true;
         }
@@ -226,21 +221,20 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // the msg info will be used to update the channel htcl
         // the payload will be used to create the next htlc update message (with the inner onion as argument)
 
-        var hop_payload = packet.getPayload();
         var forwarding_channel_id = hop_payload.getShort_channel_id();
-        log("Unpacket Payload, will forward along next channel "+forwarding_channel_id);
-        var forwarding_channel = channels.get(forwarding_channel_id);
+
         if (msg.getAmount() >getLocalBalance(forwarding_channel_id)) {
             log("Not enought local balance liquidity in channel ");
-            log(forwarding_channel.toString());
-            return false;
+            log(channels.get(forwarding_channel_id).toString());
+            debug("SHOULD RETURN FALSE, BUT WE GO...");
+            //return false;
         }
 
         // DO HTLC UPDATE HERE....
-        log("DOING HTLC COMMIT ");
+        debug("DOING HTLC COMMIT ");
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
-        log("Creating new htlc message using payload ... ");
+        debug("Creating new htlc message using payload ... ");
         var channel_id = hop_payload.getShort_channel_id();
         var amt= hop_payload.getAmt_to_forward();
         int cltv = hop_payload.getOutgoing_cltv_value();
@@ -252,6 +246,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var id = channels.get(channel_id).getLastCommitNumber()+1;
 
         msg = new MsgUpdateAddHTLC(channel_id,id,amt,payhash,cltv,onion_packet.get());
+
+        debug(msg.toString());
 
         var channel_peer = getChannelPeer(forwarding_channel_id);
         return channel_peer.updateAddHTLC(msg);

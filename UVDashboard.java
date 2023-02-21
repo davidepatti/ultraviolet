@@ -66,7 +66,6 @@ public class UVDashboard {
         }
     }
 
-
     /**
      *
      */
@@ -81,11 +80,24 @@ public class UVDashboard {
         var pathList = findPathList(start,end,true);
 
         if (pathList.isPresent()) {
+            var path = pathList.get();
+            if (path.size()<1) {
+                System.out.println("Currently routing is supported for multiple hops only");
+                return;
+            }
+
             var dest = networkManager.getUVNodes().get(end);
             var sender = networkManager.getUVNodes().get(start);
             var invoice = dest.generateInvoice(700);
-            System.out.println("Generated  "+invoice);
-            sender.routeInvoiceOnPath(invoice,pathList.get().get(0));
+            System.out.println("Generated Invoice: "+invoice);
+            System.out.println("Routing on path:");
+            path.get(0).stream().forEach(e->  System.out.print("("+e.source()+"->"+e.destination()+")"));
+            if (sender.routeInvoiceOnPath(invoice,pathList.get().get(0))) {
+                System.out.println("Routing = TRUE");
+            }
+            else {
+                System.out.println("Routing = FALSE");
+            }
         }
 
         else {
@@ -287,21 +299,6 @@ public class UVDashboard {
             imported_graph_root = root;
             new Thread(()-> networkManager.importTopology(json,root)).start();
         }));
-        menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> {
-            findPathsCmd();
-        }));
-        menuItems.add(new MenuItem("save", "Save UVM status", x -> {
-            System.out.print("Save to:");
-            String file_to_save = scanner.nextLine();
-            networkManager.saveStatus(file_to_save);
-        }));
-        menuItems.add(new MenuItem("load", "Load UVM status", x -> {
-            System.out.print("Load from:");
-            String file_to_load = scanner.nextLine();
-            if (networkManager.loadStatus(file_to_load))
-                System.out.println("UVM LOADED");
-            else System.out.println("ERROR LOADING UVM from " + file_to_load);
-        }));
         menuItems.add(new MenuItem("stats", "Show Global stats", x -> {
             if (networkManager.isBootstrapCompleted())  {
                 var max = networkManager.getStats().getMaxGraphSizeNode();
@@ -315,15 +312,25 @@ public class UVDashboard {
             }
             else System.out.println("Bootstrap not completed!");
         } ));
+        menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> {
+            findPathsCmd();
+        }));
         menuItems.add(new MenuItem("route", "Route Payment", x -> {
             routeCmd();
         }));
-
-        menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> {
-            networkManager.resetUVM();
+        //menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
+        //menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
+        menuItems.add(new MenuItem("save", "Save UVM status", x -> {
+            System.out.print("Save to:");
+            String file_to_save = scanner.nextLine();
+            networkManager.saveStatus(file_to_save);
         }));
-        menuItems.add(new MenuItem("free", "Try to free memory", x -> {
-            System.gc();
+        menuItems.add(new MenuItem("load", "Load UVM status", x -> {
+            System.out.print("Load from:");
+            String file_to_load = scanner.nextLine();
+            if (networkManager.loadStatus(file_to_load))
+                System.out.println("UVM LOADED");
+            else System.out.println("ERROR LOADING UVM from " + file_to_load);
         }));
         menuItems.add(new MenuItem("q", "Disconnect Client ", x -> {
             quit = true;
@@ -333,15 +340,14 @@ public class UVDashboard {
         while (!quit) {
             System.out.print("\033[H\033[2J");
             System.out.flush();
-            System.out.println("-------------------------------------------------");
-            System.out.println(" Ultraviolet Dashboard ");
-            System.out.println("-------------------------------------------------");
+            System.out.println(" Ultraviolet client ");
+            System.out.println("__________________________________________________");
             menuItems.stream().forEach(System.out::println);
-            System.out.println("-------------------------------------------------");
+            System.out.println("__________________________________________________");
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
             if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
             else System.out.println(" Running...");
-            System.out.println("-------------------------------------------------");
+            System.out.println("__________________________________________________");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
 

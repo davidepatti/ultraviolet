@@ -35,7 +35,7 @@ public class OnionLayer {
 
         @Override
         public String toString() {
-            return "\n\nPayload{" +
+            return "Payload{" +
                     "short_channel_id='" + short_channel_id + '\'' +
                     ", amt_to_forward=" + amt_to_forward +
                     ", outgoing_cltv_value=" + outgoing_cltv_value +
@@ -65,9 +65,6 @@ public class OnionLayer {
 
     @Override
     public String toString() {
-        return "OnionLayer{" +
-                "payload=" + payload +
-                //", innerLayer=" + innerLayer +
-                '}';
+        return "OnionLayer{" + payload + '}';
     }
 }
