@@ -16,6 +16,7 @@ public class ConfigManager implements Serializable {
     }
 
     public static void setDefaults() {
+        properties.setProperty("debug","true");
         properties.setProperty("blocktime","1000");
         properties.setProperty("logfile","default.log");
         properties.setProperty("seed","1");
@@ -37,12 +38,24 @@ public class ConfigManager implements Serializable {
         initialized = true;
     }
 
-    public static void setConfig (Properties properties) {
-        ConfigManager.properties = properties;
+    public static void setConfig (Properties newconfig) {
+
+        for (String k: newconfig.stringPropertyNames()) {
+           properties.setProperty(k,newconfig.getProperty(k));
+        }
+
+        for (String k: properties.stringPropertyNames()) {
+            if (!newconfig.stringPropertyNames().contains(k)) {
+                System.out.println("Warning: config parameter '"+k+"' missing in new loaded config, leaving old value "+properties.getProperty(k));
+            }
+        }
     }
 
     public static void loadConfig(String config_file) {
         properties = new Properties();
+        // this is needed so that parameters not set in config file can be assumed as default
+        setDefaults();
+
         try {
             properties.load(new FileReader(config_file));
             initialized = true;
