@@ -136,13 +136,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     @SuppressWarnings("UnusedReturnValue")
     public boolean routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
-        log("Routing invoice on path:");
-        path.stream().forEach(e->  log("("+e.source()+"->"+e.destination()+")"));
+        StringBuilder s = new StringBuilder("Routing invoice on path: ");
+        for (ChannelGraph.Edge e:path)
+            s.append("(").append(e.source()).append("->").append(e.destination()).append(")");
+        log(s.toString());
 
-        // if Alice is the sender, and Dina the receiver
-        // paths = Dina, Carol, Bob, Alice    with Dina in position 0
-
-        // the last hop payload for destination Dina is special, the only having the secret and null as channel id
+        // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
         debug("** Assembling final payload for node: "+path.get(0).destination());
         final int amount = invoice.getAmount();
@@ -212,6 +211,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var hop_payload = msg.getOnionPacket().getPayload();
 
+        // TODO:
+        //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
+        // - once the cltv_expiry of an incoming HTLC has been reached,
+        // O if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
+        // MUST fail that incoming HTLC (update_fail_htlc).
+
+
         if (hop_payload.getShort_channel_id().equals("00")) {
             log("RECEIVED ONION, RETURNING");
             return true;
@@ -223,9 +229,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var forwarding_channel_id = hop_payload.getShort_channel_id();
 
-        if (msg.getAmount() >getLocalBalance(forwarding_channel_id)) {
-            log("Not enought local balance liquidity in channel ");
-            log(channels.get(forwarding_channel_id).toString());
+        if (msg.getAmount() >getLocalBalance(forwarding_channel_id)+channels.get(forwarding_channel_id).getReserve()) {
+            log("Not enought local balance liquidity in channel "+channels.get(forwarding_channel_id));
             debug("SHOULD RETURN FALSE, BUT WE GO...");
             //return false;
         }
@@ -412,9 +417,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.updateChannel(channel_id,newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
-        var msg_announcement = new P2PMsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        var msg_announcement = new MsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
         broadcastToPeers(msg_announcement);
-        var msg_update = new P2PMsgChannelUpdate(this.getPubKey(),channel_id,timestamp,0,newPolicy);
+        var msg_update = new MsgChannelUpdate(this.getPubKey(),channel_id,timestamp,0,newPolicy);
         broadcastToPeers(msg_update);
 
         log("OPEN: End opening channel with "+ peerPubKey);
@@ -444,10 +449,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_graph.updateChannel(channel_id,newPolicy);
 
         var timestamp = uvm.getTimechain().getCurrentBlock();
-        var message_ann = new P2PMsgChannelAnnouncement(channel.getId(),channel.getNode1PubKey(),channel.getNode2PubKey(),channel.getCapacity(),timestamp,0);
+        var message_ann = new MsgChannelAnnouncement(channel.getId(),channel.getNode1PubKey(),channel.getNode2PubKey(),channel.getCapacity(),timestamp,0);
         broadcastToPeers(message_ann);
 
-        var msg_update = new P2PMsgChannelUpdate(this.getPubKey(),channel.getId(),timestamp,0,newPolicy);
+        var msg_update = new MsgChannelUpdate(this.getPubKey(),channel.getId(),timestamp,0,newPolicy);
         broadcastToPeers(msg_update);
 
         log("<<<ACCEPT: End Accepting channel "+ channel.getId());
@@ -501,7 +506,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private void p2pProcessGossip() {
 
         if (p2PMessageQueue.size()>0)
-            log(">>> Message queue not empty, processing "+ p2PMessageQueue.size()+" elements..");
+            debug(">>> Message queue not empty, processing "+ p2PMessageQueue.size()+" elements..");
         else {
             return;
         }
@@ -517,7 +522,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
-                    var announce_msg = (P2PMsgChannelAnnouncement) msg.getNext();
+                    var announce_msg = (MsgChannelAnnouncement) msg.getNext();
                     var new_channel_id = announce_msg.getChannelId();
                     if (!channel_graph.hasChannel(new_channel_id)) {
                         //log("Adding to graph non existent channel "+new_channel_id);
@@ -531,7 +536,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 }
                 // TODO: 4 times per day, per channel (antonopoulos)
                 case CHANNEL_UPDATE -> {
-                    var message = (P2PMsgChannelUpdate) msg;
+                    var message = (MsgChannelUpdate) msg;
                     // skip channel updates of own channels
                     var updater_id = message.getNode();
                     var channel_id = message.getChannelId();
@@ -612,7 +617,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             new_node2_balance =target_channel.getNode1Balance()-amount;
         }
 
-        if (new_node1_balance > 0 || new_node2_balance > 0) {
+        if (new_node1_balance > 0 && new_node2_balance > 0) {
             success = target_channel.newCommitment(new_node1_balance,new_node2_balance);
         }
         else {
