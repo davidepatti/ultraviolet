@@ -25,7 +25,7 @@ public class NodeBehavior implements Serializable {
         this.target_channel_number = boostrap_channels;
     }
 
-    public int getMin_channel_size() {
+    public int getMinChannelSize() {
         return min_channel_size;
     }
 
@@ -33,7 +33,7 @@ public class NodeBehavior implements Serializable {
         this.min_channel_size = min_channel_size;
     }
 
-    public int getMax_channel_size() {
+    public int getMaxChannelSize() {
         return max_channel_size;
     }
 

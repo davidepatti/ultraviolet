@@ -5,5 +5,5 @@ public interface P2PNode {
     void broadcastToPeers(P2PMessage msg);
     ChannelGraph getChannelGraph();
 
-    void receiveP2PMessage(P2PMessage msg);
+    void receiveMessage(P2PMessage msg);
 }

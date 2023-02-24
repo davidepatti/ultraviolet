@@ -1,11 +1,11 @@
-public class P2PMsgChannelAnnouncement extends P2PMessage{
+public class MsgChannelAnnouncement extends P2PMessage{
 
     private final String short_channel_id;
     private final String node_id_1;
     private final String node_id_2;
     private final int funding;
 
-    public P2PMsgChannelAnnouncement(String channel_id, String pubkey1, String pubkey2, int funding, int timestamp, int forwardings) {
+    public MsgChannelAnnouncement(String channel_id, String pubkey1, String pubkey2, int funding, int timestamp, int forwardings) {
         super("ANN:"+channel_id,forwardings,timestamp, Type.CHANNEL_ANNOUNCE);
         this.short_channel_id = channel_id;
         this.node_id_1 = pubkey1;
@@ -29,8 +29,8 @@ public class P2PMsgChannelAnnouncement extends P2PMessage{
         return funding;
     }
 
-    public synchronized P2PMsgChannelAnnouncement getNext() {
-        return new P2PMsgChannelAnnouncement(short_channel_id,getNodeId1(),getNodeId2(),this.funding, this.timestamp,this.forwardings+1);
+    public synchronized MsgChannelAnnouncement getNext() {
+        return new MsgChannelAnnouncement(short_channel_id,getNodeId1(),getNodeId2(),this.funding, this.timestamp,this.forwardings+1);
     }
 
     @Override

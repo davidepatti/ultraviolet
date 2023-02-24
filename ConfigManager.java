@@ -31,6 +31,8 @@ public class ConfigManager implements Serializable {
         properties.setProperty("max_channel_size","1000000");
 
         // p2p
+        properties.setProperty("p2p_flush_size","500");
+        properties.setProperty("debug","true");
         properties.setProperty("max_p2p_hops","2");
         properties.setProperty("max_p2p_age","3");
         properties.setProperty("p2p_period","100");

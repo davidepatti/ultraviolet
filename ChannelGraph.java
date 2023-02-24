@@ -60,7 +60,7 @@ public class ChannelGraph implements Serializable  {
 
     }
 
-    public void addAnnouncedChannel(P2PMsgChannelAnnouncement msg) {
+    public void addAnnouncedChannel(MsgChannelAnnouncement msg) {
 
         var channel_id = msg.getChannelId();
         var node1 = msg.getNodeId1();

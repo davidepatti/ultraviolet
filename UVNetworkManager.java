@@ -141,8 +141,8 @@ public class UVNetworkManager {
 
         log("Starting node threads...");
         ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.getVal("total_nodes"));
-        for (UVNode n : uvnodes.values()) {
-           bootexec.submit(n::bootstrapNode);
+        for (UVNode uvNode : uvnodes.values()) {
+           bootexec.submit(()->bootstrapNode(uvNode));
         }
 
         System.out.println("Waiting for nodes to complete bootstrap...");
@@ -181,7 +181,7 @@ public class UVNetworkManager {
             p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getVal("total_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runP2PServices(),0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runServices(),0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
         setP2pRunning(true);
     }
@@ -421,5 +421,63 @@ public class UVNetworkManager {
 
     public synchronized void setP2pRunning(boolean p2pRunning) {
         this.p2pRunning = p2pRunning;
+    }
+    /**
+     *
+     */
+    public void bootstrapNode(UVNode node) {
+
+        int opened =0;
+        ///----------------------------------------------------------
+        var warmup = ConfigManager.getVal("bootstrap_warmup");
+
+        // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
+        // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
+        if (warmup!=0) {
+            var ready_to_go = getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(0,warmup));
+            log(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
+            try {
+                ready_to_go.await();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        log("Starting bootstrap!");
+
+        while (node.getBehavior().getBoostrapChannels() > opened) {
+
+            if (node.getOnChainBalance() <= node.getBehavior().getMinChannelSize()) {
+                log("Node "+node.getPubKey()+": No more onchain balance for opening further channels of min size "+node.getBehavior().getMinChannelSize());
+                break; // exit while loop
+            }
+
+            var peer_node = getRandomNode();
+            var peer_pubkey = peer_node.getPubKey();
+
+            if (peer_pubkey.equals(node.getPubKey())) continue;
+            if (node.getChannelWith(peer_pubkey).isPresent()) continue;
+
+            log("Node "+node.getPubKey()+" Trying to open a channel with "+peer_pubkey);
+
+            int max = Math.min(node.getBehavior().getMaxChannelSize(), node.getOnChainBalance());
+            int min = node.getBehavior().getMinChannelSize();
+            var channel_size = ThreadLocalRandom.current().nextInt(min,max+1);
+            channel_size = (channel_size/100000)*100000;
+
+            // onchain balance is changed only from initiator, so no problems of sync
+            if (channel_size>node.getOnChainBalance()) {
+                log("<<< Insufficient liquidity for "+channel_size+" channel opening");
+                continue;
+            }
+
+            if (node.openChannel(peer_pubkey,channel_size)) {
+                opened++;
+            }
+            else log("Failed opening channel to "+peer_node.getPubKey());
+            //log("another round...");
+        } // while
+
+        log(node.getPubKey()+":Bootstrap Completed");
+        getBootstrapLatch().countDown();
     }
 }

@@ -3,7 +3,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
     private final int id;
     private final int amount;
     private final String payment_hash;
-    private final int cltv;
+    private final int cltv_expiry;
     private final OnionLayer onionPacket;
 
 
@@ -14,7 +14,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
         this.id = id;
         this.amount = amount;
         this.payment_hash = hash;
-        this.cltv = cltv;
+        this.cltv_expiry = cltv;
         this.onionPacket = onion_packet;
     }
 
@@ -42,8 +42,8 @@ public class MsgUpdateAddHTLC extends P2PMessage {
         return payment_hash;
     }
 
-    public int getCltv() {
-        return cltv;
+    public int getCltv_expiry() {
+        return cltv_expiry;
     }
 
     public OnionLayer getOnionPacket() {
@@ -57,7 +57,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
                 ", id=" + id +
                 ", amount=" + amount +
                 ", payment_hash='" + payment_hash + '\'' +
-                ", cltv=" + cltv +
+                ", cltv=" + cltv_expiry +
                 '}';
     }
 }
