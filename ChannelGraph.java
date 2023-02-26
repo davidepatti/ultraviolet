@@ -18,7 +18,6 @@ public class ChannelGraph implements Serializable  {
         Log.accept(s);
     }
 
-    private static final boolean DEBUG = true;
     @Serial
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph, indexed by node id as keys
@@ -93,15 +92,6 @@ public class ChannelGraph implements Serializable  {
             count = count / 2;
         }
         return count;
-    }
-
-    /**
-     * This function gives whether  a vertex is present or not.
-     * @param s
-     * @return
-     */
-    private boolean hasVertex(String s) {
-        return adj_map.containsKey(s);
     }
 
     public ArrayList<ArrayList<Edge>> findPath(String start,String end, boolean stopfirst)
@@ -252,8 +242,6 @@ public class ChannelGraph implements Serializable  {
         }
         return false;
     }
-
-    private ChannelGraph() {}
 
     public ChannelGraph(String root_node){
         this.root_node = root_node;

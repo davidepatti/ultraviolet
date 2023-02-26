@@ -4,7 +4,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 
 public class UVDashboard {
@@ -91,7 +90,7 @@ public class UVDashboard {
             var invoice = dest.generateInvoice(700);
             System.out.println("Generated Invoice: "+invoice);
             System.out.println("Routing on path:");
-            path.get(0).stream().forEach(e->  System.out.print("("+e.source()+"->"+e.destination()+")"));
+            path.get(0).forEach(e->  System.out.print("("+e.source()+"->"+e.destination()+")"));
             sender.routeInvoiceOnPath(invoice,pathList.get().get(0));
         }
 
@@ -162,7 +161,7 @@ public class UVDashboard {
         if (paths.isPresent()) {
             for (ArrayList<ChannelGraph.Edge> p: paths.get()) {
                 System.out.println("PATH------------------------------------- ");
-                p.stream().forEach(System.out::println);
+                p.forEach(System.out::println);
             }
         }
         else System.out.println("NO PATH FOUND");
@@ -200,7 +199,7 @@ public class UVDashboard {
             } else {
                 System.out.println("Bootstrap Started, check " + ConfigManager.get("logfile"));
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
-                Future bootstrap = bootstrap_exec.submit(()->networkManager.bootstrapNetworkNodes());
+                Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetworkNodes);
                 System.out.println("waiting bootstrap to finish...");
                 _waitForFuture(bootstrap);
             }
@@ -216,7 +215,7 @@ public class UVDashboard {
             }
             new Thread(networkManager.getTimechain()).start();
             System.out.println("Starting P2P, check " + ConfigManager.get("logfile"));
-            new Thread(()->networkManager.startP2PNetwork()).start();
+            new Thread(networkManager::startP2PNetwork).start();
         }));
         menuItems.add(new MenuItem("p2ps", "Stop P2P Network", (x) -> {
             if (!networkManager.isBootstrapCompleted()) {
@@ -237,17 +236,15 @@ public class UVDashboard {
                 System.out.println("EMPTY NODE LIST");
                 return;
             }
-            var ln = networkManager.getUVNodes().values().stream().sorted().collect(Collectors.toList());
+            var ln = networkManager.getUVNodes().values().stream().sorted().toList();
 
             for (UVNode n : ln) {
                 System.out.println(n);
-                n.getChannels().values().stream().forEach(System.out::println);
+                n.getChannels().values().forEach(System.out::println);
             }
         }));
 
-        menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> {
-            networkManager.getUVNodes().values().stream().sorted().forEach(System.out::println);
-        }));
+        menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> networkManager.getUVNodes().values().stream().sorted().forEach(System.out::println)));
         menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
@@ -307,14 +304,10 @@ public class UVDashboard {
             }
             else System.out.println("Bootstrap not completed!");
         } ));
-        menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> {
-            findPathsCmd();
-        }));
-        menuItems.add(new MenuItem("route", "Route Payment", x -> {
-            routeCmd();
-        }));
-        //menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
-        //menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
+        menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> findPathsCmd()));
+        menuItems.add(new MenuItem("route", "Route Payment", x -> routeCmd()));
+        menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
+        menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
         menuItems.add(new MenuItem("save", "Save UVM status", x -> {
             System.out.print("Save to:");
             String file_to_save = scanner.nextLine();
@@ -327,9 +320,7 @@ public class UVDashboard {
                 System.out.println("UVM LOADED");
             else System.out.println("ERROR LOADING UVM from " + file_to_load);
         }));
-        menuItems.add(new MenuItem("q", "Disconnect Client ", x -> {
-            quit = true;
-        }));
+        menuItems.add(new MenuItem("q", "Disconnect Client ", x -> quit = true));
 
 
         while (!quit) {
@@ -337,7 +328,7 @@ public class UVDashboard {
             System.out.flush();
             System.out.println(" Ultraviolet client ");
             System.out.println("__________________________________________________");
-            menuItems.stream().forEach(System.out::println);
+            menuItems.forEach(System.out::println);
             System.out.println("__________________________________________________");
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
             if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
@@ -368,7 +359,7 @@ public class UVDashboard {
         var node = networkManager.getUVNodes().get(node_id);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
         System.out.println("P2P message queue:");
-        node.getP2PMessageQueue().stream().forEach(System.out::println);
+        node.getP2PMessageQueue().forEach(System.out::println);
 
         System.out.println("Pending HTLC:");
         System.out.println(node.getForwardedHTLC());

@@ -181,7 +181,7 @@ public class UVNetworkManager {
             p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getVal("total_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(()->n.runServices(),0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
         setP2pRunning(true);
     }

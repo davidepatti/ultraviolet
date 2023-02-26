@@ -565,11 +565,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             MessageGossip msg = (MessageGossip) p2PMessageQueue.poll();
 
             // Do again the control on message age, maybe it's been stuck in the queue for long...
-            /*
-            var current_age = uvm.getTimechain().getCurrentBlock() -msg.getTimeStamp();
-            if (current_age> ConfigManager.getVal("max_p2p_age")) continue;
-
-             */
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
@@ -743,9 +738,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public int hashCode() {
         return pubkey.hashCode();
     }
-/********************************************************************************
- * Serialization section
- */
+
     /**
      * Custom Serialized format: number of element / objects
      * @param s The outputstream, as specified when choosing saving file
@@ -786,6 +779,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * Notice that internal UVNodes are restored separately to avoid stack overflow
      * @param s
      */
+    @SuppressWarnings("unchecked")
     @Serial
     private void readObject(ObjectInputStream s) {
         channels = new ConcurrentHashMap<>();
