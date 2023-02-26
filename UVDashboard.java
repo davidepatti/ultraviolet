@@ -92,12 +92,7 @@ public class UVDashboard {
             System.out.println("Generated Invoice: "+invoice);
             System.out.println("Routing on path:");
             path.get(0).stream().forEach(e->  System.out.print("("+e.source()+"->"+e.destination()+")"));
-            if (sender.routeInvoiceOnPath(invoice,pathList.get().get(0))) {
-                System.out.println("Routing = TRUE");
-            }
-            else {
-                System.out.println("Routing = FALSE");
-            }
+            sender.routeInvoiceOnPath(invoice,pathList.get().get(0));
         }
 
         else {
@@ -372,7 +367,20 @@ public class UVDashboard {
         if (!networkManager.isBootstrapCompleted()) return;
         var node = networkManager.getUVNodes().get(node_id);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
-        node.p2PMessageQueue.stream().forEach(System.out::println);
+        System.out.println("P2P message queue:");
+        node.getP2PMessageQueue().stream().forEach(System.out::println);
+
+        System.out.println("Pending HTLC:");
+        System.out.println(node.getForwardedHTLC());
+
+        System.out.println("Pending opening:");
+        System.out.println(node.getSentChannelOpenings());
+        System.out.println("Pending accepted:");
+        System.out.println(node.getPendingChannelsAccepted());
+        System.out.println("Pending to accept:");
+        System.out.println(node.getPendingChannelsToAccept());
+        System.out.println("Pending Invoices:");
+        System.out.println(node.getGeneratedInvoices());
     }
 
     private void showGraphCommand(String node) {

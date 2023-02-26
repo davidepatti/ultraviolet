@@ -1,4 +1,4 @@
-public class MsgChannelAnnouncement extends P2PMessage{
+public class MsgChannelAnnouncement extends MessageGossip {
 
     private final String short_channel_id;
     private final String node_id_1;

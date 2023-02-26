@@ -318,12 +318,16 @@ public class UVNetworkManager {
         return boostrap_started;
     }
 
-    public LNode getLNode(String pubkey) {
-        return uvnodes.get(pubkey);
-    }
 
     public HashMap<String, UVNode> getUVNodes(){
         return this.uvnodes;
+    }
+
+    public LNode getLNode(String pubkey) {
+        return uvnodes.get(pubkey);
+    }
+    public P2PNode getP2PNode(String pubkey) {
+        return uvnodes.get(pubkey);
     }
 
     public Timechain getTimechain() {
@@ -442,7 +446,6 @@ public class UVNetworkManager {
                 throw new RuntimeException(e);
             }
         }
-        log("Starting bootstrap!");
 
         while (node.getBehavior().getBoostrapChannels() > opened) {
 
@@ -470,14 +473,16 @@ public class UVNetworkManager {
                 continue;
             }
 
-            if (node.openChannel(peer_pubkey,channel_size)) {
-                opened++;
-            }
-            else log("Failed opening channel to "+peer_node.getPubKey());
-            //log("another round...");
+            node.openChannel(peer_pubkey,channel_size);
+            opened++;
         } // while
 
         log(node.getPubKey()+":Bootstrap Completed");
         getBootstrapLatch().countDown();
+    }
+
+    public void sendMessageToNode(String pubkey, Message message) {
+        var uvnode = getUVNodes().get(pubkey);
+        uvnode.receiveMessage(message);
     }
 }

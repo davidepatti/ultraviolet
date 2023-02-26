@@ -1,4 +1,4 @@
-public class MsgChannelUpdate extends P2PMessage {
+public class MsgChannelUpdate extends MessageGossip {
 
     private final String node;
     private final String channel_id;

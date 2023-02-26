@@ -1,4 +1,4 @@
-public class MsgUpdateAddHTLC extends P2PMessage {
+public class MsgUpdateAddHTLC extends MessageGossip {
     private final String channel_id;
     private final int id;
     private final int amount;
@@ -22,7 +22,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
      * @return 
      */
     @Override
-    public P2PMessage getNext() {
+    public MessageGossip getNext() {
         return null;
     }
 

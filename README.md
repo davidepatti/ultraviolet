@@ -40,6 +40,8 @@ This includes:
 - Identity: abstracted to coincide with pubkey,.e.g., no need of having IP/tor addresses, since all network
   communication is done by method calls between synchronized threads. Notice that pubkey should be derived from a root
   private key, not required, since trust is not an issue in UV,i.e., Nothing is “signed”.
+- Inside each UVNode other channel as seend throught the LNode or P2PNode intefaces
+- 
 ## UVChannel
 Single object instance, one per existing channel, accessed from both initiator and peer UVNode threads using synchronized method calls.
 - The initiator UVNode creates an instance of a new UVChannel object and call a method of a peer. If criteria and requirement are matched (e.g. sufficient liquidity) the channel reference is stored at each UVNode.
@@ -59,13 +61,13 @@ manage the graph structure locally or globally?
 
 # UVNetworkManager 
 A global class thread that:
-- Bootstrap the network: creates nodes with id and onchain funds, according to some distribution probabilities
-- assign a “behavior” to each UVNode and run the associated thread: then each UVNode will invoke methods like “findPeer()”
-- starts the thread of running nodes
 - represents a vision of the network, abstracting all the info and services that are achieved by broadcasting requests or collecting info via apis, explorer sites like amboss etc…
   listen to events:
   I’m UVNode X find me a peer with these features etc…
   I’m UVNode X I want to open/close a channel to Y
+- Bootstrap the network: creates nodes with id and onchain funds, according to some distribution probabilities
+- assign a “behavior” to each UVNode and run the associated thread: then each UVNode will invoke methods like “findPeer()”
+- starts the thread of running nodes
 - starts a separate UVNetworkManager.UVMServer thread to accept commands via socket (when not used as a library)
 
 An simple UVDashboard to interact with UVNetworkManager.UVMServer is provided, but different client implementations are possible (e.g. GUI)

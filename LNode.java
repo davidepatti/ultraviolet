@@ -7,7 +7,6 @@ public interface LNode {
     @SuppressWarnings("SameReturnValue")
     boolean routeInvoice(LNInvoice invoice, LNode destination);
     ArrayList<LNChannel> getLNChannelList();
-    boolean updateAddHTLC(MsgUpdateAddHTLC msg);
 
     LNChannel getRandomChannel();
 }
