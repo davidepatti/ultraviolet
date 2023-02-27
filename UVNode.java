@@ -1,4 +1,5 @@
 import java.io.*;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -27,9 +28,25 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgOpenChannel> pendingChannelsToAccept = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> pendingChannelsAccepted = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateAddHTLC> pendingUpdateAddHTLC = new ConcurrentLinkedQueue<>();
-    transient private HashSet<LNInvoice> generatedInvoices = new HashSet<>();
+    transient private HashMap<Long, LNInvoice> generatedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> forwardedHTLC = new HashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
+    /**
+     * Create a lightning node instance attaching it to some Ultraviolet Manager
+     * @param uvm an instance of a Ultraviolet Manager to attach
+     * @param pubkey the public key to be used as node id
+     * @param alias an alias
+     * @param funding initial onchain balance
+     */
+    public UVNode(UVNetworkManager uvm, String pubkey, String alias, int funding) {
+        this.uvm = uvm;
+        this.pubkey = pubkey;
+        this.alias = alias;
+        this.onchainBalance = funding;
+        // change lamba function here to log to a different target
+        channelGraph = new ChannelGraph(pubkey);
+    }
+
 
     public ScheduledFuture<?> getP2pHandler() {
         return p2pHandler;
@@ -51,7 +68,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return pendingUpdateAddHTLC;
     }
 
-    public HashSet<LNInvoice> getGeneratedInvoices() {
+    public HashMap<Long,LNInvoice> getGeneratedInvoices() {
         return generatedInvoices;
     }
 
@@ -67,22 +84,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return behavior;
     }
 
-    /**
-     * Create a lightning node instance attaching it to some Ultraviolet Manager
-     * @param uvm an instance of a Ultraviolet Manager to attach
-     * @param pubkey the public key to be used as node id
-     * @param alias an alias
-     * @param funding initial onchain balance
-     */
-    public UVNode(UVNetworkManager uvm, String pubkey, String alias, int funding) {
-        this.uvm = uvm;
-        this.pubkey = pubkey;
-        this.alias = alias;
-        this.onchainBalance = funding;
-        // change lamba function here to log to a different target
-        channelGraph = new ChannelGraph(pubkey);
-    }
-
     private void log(String s) {
          UVNetworkManager.log(this.getPubKey()+":"+s);
     }
@@ -94,7 +95,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     public ArrayList<LNChannel> getLNChannelList() {
-
         return new ArrayList<>(this.channels.values());
     }
 
@@ -194,10 +194,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     @Override
     public LNInvoice generateInvoice(int amount) {
-        int r = ThreadLocalRandom.current().nextInt();
-        var invoice = new LNInvoice(r,amount,this.getPubKey());
-        if (generatedInvoices ==null) generatedInvoices = new HashSet<>();
-        generatedInvoices.add(invoice);
+        long R = ThreadLocalRandom.current().nextInt();
+        var H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(R).toByteArray()));
+        var invoice = new LNInvoice(H,amount,this.getPubKey(),"");
+        if (generatedInvoices ==null) generatedInvoices = new HashMap<>();
+        generatedInvoices.put(R,invoice);
         return invoice;
     }
 
@@ -252,7 +253,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
                 debug("**Assembling Payload for node: "+source);
-                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,outgoing_cltv_value);
+                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,outgoing_cltv_value,null);
                 onionLayer = new OnionLayer(hopPayload,onionLayer);
 
                 debug(onionLayer.toString());
@@ -288,41 +289,49 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      *
      * @return
      */
-    private boolean updateAddHTLC(final MsgUpdateAddHTLC msg) {
+    private void updateAddHTLC(final MsgUpdateAddHTLC msg) {
 
         log("Processing update_add_htlc: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
 
+
+        if (payload.getShortChannelId().equals("00")) {
+            final var secret = payload.getPayment_secret().get();
+            var preimages = generatedInvoices.keySet();
+            for (long s: preimages) {
+                var preimage_bytes = BigInteger.valueOf(s).toByteArray();
+                var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
+                if (hash.equals(secret)) {
+                    log("Received HTLC on own invoice "+generatedInvoices.get(s));
+                    return;
+                }
+            }
+        }
+
+
         int currentBlock = uvm.getTimechain().getCurrentBlock();
-        final var forwardingChannel = channels.get(payload.getShort_channel_id());
+        final var forwardingChannel = channels.get(payload.getShortChannelId());
 
         var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).cltv();
 
+        // TODO:
+        /*
         if ( (msg.getCltv_expiry() > currentBlock) || (msg.getCltv_expiry()-currentBlock < my_out_cltv)) {
            log("Expired cltv, HTLC hash:"+msg.getPayment_hash());
-           return false;
+           return;
         }
+         */
 
-        // TODO:
         //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
         // - once the cltv_expiry of an incoming HTLC has been reached,
         // O if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
         // MUST fail that incoming HTLC (update_fail_htlc).
 
 
-        if (payload.getShort_channel_id().equals("00")) {
-            log("RECEIVED ONION, RETURNING OK");
-            return true;
-        }
-
-        // the msg info will be used to update the channel htcl
-        // the payload will be used to create the next htlc update message (with the inner onion as argument)
-
-
         if (msg.getAmount() >getLocalBalance(forwardingChannel.getId())+forwardingChannel.getReserve()) {
             log("Not enought local balance liquidity in channel "+forwardingChannel);
             debug("___SHOULD RETURN FALSE, BUT WE GO____");
-            return false;
+            //return;
         }
 
         // DO HTLC UPDATE HERE....
@@ -341,13 +350,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var id = forwardingChannel.getLastCommitNumber()+1;
         var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), id,amt,payhash,cltv,onion_packet.get());
 
-        debug(msg.toString());
+        debug("Forwarding "+new_msg.toString());
 
         var channel_peer = getChannelPeer(forwardingChannel.getId());
 
         sendToPeer(channel_peer,new_msg);
-        return true;
-
     }
 
     /**
@@ -525,9 +532,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 var acceptance = (MsgAcceptChannel)msg;
                 pendingChannelsAccepted.add(acceptance);
             }
-            case UPDATE_ADD_HTCL -> {
+            case UPDATE_ADD_HTLC -> {
                 var htlc = (MsgUpdateAddHTLC)msg;
-                forwardedHTLC.put(htlc.getPayment_hash(),htlc);
+                pendingUpdateAddHTLC.add(htlc);
             }
             default -> this.p2PMessageQueue.add(msg);
         }
@@ -803,7 +810,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             pendingChannelsToAccept = (Queue<MsgOpenChannel>) s.readObject();
             pendingUpdateAddHTLC = (Queue<MsgUpdateAddHTLC>) s.readObject();
 
-            generatedInvoices = (HashSet<LNInvoice>) s.readObject();
+            generatedInvoices = (HashMap<Long, LNInvoice>)s.readObject();
             sentChannelOpenings = (HashMap<String, MsgOpenChannel>) s.readObject();
             forwardedHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();
 

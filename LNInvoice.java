@@ -4,8 +4,6 @@ import java.util.Optional;
 
 public class LNInvoice {
     // antonop 339
-    @SuppressWarnings("FieldCanBeLocal")
-    private final long r;
     private final String H;
     private final int amount;
     private final String destination;
@@ -13,16 +11,12 @@ public class LNInvoice {
     @SuppressWarnings("FieldCanBeLocal")
     private final int min_cltv_expiry = 9;
 
-    public LNInvoice(long r, int amount, String recipient, String message) {
-        this.r = r;
-        H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(r).toByteArray()));
+    public LNInvoice(String paymentHash, int amount, String recipient, String message) {
+        this.H = paymentHash;
         this.amount = amount;
         this.destination = recipient;
         this.message = message;
 
-    }
-    public LNInvoice(long r, int amount, String recipient) {
-        this(r,amount,recipient,null);
     }
 
     public String getHash() {

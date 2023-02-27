@@ -1,4 +1,4 @@
-public class MsgUpdateAddHTLC extends MessageGossip {
+public class MsgUpdateAddHTLC extends Message {
     private final String channel_id;
     private final int id;
     private final int amount;
@@ -9,7 +9,7 @@ public class MsgUpdateAddHTLC extends MessageGossip {
 
     public MsgUpdateAddHTLC(String channel_id, int id, int amount, String hash, int cltv, OnionLayer onion_packet) {
 
-        super(channel_id+"_"+id, 0, 0, Type.UPDATE_ADD_HTCL);
+        super(Type.UPDATE_ADD_HTLC);
         this.channel_id = channel_id;
         this.id = id;
         this.amount = amount;
@@ -21,11 +21,6 @@ public class MsgUpdateAddHTLC extends MessageGossip {
     /**
      * @return 
      */
-    @Override
-    public MessageGossip getNext() {
-        return null;
-    }
-
     public String getChannel_id() {
         return channel_id;
     }

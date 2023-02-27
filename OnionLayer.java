@@ -17,15 +17,12 @@ public class OnionLayer {
             this.outgoing_cltv_value = outgoing_cltv_value;
             this.payment_secret = payment_secret;
         }
-        public Payload(String short_channel_id, int amt_to_forward, int outgoing_cltv_value) {
-            this(short_channel_id,amt_to_forward,outgoing_cltv_value,null);
-        }
 
         public int getAmt_to_forward() {
             return amt_to_forward;
         }
 
-        public String getShort_channel_id() {
+        public String getShortChannelId() {
             return short_channel_id;
         }
 
