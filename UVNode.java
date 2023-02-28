@@ -28,6 +28,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgOpenChannel> pendingChannelsToAccept = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> pendingChannelsAccepted = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateAddHTLC> pendingUpdateAddHTLC = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgUpdateFulFillHTLC> pendingUpdateFulFillHTLC = new ConcurrentLinkedQueue<>();
     transient private HashMap<Long, LNInvoice> generatedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> forwardedHTLC = new HashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
@@ -230,16 +231,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("** Assembling final payload for node: "+path.get(0).destination());
         final int amount = invoice.getAmount();
         final int base_block_height = uvm.getTimechain().getCurrentBlock();
-        var outgoing_cltv_value = base_block_height+invoice.getMin_cltv_expiry();
+        final var final_cltv_value = base_block_height+invoice.getMinFinalCltvExpiry();
 
         // last layer is the only one with the secret
-        var firstHopPayload = new OnionLayer.Payload("00",amount,outgoing_cltv_value,invoice.getHash());
+        var firstHopPayload = new OnionLayer.Payload("00",amount,final_cltv_value,invoice.getHash());
         // this is the inner layer, for the final destination, so no further inner layer
         var firstOnionLayer = new OnionLayer(firstHopPayload,null);
         debug(firstOnionLayer.toString());
 
         int fees = 0;
         var onionLayer = firstOnionLayer;
+        int out_cltv = final_cltv_value;
 
         // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
         // Carol will take the forwarding fees specified in the payload for Bob
@@ -253,7 +255,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
                 debug("**Assembling Payload for node: "+source);
-                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,outgoing_cltv_value,null);
+                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,out_cltv,null);
                 onionLayer = new OnionLayer(hopPayload,onionLayer);
 
                 debug(onionLayer.toString());
@@ -262,7 +264,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
                 //fees += channel.getPolicy(source).fee_ppm()+channel.getPolicy(source).base_fee();
                 fees += channel.getPolicy(source).fee_ppm();
-                outgoing_cltv_value += channel.getPolicy(source).cltv();
+                out_cltv += channel.getPolicy(source).cltv();
             }
             else {
                 log("ERROR: No channel from "+source+ " to "+source);
@@ -278,7 +280,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var id = local_channel.getLastCommitNumber()+1;
         var amt_to_forward= invoice.getAmount()+fees;
 
-        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),outgoing_cltv_value,onionLayer);
+        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
         debug(update_htcl.toString());
 
         sendToPeer(uvm.getP2PNode(first_hop),update_htcl);
@@ -303,6 +305,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
                 if (hash.equals(secret)) {
                     log("Received HTLC on own invoice "+generatedInvoices.get(s));
+                    var peer = getChannelPeer(msg.getChannel_id());
+                    var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
+                    sendToPeer(peer,to_send);
                     return;
                 }
             }
@@ -536,6 +541,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 var htlc = (MsgUpdateAddHTLC)msg;
                 pendingUpdateAddHTLC.add(htlc);
             }
+            case UPDATE_FULFILL_HTLC -> {
+                var htlc = (MsgUpdateFulFillHTLC)msg;
+                pendingUpdateFulFillHTLC.add(htlc);
+            }
+
             default -> this.p2PMessageQueue.add(msg);
         }
     }
@@ -664,8 +674,30 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             updateAddHTLC(msg);
         }
 
+        n = 0;
+        while (pendingUpdateFulFillHTLC.size()>0 && n++ < max ) {
+            var msg = pendingUpdateFulFillHTLC.poll();
+            updateFulfillHTLC(msg);
+        }
         // check for expired htlc
-        // update_fulfill_htlc
+    }
+
+    private void updateFulfillHTLC(MsgUpdateFulFillHTLC msg) {
+
+        var preimage = msg.getPayment_preimage();
+        var hash = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(preimage).toByteArray()));
+
+        if (forwardedHTLC.containsKey(hash)) {
+            var htlc = forwardedHTLC.get(hash);
+            log("Fulfilling HTLC "+htlc);
+            if (pushSats(htlc.getChannel_id(),htlc.getAmount())) {
+                debug("SUCCESS");
+            }
+            forwardedHTLC.remove(hash);
+        }
+        else {
+            log("FATAL: htlc never seen preimage "+msg.getPayment_preimage());
+        }
     }
 
     private synchronized void updateOnChainBalance(int new_balance) {

@@ -1,10 +1,10 @@
 public class MsgUpdateFulFillHTLC extends Message {
     private final String channel_id;
     private final int id;
-    private final String payment_preimage;
+    private final long payment_preimage;
 
 
-    public MsgUpdateFulFillHTLC(String channel_id, int id, String preimage) {
+    public MsgUpdateFulFillHTLC(String channel_id, int id, long preimage) {
 
         super(Type.UPDATE_FULFILL_HTLC);
         this.channel_id = channel_id;
@@ -18,6 +18,10 @@ public class MsgUpdateFulFillHTLC extends Message {
 
     public int getId() {
         return id;
+    }
+
+    public long getPayment_preimage() {
+        return payment_preimage;
     }
 
     @Override

@@ -118,22 +118,28 @@ public class UVDashboard {
             throw new IllegalArgumentException("No such node "+end);
         }
 
+        /*
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<ArrayList<ArrayList<ChannelGraph.Edge>>> arrayListFuture = executor.submit(()-> start_node.getChannelGraph().findPath(start,end,stopfirst));
-
         System.out.print("Waiting for path finding...");
-
         _waitForFuture(arrayListFuture);
 
+         */
+        ArrayList<ArrayList<ChannelGraph.Edge>> arrayListFuture = start_node.getChannelGraph().findPath(start,end,stopfirst);
+
+        /*
         ArrayList<ArrayList<ChannelGraph.Edge>> paths = null;
         try {
             paths = arrayListFuture.get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
-
         if (paths.size()>0) return Optional.of(paths);
-        else return Optional.empty();
+         */
+
+        if (arrayListFuture.size()>0) return Optional.of(arrayListFuture);
+
+            else return Optional.empty();
     }
 
     /**

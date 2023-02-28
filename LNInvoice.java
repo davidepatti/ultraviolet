@@ -1,4 +1,3 @@
-import java.math.BigInteger;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -31,7 +30,7 @@ public class LNInvoice {
         return destination;
     }
 
-    public int getMin_cltv_expiry() {
+    public int getMinFinalCltvExpiry() {
         return min_cltv_expiry;
     }
 
