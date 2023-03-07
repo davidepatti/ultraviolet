@@ -5,5 +5,6 @@ public interface P2PNode {
     void broadcastToPeers(MessageGossip msg);
     ChannelGraph getChannelGraph();
 
-    //void receiveMessage(Message msg);
+    public boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance );
+
 }

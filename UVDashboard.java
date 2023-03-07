@@ -1,5 +1,4 @@
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -72,79 +71,24 @@ public class UVDashboard {
 
         Scanner scanner = new Scanner(System.in);
         System.out.print("Starting node public key:");
-        String start = scanner.nextLine();
+        String start_id = scanner.nextLine();
         System.out.print("Destination node public key:");
-        String end = scanner.nextLine();
+        String end_id = scanner.nextLine();
 
-        var pathList = findPathList(start,end,true);
+        var dest = networkManager.getUVNodes().get(end_id);
+        var sender = networkManager.getUVNodes().get(start_id);
+        var invoice = dest.generateInvoice(2000);
+        System.out.println("Generated Invoice: "+invoice);
+        var result = sender.payInvoice(invoice);
 
-        if (pathList.isPresent()) {
-            var path = pathList.get();
-            if (path.size()<1) {
-                System.out.println("Currently routing is supported for multiple hops only");
-                return;
-            }
-
-            var dest = networkManager.getUVNodes().get(end);
-            var sender = networkManager.getUVNodes().get(start);
-            var invoice = dest.generateInvoice(700);
-            System.out.println("Generated Invoice: "+invoice);
-            System.out.println("Routing on path:");
-            path.get(0).forEach(e->  System.out.print("("+e.source()+"->"+e.destination()+")"));
-            sender.routeInvoiceOnPath(invoice,pathList.get().get(0));
+        if (result) {
+            System.out.println("Invoice payment successfull!");
         }
-
-        else {
-            System.out.println("No path for routing...");
+        else  {
+            System.out.println("Invoice routing failed (check logs)");
         }
     }
 
-    /**
-     *
-     * @param start
-     * @param end
-     * @param stopfirst
-     * @return
-     */
-    private Optional<ArrayList<ArrayList<ChannelGraph.Edge>>> findPathList(String start, String end, boolean stopfirst) {
-
-        UVNode start_node = networkManager.getUVNodes().get(start);
-        UVNode end_node = networkManager.getUVNodes().get(end);
-
-        if (start_node==null)  {
-            throw new IllegalArgumentException("No such node "+start);
-        }
-        if (end_node==null) {
-            throw new IllegalArgumentException("No such node "+end);
-        }
-
-        /*
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<ArrayList<ArrayList<ChannelGraph.Edge>>> arrayListFuture = executor.submit(()-> start_node.getChannelGraph().findPath(start,end,stopfirst));
-        System.out.print("Waiting for path finding...");
-        _waitForFuture(arrayListFuture);
-
-         */
-        ArrayList<ArrayList<ChannelGraph.Edge>> arrayListFuture = start_node.getChannelGraph().findPath(start,end,stopfirst);
-
-        /*
-        ArrayList<ArrayList<ChannelGraph.Edge>> paths = null;
-        try {
-            paths = arrayListFuture.get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
-        if (paths.size()>0) return Optional.of(paths);
-         */
-
-        if (arrayListFuture.size()>0) return Optional.of(arrayListFuture);
-
-            else return Optional.empty();
-    }
-
-    /**
-     *
-     */
     private void findPathsCmd() {
         Scanner scanner = new Scanner(System.in);
         String start;
@@ -162,10 +106,10 @@ public class UVDashboard {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = findPathList(start,end,stopfirst);
+        var paths = networkManager.getUVNodes().get(start).findPath(start,end,stopfirst);
 
-        if (paths.isPresent()) {
-            for (ArrayList<ChannelGraph.Edge> p: paths.get()) {
+        if (paths.size()>0) {
+            for (ArrayList<ChannelGraph.Edge> p: paths) {
                 System.out.println("PATH------------------------------------- ");
                 p.forEach(System.out::println);
             }
@@ -368,14 +312,14 @@ public class UVDashboard {
         node.getP2PMessageQueue().forEach(System.out::println);
 
         System.out.println("Pending HTLC:");
-        System.out.println(node.getForwardedHTLC());
+        System.out.println(node.getReceivedHTLC());
 
         System.out.println("Pending opening:");
         System.out.println(node.getSentChannelOpenings());
         System.out.println("Pending accepted:");
-        System.out.println(node.getPendingChannelsAccepted());
+        System.out.println(node.getChannelsAcceptedQueue());
         System.out.println("Pending to accept:");
-        System.out.println(node.getPendingChannelsToAccept());
+        System.out.println(node.getChannelsToAcceptQueue());
         System.out.println("Pending Invoices:");
         System.out.println(node.getGeneratedInvoices());
     }

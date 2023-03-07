@@ -94,7 +94,7 @@ public class ChannelGraph implements Serializable  {
         return count;
     }
 
-    public ArrayList<ArrayList<Edge>> findPath(String start,String end, boolean stopfirst)
+    protected ArrayList<ArrayList<Edge>> findPath(String start, String end, boolean stopfirst)
     {
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();

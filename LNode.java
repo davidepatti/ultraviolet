@@ -5,7 +5,7 @@ public interface LNode {
     String getAlias();
     LNInvoice generateInvoice(int amount);
     @SuppressWarnings("SameReturnValue")
-    boolean routeInvoice(LNInvoice invoice, LNode destination);
+    boolean payInvoice(LNInvoice invoice);
     ArrayList<LNChannel> getLNChannelList();
 
     LNChannel getRandomChannel();

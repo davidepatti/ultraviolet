@@ -168,7 +168,6 @@ public class UVNetworkManager {
         timechain.stop();
     }
 
-
     /**
      * If not yet started, schedule the p2p threads to be executed periodically for each node
      */
@@ -198,7 +197,6 @@ public class UVNetworkManager {
 
         setP2pRunning(false);
     }
-
 
     /**
      * Select a random node in the network using the list of the currently know pubkeys

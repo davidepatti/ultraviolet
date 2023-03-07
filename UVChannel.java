@@ -144,6 +144,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public synchronized int getLastCommitNumber() {
         return this.commitNumber;
     }
+    public synchronized int getNextCommitNumber() {
+        this.commitNumber = getLastCommitNumber()+1;
+        return commitNumber;
+    }
 
     public synchronized int getNode1Balance() {
         return node1Balance;
@@ -193,7 +197,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public synchronized boolean newCommitment(int node1Balance, int node2Balance) {
 
         if (node1Balance+node2Balance != this.getCapacity())
-            return false;
+            throw new IllegalArgumentException(" Wrong balances in commitment!");
 
         this.node1Balance = node1Balance;
         this.node2Balance = node2Balance;
