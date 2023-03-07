@@ -1,28 +1,31 @@
 # UltraViolet
-Using Lightning Topology and Routing Abstractions VIsible On LEveraged Threads
+## Underlying Lightning Topology and Routing Abstractions VIsible On LEvel Timechain
 
-The goal is to provide a hight-level simulation platform for the Bitcoin Lightning Network hiding the complexity of the underlying elements.
-Ultraviolet (UV) makes a massive usage of threads to make each Lightning UVNode living in its own "behavioural space".
+The goal is to provide a high-level simulation platform for the Bitcoin Lightning Network, abstracting some complexity of the underlying elements while still providing a timechain-level accuracy.
+
+Ultraviolet (UV) makes a massive usage of threads to make each simulated Lightning Node as living entity in its own "behavioural space".
 
 The major components of the UV architecture can be summarized as follows:
 
-- UVNetworkManager (a global thread, interacting with other thread via syncronized methods when necessary)
-- UVNode (multiple thread instances, one per Ligthning UVNode)
-- Timechain (thread)
-- UVChannel (one instance for each channel)
+- UVNode: an object (one per LN node)  mapping the main functionalities of a running node, implemented as multiple thread instances (e.g., HTLC forwading, Gossip messages, channels management)
+- Timechain: a global thread, representing the blockchain timeflow
+- UVChannel: one instance for each channel, representing the main attributes of
+- UVNetworkManager/Dashboard: a global thread, interacting with other thread via syncronized methods when necessary, to implement the common services (start/stop p2p, timechain, load/restore status etc.) 
 
-Also, to facilitate the interaction with simulation environment, two further components are being provided:
-- UVNetworkManager.UVMServer: used to interact with UVNetworkManager via socket
-- UVDashboard: a command line interface
+Main features of Ultraviolet:
+
+- *Timechain-level simulation*: where UVNodes communicate with each other by means of Gossip/P2P messags, as specificied in the BOLT protocol
+- *Large scale simulation*: Possibility of instantiating thousands of running nodes, where each can be characterized according the tipical node features (funding, channel sizes distribution, frequency of opening/closing, cltv deltas, fees etc..)
+- *Real Topology Testing*: it is possible to import a pre-existing topology from the json output of the "lncli describegraph" command exected in a real node.
+- *Pathfinding and Routing*: it is possible to test the routing of payment invoices, emulating the exchange of HTLC udpate/fulfill messages
+
+
 
 ![what is](uv.png)
 
 # Quick Start
 
 from some terminal:
-*java UVNetworkManager*
-
-from some other terminal:
 *java UVDashboard*
 
 
@@ -38,43 +41,25 @@ This includes:
 
 - UVNode behaviour: opening/closing the channels, choosing peers etc, can be probabilistically characterized when initializing the UVNode instance. 
 - Identity: abstracted to coincide with pubkey,.e.g., no need of having IP/tor addresses, since all network
-  communication is done by method calls between synchronized threads. Notice that pubkey should be derived from a root
+  communication is done by method calls between synchronized threads that implement the exchange of BOLT protocol messages. Notice that pubkey should be derived from a root
   private key, not required, since trust is not an issue in UV,i.e., Nothing is “signed”.
-- Inside each UVNode other channel as seend throught the LNode or P2PNode intefaces
+- Inside each UVNode other nodes as seen throught the "lens" of LNode or P2PNode intefaces, that expose the services that would have been seen in a real scenario. For example, I can see the balance of my channel's peer, but not its balance for other channels etc...
 - 
 ## UVChannel
 Single object instance, one per existing channel, accessed from both initiator and peer UVNode threads using synchronized method calls.
 - The initiator UVNode creates an instance of a new UVChannel object and call a method of a peer. If criteria and requirement are matched (e.g. sufficient liquidity) the channel reference is stored at each UVNode.
-- TBD: do we need the concept of “connected” as direct peers, i.e., having a connection before having a channel in common?
-
 
 ## Topology
-- Choose how to manage the topology creation: is gossip announcement required?
-- Depends on the level of dynamicity we want to model, examples:
-- using from a static channel allocation (pre-simulation)
-- starting from the static scenario above, but allowing subsequent opening/closing charaterized with some probabilistic criteria
-- CURRENT IDEA: some kind of static approach is required, transient development of a growing network beginning with no nodes is not part of the focus for UV -> we model a topology that has some “stability” and remain quite structurally similar, even if we can introduce some variability, UVNode failures etc.
-- Some topology configuration file is needed 
- e.g.: I’m UVNode X I want to move some sats to Y
-- The topology seen and managed via UVNetworkManager is referred to the channel graph, not the underlying peer-to-peer network
-manage the graph structure locally or globally?
 
 # UVNetworkManager 
-A global class thread that:
-- represents a vision of the network, abstracting all the info and services that are achieved by broadcasting requests or collecting info via apis, explorer sites like amboss etc…
-  listen to events:
-  I’m UVNode X find me a peer with these features etc…
-  I’m UVNode X I want to open/close a channel to Y
-- Bootstrap the network: creates nodes with id and onchain funds, according to some distribution probabilities
-- assign a “behavior” to each UVNode and run the associated thread: then each UVNode will invoke methods like “findPeer()”
-- starts the thread of running nodes
-- starts a separate UVNetworkManager.UVMServer thread to accept commands via socket (when not used as a library)
+Represents a vision of the network, abstracting all the info and services that are achieved by broadcasting requests or collecting info via APIs, explorer sites like Amboss, 1ML etc. Example: I’m UVNode X find me a peer with these features
 
-An simple UVDashboard to interact with UVNetworkManager.UVMServer is provided, but different client implementations are possible (e.g. GUI)
+An simple UVDashboard to interact with UVNetworkManager is provided, but different client implementations are possible (e.g. GUI)
 
 # Timechain
 This component consistis of that thread modeling a running blockchain, just to model the timing. 
 Notice that no actual time is used, but only block-related such as current block number is required to the other components.
 Indeed, all the events in the Lightning Network are not related to some real-work time, but to the sequence of block.
 This include channel opening confirmation, routing HTLC deadline used in routing etc...
+By the decoupling the "real" (e.g.10 minutes) time from the one used in simulation, a large sequence of events can be simulated using a virtual "blocktime"
 
