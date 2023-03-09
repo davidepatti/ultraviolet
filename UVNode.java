@@ -401,21 +401,20 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param node_id
      * @return
      */
-    // TODO: assuming single channel
-    public Optional<String> getChannelWith(String node_id) {
-
-        Optional<String> channel_id = Optional.empty();
+    public Optional<String> getExistingChannelWith(String node_id) {
 
         for (UVChannel c:this.channels.values()) {
             if (c.getNode2PubKey().equals(node_id) || c.getNode1PubKey().equals(node_id)) {
-                if (channel_id.isEmpty())
-                    channel_id = Optional.of(c.getId());
-                else  {
-                    throw new RuntimeException(" Multiple channels between two peers not supported!");
-                }
+                    return Optional.of(c.getId());
             }
         }
-        return channel_id;
+        return Optional.empty();
+    }
+
+    public synchronized boolean ongoingOpeningRequestWith(String nodeId) {
+        if (sentChannelOpenings.containsKey(nodeId)) return true;
+
+        return false;
     }
 
     /**
@@ -440,18 +439,18 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      * Mapped to LN protocol message: open_channel
      * Open a channel with a peer node, with the features defined by the node behavior and configuration
-     * Mainly used when bootstrapping: autogenerates channel id, fees, and takes all the necessary p2p actions
+     * autogenerates channel id, fees, and takes all the necessary p2p actions
      *
      * @param peerPubKey the target node partner to open the channel
-     * @return true if the channel has been successful opened
      */
     public void openChannel(String peerPubKey, int channel_size) {
 
         var peer = uvm.getP2PNode(peerPubKey);
-        var channel_id = generateFakeChannelId(peerPubKey);
+        var channelId = generateFakeChannelId(peerPubKey);
 
-        var msg = new MsgOpenChannel(channel_id,channel_size, 0, 0, 0, this.pubkey);
-        sentChannelOpenings.put(channel_id,msg);
+        var msg = new MsgOpenChannel(channelId,channel_size, 0, 0, 0, this.pubkey);
+        debug("Putting in sent openings: "+msg);
+        sentChannelOpenings.put(peerPubKey,msg);
         sendToPeer(peer, msg);
     }
 
@@ -459,19 +458,20 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var channel_id = acceptMessage.getChannel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
-        log("Channel "+channel_id+" accepted by peer "+ peerPubKey);
-        MsgOpenChannel request = sentChannelOpenings.get(channel_id);
-        var size = request.getFunding();
+        MsgOpenChannel request = sentChannelOpenings.get(peerPubKey);
+        var funding = request.getFunding();
 
 
-        var newChannel = new UVChannel(channel_id, this.getPubKey(), peerPubKey,size,request.getChannelReserve(),request.getPushMSAT());
+        var newChannel = new UVChannel(channel_id, this.getPubKey(), peerPubKey,funding,request.getChannelReserve(),request.getPushMSAT());
+        log("Channel "+channel_id+" accepted by peer "+ peerPubKey+" - details: "+newChannel);
+        debug(request.toString());
 
         // Updates on channel status and balances should be in sync with other accesses (e.g. accept())
         var peer = uvm.getP2PNode(peerPubKey);
         this.addPeer(peer);
         this.channels.put(channel_id,newChannel);
         channelGraph.addLNChannel(newChannel);
-        updateOnChainBalance(getOnChainBalance()- size);
+        updateOnChainBalance(getOnChainBalance()- funding);
 
 
         var newPolicy = new LNChannel.Policy(20,1000,50);
@@ -484,7 +484,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var msg_update = new MsgChannelUpdate(this.getPubKey(),channel_id,timestamp,0,newPolicy);
         broadcastToPeers(msg_update);
 
-        sentChannelOpenings.remove(channel_id);
+        sentChannelOpenings.remove(peerPubKey);
     }
 
     /**
@@ -495,13 +495,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var channel_id = openRequest.getChannel_id();
         var initiator_id = openRequest.getFunding_pubkey();
-        log("Accepting channel "+ channel_id);
-        if (this.getChannelWith(initiator_id).isPresent()) {
+        if (this.getExistingChannelWith(initiator_id).isPresent()) {
             log("Node has already a channel with "+initiator_id);
             return;
         }
 
         var newChannel = new UVChannel(openRequest.getChannel_id(), initiator_id, this.getPubKey(), openRequest.getFunding(),openRequest.getChannelReserve(),openRequest.getPushMSAT());
+        log("Accepting channel "+ channel_id+ " details: "+newChannel);
+        debug(openRequest.toString());
         var channel_peer = uvm.getP2PNode(initiator_id);
         addPeer(channel_peer);
         var acceptance = new MsgAcceptChannel(channel_id,0,this.getPubKey());
@@ -711,7 +712,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance ) {
 
         var channel = channels.get(channel_id);
-        channel.newCommitment(node1_balance,node2_balance);
+        debug("Updating "+channel+ " to new balances "+node1_balance+","+node2_balance);
+        try {
+            channel.newCommitment(node1_balance,node2_balance);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
         return true;
     }
 
@@ -817,10 +824,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             s.writeObject(this.channelsAcceptedQueue);
             s.writeObject(this.channelsToAcceptQueue);
             s.writeObject(this.updateAddHTLCQueue);
+            s.writeObject(this.updateFulFillHTLCQueue);
 
             s.writeObject(this.generatedInvoices);
-            s.writeObject(this.sentChannelOpenings);
+            s.writeObject(this.pendingInvoices);
             s.writeObject(this.receivedHTLC);
+            s.writeObject(this.pendingHTLC);
+            s.writeObject(this.sentChannelOpenings);
 
             s.writeObject(channelGraph);
 
@@ -856,10 +866,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             channelsAcceptedQueue = (Queue<MsgAcceptChannel>) s.readObject();
             channelsToAcceptQueue = (Queue<MsgOpenChannel>) s.readObject();
             updateAddHTLCQueue = (Queue<MsgUpdateAddHTLC>) s.readObject();
-
+            updateFulFillHTLCQueue = (Queue<MsgUpdateFulFillHTLC>) s.readObject();
+            pendingInvoices = (HashMap<String, LNInvoice>) s.readObject();
             generatedInvoices = (HashMap<Long, LNInvoice>)s.readObject();
-            sentChannelOpenings = (HashMap<String, MsgOpenChannel>) s.readObject();
             receivedHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();
+            pendingHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();
+            sentChannelOpenings = (HashMap<String, MsgOpenChannel>) s.readObject();
 
             channelGraph = (ChannelGraph) s.readObject();
 

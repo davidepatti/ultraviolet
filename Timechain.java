@@ -8,7 +8,7 @@ public class Timechain implements Runnable, Serializable  {
 
     @Serial
     private static final long serialVersionUID = 1207897L;
-    private static int current_block;
+    private int current_block;
     private final int blocktime;
     private final Set<CountDownLatch> timers = new HashSet<>();
 
@@ -29,6 +29,11 @@ public class Timechain implements Runnable, Serializable  {
     public Timechain(int blocktime) {
         current_block = 0;
         this.blocktime = blocktime;
+        setRunning(false);
+    }
+
+    public synchronized int getCurrentLatches() {
+        return timers.size();
     }
 
     public CountDownLatch getTimechainLatch(int blocks) {
@@ -39,22 +44,17 @@ public class Timechain implements Runnable, Serializable  {
         return new_latch;
     }
 
-    public synchronized void stop() {
-        this.running = false;
-    }
-
-    private synchronized void start() {
-        this.running = true;
+    public synchronized void setRunning(boolean running) {
+        this.running = running;
     }
 
     public synchronized boolean isRunning() {
-
         return this.running;
     }
 
     @Override
     public void run() {
-        start();
+        setRunning(true);
         System.out.println("Timechain started!");
 
         while (isRunning()) {

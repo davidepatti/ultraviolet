@@ -196,8 +196,9 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public synchronized boolean newCommitment(int node1Balance, int node2Balance) {
 
-        if (node1Balance+node2Balance != this.getCapacity())
-            throw new IllegalArgumentException(" Wrong balances in commitment!");
+        if (node1Balance+node2Balance != this.getCapacity()) {
+            throw new IllegalArgumentException("Ch["+this.getId()+"] Wrong balances in commitment:"+node1Balance+"+"+node2Balance+"!= "+getCapacity());
+        }
 
         this.node1Balance = node1Balance;
         this.node2Balance = node2Balance;

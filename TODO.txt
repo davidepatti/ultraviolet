@@ -14,6 +14,7 @@ of having directly access to some LNChannle object
 
 
 
+- implement tx storing events in timechain blocks (e.g. channel opening/closing)
 - check for concurrency problems in for loops
 - check for duplicate entries in p2pq
 - use realistic data format when possible without complication (e.g. short channel id, secret, hashes)

@@ -18,7 +18,6 @@ public class UVNetworkManager {
     private Timechain timechain;
 
     private boolean boostrap_started = false;
-    private boolean p2pRunning = false;
     private boolean bootstrap_completed = false;
     private String imported_rootnode_graph;
     private FileWriter logfile;
@@ -62,7 +61,7 @@ public class UVNetworkManager {
 
         log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
-        setP2pRunning(false);
+        setTimechainRunning(false);
     }
 
     /**
@@ -76,8 +75,10 @@ public class UVNetworkManager {
             return false;
         }
 
-        if (isP2pRunning()) stopP2PNetwork();
-        if (timechain!=null && timechain.isRunning()) timechain.stop();
+        if (timechain!=null && isTimechainRunning())  {
+            setTimechainRunning(false);
+            stopP2PNetwork();
+        }
 
         random = new Random();
         if (ConfigManager.getVal("seed") !=0) random.setSeed(ConfigManager.getVal("seed"));
@@ -112,14 +113,9 @@ public class UVNetworkManager {
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
     public void bootstrapNetworkNodes() {
-        synchronized (this) {
-            boostrap_started = true;
-        }
+        boostrap_started = true;
 
         log("UVM: Bootstrapping network from scratch...");
-        log("UVM: Starting timechain: "+timechain);
-        Executor timechain_exec = Executors.newSingleThreadExecutor();
-        timechain_exec.execute(timechain);
         bootstrap_latch = new CountDownLatch(ConfigManager.getVal("total_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
@@ -131,7 +127,7 @@ public class UVNetworkManager {
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new UVNode(this,""+i,"LN"+i,funding);
+            var n = new UVNode(this,"n"+i,"LN"+i,funding);
             var behavior = new NodeBehavior(ConfigManager.getVal("min_channels"), ConfigManager.getVal("min_channel_size"), ConfigManager.getVal("max_channel_size"));
             n.setBehavior(behavior);
             uvnodes.put(n.getPubKey(),n);
@@ -139,6 +135,8 @@ public class UVNetworkManager {
 
         updatePubkeyList();
 
+        log("UVM: Starting timechain: "+timechain);
+        setTimechainRunning(true);
         log("Starting node threads...");
         ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.getVal("total_nodes"));
         for (UVNode uvNode : uvnodes.values()) {
@@ -165,14 +163,13 @@ public class UVNetworkManager {
         else
             log("Bootstrap ended correctly");
 
-        timechain.stop();
+        setTimechainRunning(false);
     }
 
     /**
      * If not yet started, schedule the p2p threads to be executed periodically for each node
      */
-    public void startP2PNetwork() {
-        if (!isBootstrapCompleted()) return;
+    private void startP2PNetwork() {
         log("Launching p2p nodes services...");
         // start p2p actions around every block
         if (p2pExecutor==null) {
@@ -182,10 +179,8 @@ public class UVNetworkManager {
         for (UVNode n : uvnodes.values()) {
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
-        setP2pRunning(true);
     }
     public void stopP2PNetwork() {
-        if (!isBootstrapCompleted()) return;
         log("Stopping p2p nodes services...");
 
         for (UVNode n : uvnodes.values()) {
@@ -194,8 +189,6 @@ public class UVNetworkManager {
         }
 
         log("P2P Services stopped");
-
-        setP2pRunning(false);
     }
 
     /**
@@ -367,11 +360,12 @@ public class UVNetworkManager {
             return;
         }
         log("Stopping timechain");
-        this.getTimechain().stop();
+        setTimechainRunning(false);
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
             f.writeObject(ConfigManager.getConfig());
+            f.writeObject(getTimechain());
             f.writeInt(uvnodes.size());
 
             for (UVNode n: uvnodes.values()) f.writeObject(n);
@@ -387,11 +381,13 @@ public class UVNetworkManager {
      * @return False if is not possible to read the file
      */
     public boolean loadStatus(String file) {
+        setTimechainRunning(false);
         uvnodes.clear();
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
             var config = (Properties)s.readObject();
+            this.timechain = (Timechain)s.readObject();
             ConfigManager.setConfig(config);
 
             int num_nodes = s.readInt();
@@ -417,12 +413,22 @@ public class UVNetworkManager {
         return true;
     }
 
-    public synchronized boolean isP2pRunning() {
-        return p2pRunning;
+    public synchronized boolean isTimechainRunning() {
+        return getTimechain().isRunning();
     }
 
-    public synchronized void setP2pRunning(boolean p2pRunning) {
-        this.p2pRunning = p2pRunning;
+    public synchronized void setTimechainRunning(boolean running) {
+        getTimechain().setRunning(running);
+        if (running) {
+            new Thread(getTimechain()).start();
+            new Thread(this::startP2PNetwork).start();
+            log("Starting timechain!");
+        }
+        else {
+            getTimechain().setRunning(false);
+            stopP2PNetwork();
+            log("Stopping timechain!");
+        }
     }
     /**
      *
@@ -456,14 +462,15 @@ public class UVNetworkManager {
             var peer_pubkey = peer_node.getPubKey();
 
             if (peer_pubkey.equals(node.getPubKey())) continue;
-            if (node.getChannelWith(peer_pubkey).isPresent()) continue;
+            if (node.getExistingChannelWith(peer_pubkey).isPresent()) continue;
+            if (node.ongoingOpeningRequestWith(peer_pubkey)) continue;
+            // incoming request should not be a problem, since a different id and liquidity is used
 
             log("Node "+node.getPubKey()+" Trying to open a channel with "+peer_pubkey);
 
             int max = Math.min(node.getBehavior().getMaxChannelSize(), node.getOnChainBalance());
             int min = node.getBehavior().getMinChannelSize();
-            var channel_size = ThreadLocalRandom.current().nextInt(min,max+1);
-            channel_size = (channel_size/100000)*100000;
+            var channel_size = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
 
             // onchain balance is changed only from initiator, so no problems of sync
             if (channel_size>node.getOnChainBalance()) {

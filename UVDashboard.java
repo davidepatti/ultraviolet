@@ -154,31 +154,19 @@ public class UVDashboard {
                 _waitForFuture(bootstrap);
             }
         }));
-        menuItems.add(new MenuItem("p2p", "Start P2P Network", (x) -> {
+        menuItems.add(new MenuItem("t", "Start/Stop Timechain", (x) -> {
             if (!networkManager.isBootstrapCompleted()) {
-                System.out.println("ERROR: must bootstrap network or load/import a network!");
+                System.out.println("ERROR: must execute bootstrap or load/import a network!");
                 return;
             }
-            if (networkManager.isP2pRunning()) {
-                System.out.println("P2P already running...");
-                return;
+            if (!networkManager.isTimechainRunning()) {
+                System.out.println("Starting Timechain, check " + ConfigManager.get("logfile"));
+                networkManager.setTimechainRunning(true);
             }
-            new Thread(networkManager.getTimechain()).start();
-            System.out.println("Starting P2P, check " + ConfigManager.get("logfile"));
-            new Thread(networkManager::startP2PNetwork).start();
-        }));
-        menuItems.add(new MenuItem("p2ps", "Stop P2P Network", (x) -> {
-            if (!networkManager.isBootstrapCompleted()) {
-                System.out.println("ERROR: must bootstrap network or load/import a network!");
-                return;
+            else {
+                System.out.print("Waiting for Timechain services to stop...");
+                networkManager.setTimechainRunning(false);
             }
-            if (!networkManager.isP2pRunning()) {
-                System.out.println("P2P not running...");
-                return;
-            }
-            System.out.print("Waiting for P2P services to stop...");
-            networkManager.getTimechain().stop();
-            networkManager.stopP2PNetwork();
         }));
 
         menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
