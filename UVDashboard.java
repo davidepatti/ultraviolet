@@ -147,7 +147,7 @@ public class UVDashboard {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                System.out.println("Bootstrap Started, check " + ConfigManager.get("logfile"));
+                System.out.println("Bootstrap Started, check " + Config.get("logfile"));
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetworkNodes);
                 System.out.println("waiting bootstrap to finish...");
@@ -160,7 +160,7 @@ public class UVDashboard {
                 return;
             }
             if (!networkManager.isTimechainRunning()) {
-                System.out.println("Starting Timechain, check " + ConfigManager.get("logfile"));
+                System.out.println("Starting Timechain, check " + Config.get("logfile"));
                 networkManager.setTimechainRunning(true);
             }
             else {
@@ -201,7 +201,7 @@ public class UVDashboard {
 
         menuItems.add(new MenuItem("conf", "Show configuration ", x -> {
             System.out.println("-----------------------------------");
-            ConfigManager.print();
+            Config.print();
             System.out.println("-----------------------------------");
         }));
 
@@ -210,7 +210,7 @@ public class UVDashboard {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
-                System.out.println("Generating events, check " + ConfigManager.get("logfile"));
+                System.out.println("Generating events, check " + Config.get("logfile"));
                 networkManager.generateRandomEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");
@@ -297,19 +297,26 @@ public class UVDashboard {
         var node = networkManager.getUVNodes().get(node_id);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
         System.out.println("P2P message queue:");
+        System.out.println("-------------------------------------------------------------");
         node.getP2PMessageQueue().forEach(System.out::println);
 
+        System.out.println("-------------------------------------------------------------");
         System.out.println("Pending HTLC:");
-        System.out.println(node.getReceivedHTLC());
+        node.getReceivedHTLC().values().stream().forEach(System.out::println);
 
+        System.out.println("-------------------------------------------------------------");
         System.out.println("Pending opening:");
-        System.out.println(node.getSentChannelOpenings());
+
+        node.getSentChannelOpenings().values().stream().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
         System.out.println("Pending accepted:");
-        System.out.println(node.getChannelsAcceptedQueue());
+        node.getChannelsAcceptedQueue().stream().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
         System.out.println("Pending to accept:");
-        System.out.println(node.getChannelsToAcceptQueue());
+        node.getChannelsToAcceptQueue().stream().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
         System.out.println("Pending Invoices:");
-        System.out.println(node.getGeneratedInvoices());
+        node.getGeneratedInvoices().values().stream().forEach(System.out::println);
     }
 
     private void showGraphCommand(String node) {
@@ -323,11 +330,11 @@ public class UVDashboard {
 
         if (args.length==1) {
             System.out.println("Using configuration "+args[0]);
-            ConfigManager.loadConfig(args[0]);
+            Config.loadConfig(args[0]);
         }
         else {
             System.out.println("No config, using default...");
-            ConfigManager.setDefaults();
+            Config.setDefaults();
         }
 
         var uvm_client = new UVDashboard(new UVNetworkManager());

@@ -30,6 +30,18 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     private final int reserve;
     private final boolean init_direction; // true -> from 1 to 2
 
+
+    public UVChannel(String pub1, String pub2, String id, Policy p1, Policy p2, int balance1, int balance2, int reserve, boolean dir) {
+
+        this.node_id_1 = pub1;
+        this.node_id_2 = pub2;
+        this.channel_id = id;
+        this.node1Balance = balance1;
+        this.node2Balance = balance2;
+        this.reserve = reserve;
+        this.init_direction = dir;
+
+    }
     // constructor only fill the "proposal" for the channel
     public UVChannel(String channel_id, String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
         if (initiator.compareTo(peer)<0) {

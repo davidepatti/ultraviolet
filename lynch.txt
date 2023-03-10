@@ -1,0 +1,142 @@
+    Blue Velvet
+    Twin Peaks
+    Eraserhead
+    Mulholland Drive
+    Lost Highway
+    The Elephant Man
+    Wild at Heart
+    Dune
+    Laura Palmer
+    Dale Cooper
+    Bobby Briggs
+    Audrey Horne
+    The Log Lady
+    Bob
+    The Black Lodge
+    The White Lodge
+    Fire Walk With Me
+    Cherry Pie
+    Damn Good Coffee
+    Agent Cooper
+    Sheriff Truman
+    The Giant
+    The Little Man from Another Place
+    Diane
+    The Red Room
+    The Owls Are Not What They Seem
+    The Return
+    Inland Empire
+    Hollywood
+    Lynchian
+    surrealism
+    dream logic
+    Lynchian horror
+    Lynchian mystery
+    Blue Rose
+    The Woodsman
+    Judy
+    Glastonbury Grove
+    Leland Palmer
+    Sarah Palmer
+    The One-Armed Man
+    The Arm
+    The Experiment
+    The Jumping Man
+    The Fireman
+    The Convenience Store
+    The Woodsmen
+    Model
+    Frogmoth
+    Mother
+    Girl
+    Woodsmen
+    Doomed
+    Doppelganger
+    Judy
+    Dreamer
+    Absorbed
+        Henry Spencer (Eraserhead)
+        Mary X (Eraserhead)
+        The Man in the Planet (Eraserhead)
+        Jeffrey Beaumont (Blue Velvet)
+        Dorothy Vallens (Blue Velvet)
+        Frank Booth (Blue Velvet)
+        Sandy Williams (Blue Velvet)
+        Lula Fortune (Wild at Heart)
+        Sailor Ripley (Wild at Heart)
+        Bobby Peru (Wild at Heart)
+        Pete Dayton (Lost Highway)
+        Fred Madison (Lost Highway)
+        Alice Wakefield (Lost Highway)
+        Renee Madison (Lost Highway)
+        Mr. Eddy (Lost Highway)
+        The Mystery Man (Lost Highway)
+        Betty Elms (Mulholland Drive)
+        Rita (Mulholland Drive)
+        Diane Sel
+        The city (Eraserhead)
+        The planet (Eraserhead)
+        Lumberton (Blue Velvet)
+        Arlene's Diner (Blue Velvet)
+        Lincoln Street (Blue Velvet)
+        The Williams household (Blue Velvet)
+        The Slow Club (Blue Velvet)
+        The Beaumont household (Blue Velvet)
+        The Blue Lady's apartment (Blue Velvet)
+        Ben's apartment (Blue Velvet)
+        Zebra Lounge (Wild at Heart)
+        Big Tuna Hotel (Wild at Heart)
+        The Cape Fear Hotel (Wild at Heart)
+        Marietta's mansion (Wild at Heart)
+        The scene of the car accident (Lost Highway)
+        Fred and Renee's house (Lost Highway)
+        The cabin (Lost Highway)
+        The Lost Highway Motel (Lost Highway)
+        The Party (Lost Highway)
+        Club Silencio (Mulholland Drive)
+        Adam Kesher's office (Mulholland Drive)
+        The alleyway behind Winkie's diner (Mulholland Drive)
+        Aunt Ruth's apartment (Mulholland Drive)
+        Diane's apartment (Mulholland Drive)
+        The Club (Mulholland Drive)
+        Sierra Bonita (Mulholland Drive)
+        Mulholland Drive (Mulholland Drive)
+        Club Silencio (Twin Peaks: The Return)
+        The Black Lodge (Twin Peaks)
+        The White Lodge (Twin Peaks)
+        One-Eyed Jack's (Twin Peaks)
+        The Great Northern Hotel (Twin Peaks)
+        Blue Pine Lodge (Twin Peaks)
+        Twin Peaks Sheriff's Department (Twin Peaks)
+        The Double R Diner (Twin Peaks)
+        The Packard Sawmill (Twin Peaks)
+        The Roadhouse (Twin Peaks)
+        The Bang Bang Bar (Twin Peaks)
+        The Glass Box (Twin Peaks: The Return)
+        The Convenience Store (Twin Peaks: The Return)
+        The Fireman's realm (Twin Peaks: The Return)
+        The Dutchman's (Twin Peaks: The Return)
+        The Palmer House (Twin Peaks: The Return)
+        Las Vegas (Twin Peaks: The Return)
+        Rancho Rosa (Twin Peaks: The Return)
+        The Farm (Twin Peaks: The Return)
+        The Red Room (Twin Peaks: The Return)
+        The White Sands (Twin Peaks: The Return)
+        The Gas Farm (Twin Peaks: The Return)
+        Jack Rabbit's Palace (Twin Peaks: The Return)
+        Buckhorn, South Dakota (Twin Peaks: The Return)
+        The Black Hills (Twin Peaks: The Return)
+        The Convenience Store (Fire Walk With Me)
+        The Fat Trout Trailer Park (Fire Walk With Me)
+        The Chalfont trailer (Fire Walk With Me)
+        The Pink Room (Fire Walk With Me)
+        The convenience store parking lot (Fire Walk With Me)
+        The Deer Meadow Sheriff's Department (Fire Walk With Me)
+        The convenience store meeting room (Fire Walk With Me)
+        The Roadhouse (Fire Walk With Me)
+        The Great Northern Hotel (Fire Walk With Me)
+        The Black Lodge (Fire Walk With Me)
+        The White Lodge (Fire Walk With Me)
+        The Red Room (Fire Walk With Me)
+        The Convenience Store (The Secret History of Twin Peaks
+

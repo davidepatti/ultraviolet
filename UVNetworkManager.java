@@ -32,9 +32,9 @@ public class UVNetworkManager {
      */
     private void initLog() {
         try {
-            logfile = new FileWriter(""+ConfigManager.get("logfile"));
+            logfile = new FileWriter(""+ Config.get("logfile"));
         } catch (IOException e) {
-            log("Cannot open logfile for writing:"+ ConfigManager.get("lofile"));
+            log("Cannot open logfile for writing:"+ Config.get("lofile"));
             throw new RuntimeException(e);
         }
         Log = (s) ->  {
@@ -51,17 +51,16 @@ public class UVNetworkManager {
      * Constructor
      */
     public UVNetworkManager() {
-        if (!ConfigManager.isInitialized()) ConfigManager.setDefaults();
+        if (!Config.isInitialized()) Config.setDefaults();
         random = new Random();
-        if (ConfigManager.getVal("seed") !=0) random.setSeed(ConfigManager.getVal("seed"));
+        if (Config.getVal("seed") !=0) random.setSeed(Config.getVal("seed"));
         initLog();
 
         this.uvnodes = new HashMap<>();
-        timechain = new Timechain(ConfigManager.getVal("blocktime"));
+        timechain = new Timechain(Config.getVal("blocktime"));
 
         log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
-        setTimechainRunning(false);
     }
 
     /**
@@ -81,8 +80,8 @@ public class UVNetworkManager {
         }
 
         random = new Random();
-        if (ConfigManager.getVal("seed") !=0) random.setSeed(ConfigManager.getVal("seed"));
-        timechain = new Timechain(ConfigManager.getVal("blocktime"));
+        if (Config.getVal("seed") !=0) random.setSeed(Config.getVal("seed"));
+        timechain = new Timechain(Config.getVal("blocktime"));
         boostrap_started = false;
         bootstrap_completed = false;
         this.uvnodes = new HashMap<>();
@@ -116,19 +115,19 @@ public class UVNetworkManager {
         boostrap_started = true;
 
         log("UVM: Bootstrapping network from scratch...");
-        bootstrap_latch = new CountDownLatch(ConfigManager.getVal("total_nodes"));
+        bootstrap_latch = new CountDownLatch(Config.getVal("total_nodes"));
 
-        log("UVM: deploying nodes, configuration: "+ ConfigManager.getConfig());
-        int max = ConfigManager.getVal("max_funding") /(int)1e6;
-        int min = ConfigManager.getVal("min_funding") /(int)1e6;
+        log("UVM: deploying nodes, configuration: "+ Config.getConfig());
+        int max = Config.getVal("max_funding") /(int)1e6;
+        int min = Config.getVal("min_funding") /(int)1e6;
 
-        for (int i = 0; i< ConfigManager.getVal("total_nodes"); i++) {
+        for (int i = 0; i< Config.getVal("total_nodes"); i++) {
             int funding;
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
             var n = new UVNode(this,"n"+i,"LN"+i,funding);
-            var behavior = new NodeBehavior(ConfigManager.getVal("min_channels"), ConfigManager.getVal("min_channel_size"), ConfigManager.getVal("max_channel_size"));
+            var behavior = new NodeBehavior(Config.getVal("min_channels"), Config.getVal("min_channel_size"), Config.getVal("max_channel_size"));
             n.setBehavior(behavior);
             uvnodes.put(n.getPubKey(),n);
         }
@@ -138,7 +137,7 @@ public class UVNetworkManager {
         log("UVM: Starting timechain: "+timechain);
         setTimechainRunning(true);
         log("Starting node threads...");
-        ExecutorService bootexec = Executors.newFixedThreadPool(ConfigManager.getVal("total_nodes"));
+        ExecutorService bootexec = Executors.newFixedThreadPool(Config.getVal("total_nodes"));
         for (UVNode uvNode : uvnodes.values()) {
            bootexec.submit(()->bootstrapNode(uvNode));
         }
@@ -174,10 +173,10 @@ public class UVNetworkManager {
         // start p2p actions around every block
         if (p2pExecutor==null) {
             log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(ConfigManager.getVal("total_nodes"));
+            p2pExecutor = Executors.newScheduledThreadPool(Config.getVal("total_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0,ConfigManager.getVal("p2p_period"),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, Config.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
     }
     public void stopP2PNetwork() {
@@ -364,7 +363,7 @@ public class UVNetworkManager {
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
-            f.writeObject(ConfigManager.getConfig());
+            f.writeObject(Config.getConfig());
             f.writeObject(getTimechain());
             f.writeInt(uvnodes.size());
 
@@ -388,7 +387,7 @@ public class UVNetworkManager {
 
             var config = (Properties)s.readObject();
             this.timechain = (Timechain)s.readObject();
-            ConfigManager.setConfig(config);
+            Config.setConfig(config);
 
             int num_nodes = s.readInt();
             for (int i=0;i<num_nodes;i++) {
@@ -437,7 +436,7 @@ public class UVNetworkManager {
 
         int opened =0;
         ///----------------------------------------------------------
-        var warmup = ConfigManager.getVal("bootstrap_warmup");
+        var warmup = Config.getVal("bootstrap_warmup");
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages

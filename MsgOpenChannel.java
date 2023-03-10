@@ -2,14 +2,14 @@ import java.io.Serializable;
 
 public class MsgOpenChannel extends Message implements Serializable {
 
-    final private String channel_id;
+    final private String temporary_channel_id;
     final private int funding_satoshis;
     final private int push_msat;
     final private int channel_reserve_satoshis;
     final private int to_self_delay;
 
-    public String getChannel_id() {
-        return channel_id;
+    public String getTemporary_channel_id() {
+        return temporary_channel_id;
     }
 
     public int getFunding() {
@@ -35,9 +35,9 @@ public class MsgOpenChannel extends Message implements Serializable {
     final private String funding_pubkey;
 
 
-    public MsgOpenChannel(String channel_id, int funding, int reserve, int push_msat, int to_self_delay, String funding_pubkey) {
+    public MsgOpenChannel(String temp_channel_id, int funding, int reserve, int push_msat, int to_self_delay, String funding_pubkey) {
         super(Type.OPEN_CHANNEL);
-        this.channel_id  = channel_id;
+        this.temporary_channel_id = temp_channel_id;
         this.funding_satoshis = funding;
         this.channel_reserve_satoshis = reserve;
         this.push_msat = push_msat;
@@ -48,10 +48,10 @@ public class MsgOpenChannel extends Message implements Serializable {
     @Override
     public String toString() {
         return "MsgOpenChannel{" +
-                "channel_id='" + channel_id + '\'' +
-                ", funding_satoshis=" + funding_satoshis +
+                "temp_id='" + temporary_channel_id + '\'' +
+                ", funding_sat=" + funding_satoshis +
                 ", push_msat=" + push_msat +
-                ", channel_reserve_satoshis=" + channel_reserve_satoshis +
+                ", reserve=" + channel_reserve_satoshis +
                 ", to_self_delay=" + to_self_delay +
                 ", funding_pubkey='" + funding_pubkey + '\'' +
                 '}';

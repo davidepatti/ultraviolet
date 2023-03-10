@@ -24,7 +24,7 @@ public class ChannelGraph implements Serializable  {
     transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
 
     // This function adds a new vertex to the graph
-    private void addVertex(String node_id) {
+    private synchronized void addNode(String node_id) {
         adj_map.putIfAbsent(node_id, new LinkedList<>());
     }
 
@@ -32,7 +32,7 @@ public class ChannelGraph implements Serializable  {
      *
      * @param channel
      */
-    public void addLNChannel(LNChannel channel) {
+    public synchronized void addLNChannel(LNChannel channel) {
 
         if (channel==null) {
             log("FATAL ERROR: null channel ");
@@ -59,7 +59,7 @@ public class ChannelGraph implements Serializable  {
 
     }
 
-    public void addAnnouncedChannel(MsgChannelAnnouncement msg) {
+    public synchronized void addAnnouncedChannel(MsgChannelAnnouncement msg) {
 
         var channel_id = msg.getChannelId();
         var node1 = msg.getNodeId1();
@@ -74,7 +74,7 @@ public class ChannelGraph implements Serializable  {
      * This function gives the count of vertices
      * @return
      */
-    private int getVertexCount() {
+    private synchronized int getVertexCount() {
         return adj_map.keySet().size();
     }
 
@@ -83,7 +83,7 @@ public class ChannelGraph implements Serializable  {
      * @param bidirection
      * @return
      */
-    private int getEdgesCount(boolean bidirection) {
+    private synchronized int getEdgesCount(boolean bidirection) {
         int count = 0;
         for (String v : adj_map.keySet()) {
             count += adj_map.get(v).size();
@@ -94,7 +94,7 @@ public class ChannelGraph implements Serializable  {
         return count;
     }
 
-    protected ArrayList<ArrayList<Edge>> findPath(String start, String end, boolean stopfirst)
+    protected synchronized ArrayList<ArrayList<Edge>> findPath(String start, String end, boolean stopfirst)
     {
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
@@ -210,9 +210,6 @@ public class ChannelGraph implements Serializable  {
     }
 
 
-    public void addNode(String pubkey) {
-        addVertex(pubkey);
-    }
     // to edge properties
     public synchronized void updateChannel(String channel_id, LNChannel.Policy policy) {
         for (List<Edge> list:adj_map.values()){
@@ -232,7 +229,7 @@ public class ChannelGraph implements Serializable  {
         log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" in "+this.root_node);
     }
 
-    public boolean hasChannel(String channel_id) {
+    public synchronized boolean hasChannel(String channel_id) {
         for (List<Edge> list:adj_map.values() ) {
            for (Edge e:list) {
                if (e.id().equals(channel_id)) {

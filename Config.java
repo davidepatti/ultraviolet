@@ -2,7 +2,7 @@ import java.io.*;
 import java.util.Properties;
 import java.util.Scanner;
 
-public class ConfigManager implements Serializable {
+public class Config implements Serializable {
 
     private static Properties properties;
 
