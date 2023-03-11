@@ -421,9 +421,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return s.toString();
     }
     private String generateChannelId(Timechain.Transaction tx) {
+        var searchPos = uvNetworkManager.getTimechain().getTxLocation(tx);
+        var position = searchPos.get();
+
         StringBuilder s = new StringBuilder();
-        var block = uvNetworkManager.getTimechain().getCurrentBlock();
-        s.append("CH_").append(block).append("_").append(tx.txId());
+        s.append(position.height()+"x"+ position.tx_index());
         return s.toString();
     }
     /**

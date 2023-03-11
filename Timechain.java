@@ -12,13 +12,15 @@ public class Timechain implements Runnable, Serializable  {
     }
 
     enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
-    record Transaction(String txId, TxType type, String node1_pub, String node2_pub) {
+    record Transaction(String txId, TxType type, String node1_pub, String node2_pub) implements Serializable{
         @Override
         public String toString() {
             return "Tx{" + "Id='" + txId + '\'' + ", type=" + type + ", node1_pub='" + node1_pub + '\'' + ", node2_pub='" + node2_pub + '\'' + '}';
         }
     };
-    record Block(int height, List<Transaction> txs) {};
+    record Block(int height, List<Transaction> txs) implements Serializable {};
+
+    record ChainLocation(int height, int tx_index) {};
 
     @Serial
     private static final long serialVersionUID = 1207897L;
@@ -33,11 +35,23 @@ public class Timechain implements Runnable, Serializable  {
        var newBlock = new Block(current_block,new ArrayList<>(mempool));
        blockChain.add(newBlock);
 
-       if (mempool.size()>0) {
-           log("Confirmed block with mempool txs: ");
-           mempool.stream().forEach(s->log(s.toString()));
+       if (newBlock.txs().size()>0) {
+           log("Confirmed block "+newBlock.height()+" with txs: ");
+           for (Transaction t: newBlock.txs()) {
+               log(t.toString());
+           }
        }
        mempool.clear();
+    }
+
+    public synchronized Optional<ChainLocation> getTxLocation(Transaction tx) {
+
+        for (Block block: blockChain) {
+            int index = block.txs().indexOf(tx);
+            if (index!=-1) return Optional.of(new ChainLocation(block.height(),index));
+        }
+
+        return Optional.empty();
     }
 
     public synchronized int getCurrentBlock() {
@@ -61,7 +75,7 @@ public class Timechain implements Runnable, Serializable  {
         return timers.size();
     }
 
-    public void broadcastTx( Transaction tx) {
+    public synchronized void broadcastTx( Transaction tx) {
         mempool.add(tx);
     }
 
