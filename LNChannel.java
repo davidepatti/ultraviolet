@@ -12,8 +12,6 @@ public interface LNChannel {
     String getNode1PubKey();
     String getNode2PubKey();
     int getCapacity();
-    @SuppressWarnings("SameReturnValue")
-    int getLastUpdate();
 
     Policy getNode1Policy();
     Policy getNode2Policy();

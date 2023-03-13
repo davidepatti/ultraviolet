@@ -89,7 +89,6 @@ public class Timechain implements Runnable, Serializable  {
 
     public synchronized void setRunning(boolean running) {
         this.running = running;
-        log("MEMPOOLSIZE "+mempool.size());
     }
 
     public synchronized boolean isRunning() {

@@ -1,12 +1,10 @@
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 public class ChannelGraph implements Serializable  {
 
     private String root_node;
-    final transient private Consumer<String> Log = UVNetworkManager.Log;
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
@@ -15,7 +13,7 @@ public class ChannelGraph implements Serializable  {
     }
 
     private void log(String s) {
-        Log.accept(s);
+        UVNetworkManager.log(s);
     }
 
     @Serial
@@ -35,8 +33,7 @@ public class ChannelGraph implements Serializable  {
     public synchronized void addLNChannel(LNChannel channel) {
 
         if (channel==null) {
-            log("FATAL ERROR: null channel ");
-            return;
+            throw new IllegalArgumentException("Channel null");
         }
 
         var node1pub = channel.getNode1PubKey();
@@ -47,8 +44,7 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node2pub, new LinkedList<>());
 
         if (this.hasChannel(channel.getId())) {
-            log("WARNING: calling addChannel with already existing edge for channel "+channel.getId());
-            return;
+            throw new IllegalArgumentException(" WARNING: calling addChannel with already existing edge for channel "+channel.getId());
         }
 
         var edge1 = new Edge(channel.getId(),node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
@@ -217,16 +213,15 @@ public class ChannelGraph implements Serializable  {
                 if (e.id().equals(channel_id)) {
                     var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
                     if (!list.remove(e)) {
-                        log("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
-                        System.exit(-1);
+                        throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
                     }
-                    //log("Adding edge "+new_edge+" on node graph:"+node);
                     list.add(new_edge);
                     return;
                 }
             }
         }
         log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" in "+this.root_node);
+        throw new IllegalStateException("Check LOG!");
     }
 
     public synchronized boolean hasChannel(String channel_id) {

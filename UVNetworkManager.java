@@ -39,7 +39,8 @@ public class UVNetworkManager {
         }
         Log = (s) ->  {
             try {
-                logfile.write("\n["+timechain.getCurrentBlock()+"]"+Thread.currentThread().getName()+":"+s);
+
+                logfile.write("\n[block "+timechain.getCurrentBlock()+"]:"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -111,7 +112,7 @@ public class UVNetworkManager {
     /**
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
-    public void bootstrapNetworkNodes() {
+    public void bootstrapNetwork() {
         boostrap_started = true;
 
         log("UVM: Bootstrapping network from scratch...");
@@ -149,7 +150,6 @@ public class UVNetworkManager {
             throw new RuntimeException(e);
         }
         log("UVNode deployment completed.");
-        System.out.println("WAIT SHUTDOWN");
         bootexec.shutdown();
         boolean term;
 
@@ -162,7 +162,6 @@ public class UVNetworkManager {
         else
             log("Bootstrap ended correctly");
 
-        setTimechainRunning(false);
     }
 
     /**

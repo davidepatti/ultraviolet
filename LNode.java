@@ -4,8 +4,7 @@ public interface LNode {
     String getPubKey();
     String getAlias();
     LNInvoice generateInvoice(int amount);
-    @SuppressWarnings("SameReturnValue")
-    boolean payInvoice(LNInvoice invoice);
+    void payInvoice(LNInvoice invoice);
     ArrayList<LNChannel> getLNChannelList();
 
     LNChannel getRandomChannel();

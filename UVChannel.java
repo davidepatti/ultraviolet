@@ -7,6 +7,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     @Serial
     private static final long serialVersionUID = 120897L;
+    private int htlc_id =0;
 
     enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
 
@@ -122,10 +123,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     /**
      * @return 
      */
-    @Override
-    public int getLastUpdate() {
-        return 0;
-    }
 
     /**
      * @return 
@@ -204,6 +201,16 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
      */
     public synchronized int getPeerLiquidity() {
         return getNode2Balance()-getReserve()- getNode2Pending();
+    }
+
+    public synchronized int increaseHTLCId() {
+
+        this.htlc_id++;
+        return htlc_id;
+    }
+
+    public int getCommitNumber() {
+        return commitNumber;
     }
 
     public synchronized boolean newCommitment(int node1Balance, int node2Balance) {

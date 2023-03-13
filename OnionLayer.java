@@ -18,7 +18,7 @@ public class OnionLayer {
             this.payment_secret = payment_secret;
         }
 
-        public int getAmt_to_forward() {
+        public int getAmtToForward() {
             return amt_to_forward;
         }
 
@@ -32,20 +32,14 @@ public class OnionLayer {
 
         @Override
         public String toString() {
-            return "Payload{" +
-                    "short_channel_id='" + short_channel_id + '\'' +
-                    ", amt_to_forward=" + amt_to_forward +
-                    ", outgoing_cltv_value=" + outgoing_cltv_value +
-                    ", payment_secret=" + payment_secret +
-                    '}';
+            return "(*" +
+                    "ch_id='" + short_channel_id + '\'' + ", amt=" + amt_to_forward + ", out_cltv=" + outgoing_cltv_value + ", hash=" + payment_secret + "*)";
         }
 
-        public int getOutgoing_cltv_value() {
+        public int getOutgoingCLTV() {
             return outgoing_cltv_value;
         }
     }
-
-
 
     public Payload getPayload() {
         return payload;
@@ -62,6 +56,6 @@ public class OnionLayer {
 
     @Override
     public String toString() {
-        return "OnionLayer{" + payload + '}';
+        return "Onion(" + payload + ')';
     }
 }

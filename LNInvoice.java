@@ -8,7 +8,7 @@ public class LNInvoice {
     private final String destination;
     private final String message;
     @SuppressWarnings("FieldCanBeLocal")
-    private final int min_cltv_expiry = 9;
+    private final int min_cltv_expiry = 9; // antonop 339
 
     public LNInvoice(String paymentHash, int amount, String recipient, String message) {
         this.H = paymentHash;

@@ -79,14 +79,7 @@ public class UVDashboard {
         var sender = networkManager.getUVNodes().get(start_id);
         var invoice = dest.generateInvoice(2000);
         System.out.println("Generated Invoice: "+invoice);
-        var result = sender.payInvoice(invoice);
-
-        if (result) {
-            System.out.println("Invoice payment successfull!");
-        }
-        else  {
-            System.out.println("Invoice routing failed (check logs)");
-        }
+        sender.payInvoice(invoice);
     }
 
     private void findPathsCmd() {
@@ -149,7 +142,7 @@ public class UVDashboard {
             } else {
                 System.out.println("Bootstrap Started, check " + Config.get("logfile"));
                 ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
-                Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetworkNodes);
+                Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
                 _waitForFuture(bootstrap);
             }

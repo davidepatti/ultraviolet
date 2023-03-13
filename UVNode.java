@@ -29,6 +29,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateAddHTLC> updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private HashMap<Long, LNInvoice> generatedInvoices = new HashMap<>();
     transient private HashMap<String, LNInvoice> pendingInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
@@ -169,19 +170,16 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    public boolean payInvoice(LNInvoice invoice) {
+    public void payInvoice(LNInvoice invoice) {
 
         var paths = this.findPath(this.getPubKey(),invoice.getDestination(),true);
 
         if (paths.size()>0) {
             pendingInvoices.put(invoice.getHash(),invoice);
             routeInvoiceOnPath(invoice,paths.get(0));
-            return true;
         }
-
-        log("No path found for destination "+ invoice.getDestination());
-
-        return false;
+        else
+            System.out.println("No path found for destination "+ invoice.getDestination());
     }
 
     public ArrayList<ArrayList<ChannelGraph.Edge>> findPath(String start, String end, boolean stopfirst) {
@@ -264,7 +262,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      *
      * @param msg
      */
-    private void updateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
+    private void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
 
         var preimage = msg.getPayment_preimage();
         var channel = msg.getChannel_id();
@@ -294,17 +292,53 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 else throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
             }
         }
+        else throw new IllegalStateException("Node "+this.getPubKey()+": Missing HTLC for fulfilling hash "+computed_hash);
     }
+
+    private synchronized void processUpdateFailHTLC(final MsgUpdateFailHTLC msg) {
+        log("Processing update_fail_htlc: " + msg);
+        var ch_id = msg.getChannel_id();
+
+        for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
+
+            if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId() == msg.getId()) {
+                var hash = pending_msg.getPayment_hash();
+                log("Found pending HTLC to remove for hash: " + hash);
+
+                pendingHTLC.remove(hash);
+
+                // I offered a HTLC with the same hash
+                if (receivedHTLC.containsKey(hash)) {
+                    var prev_htlc = receivedHTLC.get(hash);
+                    var prev_ch_id = prev_htlc.getChannel_id();
+                    var prev_peer = getChannelPeer(prev_ch_id);
+                    sendToPeer(prev_peer, new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason()));
+                    receivedHTLC.remove(hash);
+                } // I offered, but did not receive the htlc, I'm initial sender?
+                else {
+                    if (pendingInvoices.containsKey(hash)) {
+                        log("LN invoice for hash " + hash + " Failed!");
+                        pendingInvoices.remove(hash);
+                    } else
+                        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending Invoice for hash " + hash);
+
+                }
+                return;
+            }
+        }
+
+        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing HTLC for "+msg);
+    }
+
 
     /**
      *
      * @return
      */
-    private void updateAddHTLC(final MsgUpdateAddHTLC msg) {
+    private void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
 
         log("Processing update_add_htlc: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
-
 
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
@@ -324,53 +358,59 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             throw new IllegalStateException(" Received update_add_htlc, but no generated invoice was found!");
         }
 
-
-        int currentBlock = uvNetworkManager.getTimechain().getCurrentBlock();
         final var forwardingChannel = channels.get(payload.getShortChannelId());
 
+        int fees = msg.getAmount()-payload.getAmtToForward();
+
+        if (fees>=0) {
+            // TODO: check fees here...
+            debug("Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
+
+        }
+
+        int currentBlock = uvNetworkManager.getTimechain().getCurrentBlock();
         var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).cltv();
 
-        // TODO:
-        /*
-        if ( (msg.getCltv_expiry() > currentBlock) || (msg.getCltv_expiry()-currentBlock < my_out_cltv)) {
-           log("Expired cltv, HTLC hash:"+msg.getPayment_hash());
-           return;
-        }
-         */
+        var incomingPeer = getChannelPeer(msg.getChannel_id());
 
         //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
         // - once the cltv_expiry of an incoming HTLC has been reached,
         // O if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
         // MUST fail that incoming HTLC (update_fail_htlc).
 
+        var blocks_until_expire = msg.getCLTVExpiry()-currentBlock;
+
+        if ( (blocks_until_expire <=0) || (blocks_until_expire < my_out_cltv)) {
+           log("Expired (blocks until expire "+blocks_until_expire+ ", my out cltv:"+my_out_cltv+" for HTLC hash:"+msg.getPayment_hash());
+           var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "CLTV expired");
+           sendToPeer(incomingPeer,fail_msg);
+           return;
+        }
 
         if (msg.getAmount() >getLocalBalance(forwardingChannel.getId())+forwardingChannel.getReserve()) {
             log("Not enought local balance liquidity in channel "+forwardingChannel);
-            debug("___SHOULD RETURN FALSE, BUT WE GO____");
-            //return;
+            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
+            sendToPeer(incomingPeer,fail_msg);
+            return;
         }
 
-        // DO HTLC UPDATE HERE....
-        receivedHTLC.put(msg.getPayment_hash(),msg);
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
-        var amt= payload.getAmt_to_forward();
-        int cltv = payload.getOutgoing_cltv_value();
+        var amt= payload.getAmtToForward();
+        int cltv = payload.getOutgoingCLTV();
 
         // fields that does not depend on payload, but message received
         var onion_packet = msg.getOnionPacket().getInnerLayer();
         var payhash = msg.getPayment_hash();
 
-        // TODO: check how to update the other side
-        var id = forwardingChannel.getNextCommitNumber();
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), id,amt,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.increaseHTLCId(),amt,payhash,cltv,onion_packet.get());
 
-        debug("Forwarding "+new_msg.toString());
+        debug("Forwarding "+new_msg);
+        receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
 
-        var channel_peer = getChannelPeer(forwardingChannel.getId());
-
-        sendToPeer(channel_peer,new_msg);
+        var next_channel_peer = getChannelPeer(forwardingChannel.getId());
+        sendToPeer(next_channel_peer,new_msg);
     }
 
     /**
@@ -459,7 +499,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvNetworkManager.getP2PNode(initiator_id);
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
-        var acceptance = new MsgAcceptChannel(temporary_channel_id,6, Config.getVal("to_self_delay"),this.getPubKey());
+        var acceptance = new MsgAcceptChannel(temporary_channel_id,Config.getVal("minimum_depth"), Config.getVal("to_self_delay"),this.getPubKey());
         sendToPeer(channel_peer,acceptance);
     }
 
@@ -481,7 +521,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // bolt: received funding_signed
         uvNetworkManager.getTimechain().broadcastTx(funding_tx);
         var exec = Executors.newSingleThreadExecutor();
-        exec.submit(()-> waitFundingConfirmation(peerPubKey,funding_tx));
+        exec.submit(()-> waitFundingConfirmation(peerPubKey,funding_tx,acceptMessage.getMinimum_depth()));
     }
 
 
@@ -490,7 +530,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param peer_id
      * @param tx
      */
-    private void waitFundingConfirmation(String peer_id, Timechain.Transaction tx) {
+    private void waitFundingConfirmation(String peer_id, Timechain.Transaction tx, int min_depth) {
 
         // Abstractions:
         // - No in-mempool waiting room after broadcasting (just wait the blocks...)
@@ -499,7 +539,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Waiting for confirmation of "+tx);
 
-        var wait_conf = uvNetworkManager.getTimechain().getTimechainLatch(6);
+        var wait_conf = uvNetworkManager.getTimechain().getTimechainLatch(min_depth);
         try {
             wait_conf.await();
         } catch (InterruptedException e) {
@@ -594,12 +634,16 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 channelsAcceptedQueue.add(acceptance);
             }
             case UPDATE_ADD_HTLC -> {
-                var htlc = (MsgUpdateAddHTLC)msg;
-                updateAddHTLCQueue.add(htlc);
+                var update_htlc = (MsgUpdateAddHTLC)msg;
+                updateAddHTLCQueue.add(update_htlc);
             }
             case UPDATE_FULFILL_HTLC -> {
-                var htlc = (MsgUpdateFulFillHTLC)msg;
-                updateFulFillHTLCQueue.add(htlc);
+                var update_htlc = (MsgUpdateFulFillHTLC)msg;
+                updateFulFillHTLCQueue.add(update_htlc);
+            }
+            case UPDATE_FAIL_HTLC -> {
+                var htlc = (MsgUpdateFailHTLC)msg;
+                updateFailHTLCQueue.add(htlc);
             }
 
             default -> this.p2PMessageQueue.add(msg);
@@ -625,12 +669,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void p2pProcessGossip() {
 
-        if (p2PMessageQueue.size()>0) {
+        /*
+        if (p2PMessageQueue.size()!=0)
             debug(">>> Message queue not empty, processing "+ p2PMessageQueue.size()+" elements..");
-        }
-        else {
-            return;
-        }
+
+         */
 
         int max_msg = Config.getVal("p2p_flush_size");
         while (isP2PRunning() && !p2PMessageQueue.isEmpty() && max_msg>0) {
@@ -724,7 +767,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         while (updateAddHTLCQueue.size()>0 && n++ < max ) {
             var msg = updateAddHTLCQueue.poll();
             try {
-                updateAddHTLC(msg);
+                processUpdateAddHTLC(msg);
             }
             catch (Exception e) { e.printStackTrace(); };
 
@@ -734,7 +777,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         while (updateFulFillHTLCQueue.size()>0 && n++ < max ) {
             var msg = updateFulFillHTLCQueue.poll();
             try {
-                updateFulfillHTLC(msg);
+                processUpdateFulfillHTLC(msg);
+            } catch (Exception e) { e.printStackTrace(); };
+        }
+        n = 0;
+        while (updateFailHTLCQueue.size()>0 && n++ < max ) {
+            var msg = updateFailHTLCQueue.poll();
+            try {
+                processUpdateFailHTLC(msg);
             } catch (Exception e) { e.printStackTrace(); };
         }
         // check for expired htlc
@@ -782,10 +832,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         if (new_node1_balance > 0 && new_node2_balance > 0) {
-            debug("Advancing "+target_channel.getId()+" status balances to ("+new_node1_balance+","+new_node2_balance+")");
             this.advanceChannelStatus(channel_id,new_node1_balance,new_node2_balance);
-            var peer = getChannelPeer(target_channel.getId());
-            peer.advanceChannelStatus(channel_id,new_node1_balance,new_node2_balance);
         }
         else {
             log("Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getNode2PubKey());
@@ -857,6 +904,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             s.writeObject(this.channelsToAcceptQueue);
             s.writeObject(this.updateAddHTLCQueue);
             s.writeObject(this.updateFulFillHTLCQueue);
+            s.writeObject(this.updateFailHTLCQueue);
 
             s.writeObject(this.generatedInvoices);
             s.writeObject(this.pendingInvoices);
@@ -899,6 +947,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             channelsToAcceptQueue = (Queue<MsgOpenChannel>) s.readObject();
             updateAddHTLCQueue = (Queue<MsgUpdateAddHTLC>) s.readObject();
             updateFulFillHTLCQueue = (Queue<MsgUpdateFulFillHTLC>) s.readObject();
+            updateFailHTLCQueue = (Queue<MsgUpdateFailHTLC>) s.readObject();
             pendingInvoices = (HashMap<String, LNInvoice>) s.readObject();
             generatedInvoices = (HashMap<Long, LNInvoice>)s.readObject();
             receivedHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();

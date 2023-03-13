@@ -37,7 +37,7 @@ public class MsgUpdateAddHTLC extends Message {
         return payment_hash;
     }
 
-    public int getCltv_expiry() {
+    public int getCLTVExpiry() {
         return cltv_expiry;
     }
 

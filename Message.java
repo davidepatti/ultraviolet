@@ -2,7 +2,7 @@ import java.io.Serializable;
 
 public abstract class Message implements Serializable {
     protected final Type msgType;
-    enum Type { OPEN_CHANNEL, ACCEPT_CHANNEL, CHANNEL_ANNOUNCE, CHANNEL_UPDATE, UPDATE_ADD_HTLC,UPDATE_FULFILL_HTLC}
+    enum Type { OPEN_CHANNEL, ACCEPT_CHANNEL, CHANNEL_ANNOUNCE, CHANNEL_UPDATE, UPDATE_ADD_HTLC,UPDATE_FULFILL_HTLC,UPDATE_FAIL_HTLC}
 
     public Type getType() {
         return msgType;
