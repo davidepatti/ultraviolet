@@ -199,7 +199,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
      * Evaluate the current liquidity on channel peer side, considering the reserve to be mantained and the pending transactions
      * @return the amount of sats that could actually be received from peer
      */
-    public synchronized int getPeerLiquidity() {
+    public synchronized int getLiquidity(String pubkey) {
+        if (pubkey.equals(node_id_1))
+            return getNode1Balance()-getReserve()- getNode1Pending();
+        else
         return getNode2Balance()-getReserve()- getNode2Pending();
     }
 

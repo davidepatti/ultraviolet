@@ -5,6 +5,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChannelGraph implements Serializable  {
 
     private String root_node;
+
+    public static String pathString(ArrayList<Edge> path) {
+        StringBuilder s = new StringBuilder("(");
+
+        for (int i = path.size();i>0;i--) {
+            var e = path.get(i-1);
+            s.append(e.source()).append("->");
+        }
+        s.append(path.get(0).destination()).append(")");
+        return s.toString();
+    }
+
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
@@ -112,7 +124,6 @@ public class ChannelGraph implements Serializable  {
             for (Edge e :list_edges) {
                 if (e.destination().equals(end))  {
                     nfound++;
-                    System.out.println("Found "+nfound+" path(s)");
                     var path = new ArrayList<Edge>();
                     path.add(e);
 
@@ -122,6 +133,7 @@ public class ChannelGraph implements Serializable  {
                         current = last_parent.get(current.source());
                     }
                     paths.add(path);
+                    System.out.println("Found path: "+ChannelGraph.pathString(path));
                     if (stopfirst) return paths;
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());

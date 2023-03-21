@@ -48,10 +48,10 @@ public class MsgUpdateAddHTLC extends Message {
     @Override
     public String toString() {
         return "MsgUpdateAddHTLC{" +
-                "channel_id='" + channel_id + '\'' +
+                "ch_id='" + channel_id + '\'' +
                 ", id=" + id +
                 ", amount=" + amount +
-                ", payment_hash='" + payment_hash + '\'' +
+                ", hash='" + payment_hash + '\'' +
                 ", cltv=" + cltv_expiry +
                 '}';
     }

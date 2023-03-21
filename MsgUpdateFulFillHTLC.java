@@ -27,9 +27,9 @@ public class MsgUpdateFulFillHTLC extends Message {
     @Override
     public String toString() {
         return "MsgUpdateFulFillHTLC{" +
-                "channel_id='" + channel_id + '\'' +
+                "ch_id='" + channel_id + '\'' +
                 ", id=" + id +
-                ", payment_preimage='" + payment_preimage + '\'' +
+                ", preimage='" + payment_preimage + '\'' +
                 '}';
     }
 }

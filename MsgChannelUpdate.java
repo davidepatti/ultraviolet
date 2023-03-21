@@ -31,6 +31,6 @@ public class MsgChannelUpdate extends MessageGossip {
     @Override
     public String toString() {
         return super.toString() +
-                "{node:" + node + "channel_id:" + channel_id + "}";
+                "{node:" + node + "ch_id:" + channel_id + "}";
     }
 }

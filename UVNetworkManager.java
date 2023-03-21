@@ -17,15 +17,17 @@ public class UVNetworkManager {
     private Random random;
     private Timechain timechain;
 
-    private boolean boostrap_started = false;
+    private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
     private String imported_rootnode_graph;
     private FileWriter logfile;
     public static Consumer<String> Log = System.out::println;
 
     private final GlobalStats stats;
-
     private ScheduledExecutorService p2pExecutor;
+
+
+    private ArrayList<String> aliasNames = new ArrayList<>();
 
     /**
      * Initialize the logging functionality
@@ -48,6 +50,24 @@ public class UVNetworkManager {
         };
     }
 
+    private void loadAliasNames() {
+        try {
+            Scanner s = new Scanner(new FileReader("aliases.txt"));
+            while (s.hasNextLine()) aliasNames.add(s.nextLine());
+
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public synchronized String getAlias() {
+        if (aliasNames.size()<1) return "_";
+        var i = random.nextInt(0,aliasNames.size());
+        String alias = aliasNames.get(i);
+        aliasNames.remove(i);
+        return alias;
+    }
+
     /**
      * Constructor
      */
@@ -62,6 +82,8 @@ public class UVNetworkManager {
 
         log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
+
+        loadAliasNames();
     }
 
     /**
@@ -69,7 +91,7 @@ public class UVNetworkManager {
      * @return
      */
     public synchronized boolean resetUVM() {
-        log("Resetting UVManager (experimental!)");
+        System.out.println("Resetting UVManager (experimental!)");
         if (isBootstrapStarted() && !isBootstrapCompleted()) {
             log("Cannot reset, bootstrap in progress. Please quit UVM");
             return false;
@@ -83,7 +105,7 @@ public class UVNetworkManager {
         random = new Random();
         if (Config.getVal("seed") !=0) random.setSeed(Config.getVal("seed"));
         timechain = new Timechain(Config.getVal("blocktime"));
-        boostrap_started = false;
+        bootstrap_started = false;
         bootstrap_completed = false;
         this.uvnodes = new HashMap<>();
 
@@ -113,22 +135,22 @@ public class UVNetworkManager {
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
     public void bootstrapNetwork() {
-        boostrap_started = true;
+        bootstrap_started = true;
 
         log("UVM: Bootstrapping network from scratch...");
-        bootstrap_latch = new CountDownLatch(Config.getVal("total_nodes"));
+        bootstrap_latch = new CountDownLatch(Config.getVal("bootstrap_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ Config.getConfig());
-        int max = Config.getVal("max_funding") /(int)1e6;
-        int min = Config.getVal("min_funding") /(int)1e6;
+        int max = Config.getVal("bootstrap_max_funding") /(int)1e6;
+        int min = Config.getVal("bootstrap_min_funding") /(int)1e6;
 
-        for (int i = 0; i< Config.getVal("total_nodes"); i++) {
+        for (int i = 0; i< Config.getVal("bootstrap_nodes"); i++) {
             int funding;
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new UVNode(this,"n"+i,"LN"+i,funding);
-            var behavior = new NodeBehavior(Config.getVal("min_channels"), Config.getVal("min_channel_size"), Config.getVal("max_channel_size"));
+            var n = new UVNode(this,"pk"+i,getAlias(),funding);
+            var behavior = new NodeBehavior(Config.getVal("bootstrap_min_channels"), Config.getVal("bootstrap_min_channel_size"), Config.getVal("bootstrap_max_channel_size"));
             n.setBehavior(behavior);
             uvnodes.put(n.getPubKey(),n);
         }
@@ -138,18 +160,16 @@ public class UVNetworkManager {
         log("UVM: Starting timechain: "+timechain);
         setTimechainRunning(true);
         log("Starting node threads...");
-        ExecutorService bootexec = Executors.newFixedThreadPool(Config.getVal("total_nodes"));
+        ExecutorService bootexec = Executors.newFixedThreadPool(Config.getVal("bootstrap_nodes"));
         for (UVNode uvNode : uvnodes.values()) {
            bootexec.submit(()->bootstrapNode(uvNode));
         }
 
-        System.out.println("Waiting for nodes to complete bootstrap...");
         try {
             bootstrap_latch.await();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        log("UVNode deployment completed.");
         bootexec.shutdown();
         boolean term;
 
@@ -172,7 +192,7 @@ public class UVNetworkManager {
         // start p2p actions around every block
         if (p2pExecutor==null) {
             log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(Config.getVal("total_nodes"));
+            p2pExecutor = Executors.newScheduledThreadPool(Config.getVal("bootstrap_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, Config.getVal("p2p_period"),TimeUnit.MILLISECONDS);
@@ -205,11 +225,8 @@ public class UVNetworkManager {
      */
     public Optional<LNChannel> getChannelFromNodes(String pub1, String pub2) {
 
-        var n1 = getUVNodes().get(pub1);
-        var n2 = getUVNodes().get(pub2);
-
-        if (n1==null)  throw new IllegalArgumentException("No such node "+pub1);
-        if (n2==null)  throw new IllegalArgumentException("No such node "+pub2);
+        var n1 = getNode(pub1);
+        var n2 = getNode(pub2);
 
         for (LNChannel c: n1.getLNChannelList()) {
             if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2))
@@ -304,12 +321,24 @@ public class UVNetworkManager {
     }
 
     public synchronized boolean isBootstrapStarted() {
-        return boostrap_started;
+        return bootstrap_started;
     }
 
 
-    public HashMap<String, UVNode> getUVNodes(){
+    public HashMap<String, UVNode> getUVNodeList(){
         return this.uvnodes;
+    }
+
+    public UVNode getNode(String pubkey) {
+        UVNode node = uvnodes.get(pubkey);
+        while (node==null) {
+            var e = new RuntimeException("Cannot find node "+pubkey);
+            e.printStackTrace();
+            System.out.print("Enter valide node pubkey:");
+            var p = new Scanner(System.in).nextLine();
+            node = uvnodes.get(p);
+        }
+        return node;
     }
 
     public LNode getLNode(String pubkey) {
@@ -428,56 +457,62 @@ public class UVNetworkManager {
             log("Stopping timechain!");
         }
     }
+
+    private void waitForBlocks(int blocks) {
+        var ready_to_go = getTimechain().getTimechainLatch(blocks);
+        try {
+            ready_to_go.await();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     /**
      *
      */
     public void bootstrapNode(UVNode node) {
 
-        int opened =0;
         ///----------------------------------------------------------
         var warmup = Config.getVal("bootstrap_warmup");
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
         if (warmup!=0) {
-            var ready_to_go = getTimechain().getTimechainLatch(ThreadLocalRandom.current().nextInt(0,warmup));
-            log(" waiting "+ready_to_go.getCount()+" blocks before bootstrap... ");
-            try {
-                ready_to_go.await();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+            log(" waiting "+warmup+" blocks before bootstrap... ");
+            waitForBlocks(ThreadLocalRandom.current().nextInt(0,warmup));
         }
 
-        while (node.getBehavior().getBoostrapChannels() > opened) {
+        final int bootstrap_channels = node.getBehavior().getBoostrapChannels();
 
-            if (node.getOnChainBalance() <= node.getBehavior().getMinChannelSize()) {
+        while (node.getLNChannelList().size() < bootstrap_channels) {
+
+            // not mandatory, just to have different block timings in openings
+            waitForBlocks(1);
+
+            if (node.getOnchainLiquidity() <= node.getBehavior().getMinChannelSize()) {
                 log("Node "+node.getPubKey()+": No more onchain balance for opening further channels of min size "+node.getBehavior().getMinChannelSize());
                 break; // exit while loop
             }
 
-            var peer_node = getRandomNode();
-            var peer_pubkey = peer_node.getPubKey();
+            var peerPubkey = getRandomNode().getPubKey();
 
-            if (peer_pubkey.equals(node.getPubKey())) continue;
-            if (node.getExistingChannelWith(peer_pubkey).isPresent()) continue;
-            if (node.ongoingOpeningRequestWith(peer_pubkey)) continue;
-            // incoming request should not be a problem, since a different id and liquidity is used
+            // checking problems with peer
+            if (peerPubkey.equals(node.getPubKey())) continue;
+            if (node.hasChannelWith(peerPubkey)) continue;
+            if (node.ongoingOpeningRequestWith(peerPubkey)) continue;
 
-            log("Node "+node.getPubKey()+" Trying to open a channel with "+peer_pubkey);
+            log("Node "+node.getPubKey()+" Trying to open a channel with "+peerPubkey);
 
             int max = Math.min(node.getBehavior().getMaxChannelSize(), node.getOnChainBalance());
             int min = node.getBehavior().getMinChannelSize();
-            var channel_size = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
+            var newChannelSize = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
 
-            // onchain balance is changed only from initiator, so no problems of sync
-            if (channel_size>node.getOnChainBalance()) {
-                log("<<< Insufficient liquidity for "+channel_size+" channel opening");
+            if (node.getOnchainLiquidity()< newChannelSize) {
                 continue;
             }
 
-            node.openChannel(peer_pubkey,channel_size);
-            opened++;
+            node.openChannel(peerPubkey,newChannelSize);
         } // while
 
         log(node.getPubKey()+":Bootstrap Completed");
@@ -485,7 +520,8 @@ public class UVNetworkManager {
     }
 
     public void sendMessageToNode(String pubkey, Message message) {
-        var uvnode = getUVNodes().get(pubkey);
+        var uvnode = getNode(pubkey);
         uvnode.receiveMessage(message);
     }
+
 }

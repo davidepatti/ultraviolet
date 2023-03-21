@@ -22,19 +22,19 @@ public class Config implements Serializable {
         properties.setProperty("seed","1");
         // bootstrap
         properties.setProperty("bootstrap_warmup","1");
-        properties.setProperty("total_nodes","10");
-        properties.setProperty("min_funding","10000000");
-        properties.setProperty("min_funding","100000000");
-        properties.setProperty("min_channels","3");
-        properties.setProperty("max_channels","5");
-        properties.setProperty("min_channel_size","500000");
-        properties.setProperty("max_channel_size","1000000");
+        properties.setProperty("bootstrap_nodes","10");
+        properties.setProperty("bootstrap_min_funding","10000000");
+        properties.setProperty("bootstrap_min_funding","100000000");
+        properties.setProperty("bootstrap_min_channels","3");
+        properties.setProperty("bootstrap_max_channels","5");
+        properties.setProperty("bootstrap_min_channel_size","500000");
+        properties.setProperty("bootstrap_max_channel_size","1000000");
 
         // p2p
         properties.setProperty("p2p_flush_size","500");
         properties.setProperty("debug","true");
-        properties.setProperty("max_p2p_hops","2");
-        properties.setProperty("max_p2p_age","3");
+        properties.setProperty("p2p_max_hops","2");
+        properties.setProperty("p2p_max_age","3");
         properties.setProperty("p2p_period","100");
         properties.setProperty("debug","false");
         initialized = true;

@@ -12,7 +12,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private final String pubkey;
     private final String alias;
     private int onchainBalance;
-
+    private int onchainPending = 0;
 
     // serialized and restored manually, to avoid stack overflow
     transient private UVNetworkManager uvNetworkManager;
@@ -32,6 +32,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private HashMap<Long, LNInvoice> generatedInvoices = new HashMap<>();
     transient private HashMap<String, LNInvoice> pendingInvoices = new HashMap<>();
+    transient private HashMap<String, LNInvoice> payedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> pendingHTLC = new HashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
@@ -46,8 +47,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         this.uvNetworkManager = uvNetworkManager;
         this.pubkey = pubkey;
         this.alias = alias;
-        this.onchainBalance = funding;
-        // change lamba function here to log to a different target
+        updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
     }
 
@@ -93,9 +93,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public ChannelGraph getChannelGraph() {
         return this.channelGraph;
     }
-    public synchronized int getOnChainBalance() {
-        return onchainBalance;
-    }
     public String getPubKey() {
         return pubkey;
     }
@@ -117,12 +114,31 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             return uvNetworkManager.getP2PNode(channel.getNode1PubKey());
     }
 
-    public synchronized int getLocalBalance(String channel_id) {
+    public synchronized int getLocalChannelBalance(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
             return channel.getNode1Balance();
         else
             return channel.getNode2Balance();
+    }
+
+    public synchronized int getOnChainBalance() {
+        return onchainBalance;
+    }
+    private synchronized void updateOnChainBalance(int new_balance) {
+        this.onchainBalance = new_balance;
+    }
+
+    public synchronized int getOnchainPending() {
+        return onchainPending;
+    }
+
+    private synchronized void updateOnchainPending( int pending) {
+        this.onchainPending = pending;
+    }
+
+    public synchronized int getOnchainLiquidity() {
+        return getOnChainBalance()-getOnchainPending();
     }
 
     public ConcurrentHashMap<String, UVChannel> getChannels() {
@@ -170,20 +186,68 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    public void payInvoice(LNInvoice invoice) {
-
-        var paths = this.findPath(this.getPubKey(),invoice.getDestination(),true);
-
-        if (paths.size()>0) {
-            pendingInvoices.put(invoice.getHash(),invoice);
-            routeInvoiceOnPath(invoice,paths.get(0));
+    public boolean waitForInvoiceCleared(String hash) {
+        while (pendingInvoices.containsKey(hash)) {
+            try {
+                System.out.println("WAITING...");
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
-        else
-            System.out.println("No path found for destination "+ invoice.getDestination());
+        return (payedInvoices.containsKey(hash));
     }
 
-    public ArrayList<ArrayList<ChannelGraph.Edge>> findPath(String start, String end, boolean stopfirst) {
-        return this.getChannelGraph().findPath(start,end,stopfirst);
+
+    public boolean checkPath(ArrayList<ChannelGraph.Edge> path, int amount, int maxFees) {
+
+        log("Checking path "+ChannelGraph.pathString(path));
+        var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
+        var firstChannel = channels.get(firstChannelId);
+
+        // this is the only liquidity check that can be performed in advance
+        var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
+
+        if (senderLiquidity< amount) {
+            log("Discarding route for missing liquidity in first channel "+firstChannel);
+            return false;
+        }
+
+        return true;
+    }
+
+    public void payInvoice(LNInvoice invoice) {
+
+        log("Processing "+invoice);
+        var paths = this.findPaths(invoice.getDestination(),false);
+
+        boolean success = false;
+        if (paths.size()>0) {
+            log("Found "+paths.size()+" paths to "+invoice.getDestination());
+
+            int n = 0;
+            for (var path: paths) {
+                n++;
+                log("Trying path #"+n);
+                if (!checkPath(path,invoice.getAmount(),777)) continue;
+                routeInvoiceOnPath(invoice,path);
+
+                if (waitForInvoiceCleared(invoice.getHash())) {
+                    success = true;
+                    break;
+                }
+            }
+            if (success) {
+                log("Successfull processed invoice "+invoice.getHash());
+            }
+            else log("Failed routing for invoice "+invoice.getHash());
+        }
+        else
+            log("No path found for destination "+ invoice.getDestination());
+    }
+
+    public ArrayList<ArrayList<ChannelGraph.Edge>> findPaths(String destination, boolean stopfirst) {
+        return this.getChannelGraph().findPath(this.getPubKey(),destination,stopfirst);
     }
 
     /**
@@ -192,28 +256,24 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param path
      * @return
      */
-    private void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
-        StringBuilder s = new StringBuilder("Routing invoice on path: ");
-        for (ChannelGraph.Edge e:path)
-            s.append("(").append(e.source()).append("->").append(e.destination()).append(")");
-        log(s.toString());
-
+    public void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
+        log("Routing on path:"+ChannelGraph.pathString(path));
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
         debug("Assembling final payload for node: "+path.get(0).destination());
         final int amount = invoice.getAmount();
-        final int base_block_height = uvNetworkManager.getTimechain().getCurrentBlock();
-        final var final_cltv_value = base_block_height+invoice.getMinFinalCltvExpiry();
+        final int baseBlockHeight = uvNetworkManager.getTimechain().getCurrentBlock();
+        final var finalCLTV = baseBlockHeight+invoice.getMinFinalCltvExpiry();
 
         // last layer is the only one with the secret
-        var firstHopPayload = new OnionLayer.Payload("00",amount,final_cltv_value,invoice.getHash());
+        var firstHopPayload = new OnionLayer.Payload("00",amount,finalCLTV,invoice.getHash());
         // this is the inner layer, for the final destination, so no further inner layer
         var firstOnionLayer = new OnionLayer(firstHopPayload,null);
         debug(firstOnionLayer.toString());
 
-        int fees = 0;
+        int cumulatedFees = 0;
         var onionLayer = firstOnionLayer;
-        int out_cltv = final_cltv_value;
+        int out_cltv = finalCLTV;
 
         // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
         // Carol will take the forwarding fees specified in the payload for Bob
@@ -227,7 +287,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
                 debug("Assembling Payload for node: "+source);
-                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+fees,out_cltv,null);
+                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+cumulatedFees,out_cltv,null);
                 onionLayer = new OnionLayer(hopPayload,onionLayer);
 
                 debug(onionLayer.toString());
@@ -235,11 +295,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 // the fees in the carol->dina channel will be put in the Bob payload in the next loop
                 // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
                 //fees += channel.getPolicy(source).fee_ppm()+channel.getPolicy(source).base_fee();
-                fees += channel.getPolicy(source).fee_ppm();
+                cumulatedFees += channel.getPolicy(source).fee_ppm();
                 out_cltv += channel.getPolicy(source).cltv();
             }
             else {
-                log("ERROR: No channel from "+source+ " to "+source);
+                log("ERROR: No channel from "+source+ " to "+dest);
                 return;
             }
         }
@@ -249,7 +309,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var channel_id = path.get(path.size()-1).id();
         var local_channel = channels.get(channel_id);
         var id = local_channel.getLastCommitNumber()+1;
-        var amt_to_forward= invoice.getAmount()+fees;
+        var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
         var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
         debug("Creating HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
@@ -273,7 +333,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             var htlc = pendingHTLC.get(computed_hash);
             log("Fulfilling " + htlc + " by pushing " + htlc.getAmount() + " from me:" + this.getPubKey() + " to channel " + channel);
 
-            pushSats(channel, htlc.getAmount());
+            if (!pushSats(channel, htlc.getAmount())) {
+                throw new IllegalStateException("Cannot push sats!");
+            }
+
             pendingHTLC.remove(computed_hash);
 
             // If I forwarded an incoming htlc, must also send back the fulfill message
@@ -287,7 +350,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             else {
                 if (pendingInvoices.containsKey(computed_hash)) {
                     log("LN invoice for hash "+computed_hash+ " Completed!");
-                    pendingInvoices.remove(computed_hash);
+                    payedInvoices.put(computed_hash,pendingInvoices.remove(computed_hash));
                 }
                 else throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
             }
@@ -296,7 +359,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     private synchronized void processUpdateFailHTLC(final MsgUpdateFailHTLC msg) {
-        log("Processing update_fail_htlc: " + msg);
+        log("Processing: " + msg);
         var ch_id = msg.getChannel_id();
 
         for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
@@ -337,7 +400,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
 
-        log("Processing update_add_htlc: "+msg);
+        log("Processing: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
 
         // check if I'm the final destination
@@ -387,7 +450,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
            return;
         }
 
-        if (msg.getAmount() >getLocalBalance(forwardingChannel.getId())+forwardingChannel.getReserve()) {
+        if (msg.getAmount() > getLocalChannelBalance(forwardingChannel.getId())+forwardingChannel.getReserve()) {
             log("Not enought local balance liquidity in channel "+forwardingChannel);
             var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
             sendToPeer(incomingPeer,fail_msg);
@@ -426,14 +489,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param node_id
      * @return
      */
-    public Optional<String> getExistingChannelWith(String node_id) {
+    public String getMyChannelWith(String node_id) {
 
         for (UVChannel c:this.channels.values()) {
             if (c.getNode2PubKey().equals(node_id) || c.getNode1PubKey().equals(node_id)) {
-                    return Optional.of(c.getId());
+                    return c.getId();
             }
         }
-        return Optional.empty();
+        throw new IllegalArgumentException(this.getPubKey()+" Has no channel with "+node_id);
+    }
+
+    public boolean hasChannelWith(String nodeId) {
+        for (UVChannel c:this.channels.values()) {
+            if (c.getNode2PubKey().equals(nodeId) || c.getNode1PubKey().equals(nodeId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public synchronized boolean ongoingOpeningRequestWith(String nodeId) {
@@ -457,7 +529,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private String generateTempChannelId(String peerPubKey) {
         StringBuilder s = new StringBuilder();
         var block = uvNetworkManager.getTimechain().getCurrentBlock();
-        s.append("CH_TMP_").append(getPubKey()).append("_").append(peerPubKey);
+        s.append("tmp_id").append(getPubKey()).append("_").append(peerPubKey);
         return s.toString();
     }
     private String generateChannelId(Timechain.Transaction tx) {
@@ -480,6 +552,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+")");
 
+        updateOnchainPending(getOnchainPending()+channel_size);
+
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, 30, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
@@ -492,7 +566,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
-        if (this.getExistingChannelWith(initiator_id).isPresent()) {
+        if (this.hasChannelWith(initiator_id)) {
             log("Node has already a channel with "+initiator_id);
             return;
         }
@@ -554,13 +628,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var newChannel = new UVChannel(channel_id, this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
         this.channels.put(channel_id,newChannel);
         channelGraph.addLNChannel(newChannel);
+
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
+        updateOnchainPending(getOnchainPending()-request.getFunding());
 
         var newPolicy = new LNChannel.Policy(20,1000,50);
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
         channelGraph.updateChannel(channel_id,newPolicy);
 
-        uvNetworkManager.getUVNodes().get(peer_id).fundingLocked(newChannel);
+        uvNetworkManager.getNode(peer_id).fundingLocked(newChannel);
 
         // when funding tx is confirmed after minimim depth
         var msg_announcement = new MsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
@@ -601,8 +677,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
    public void broadcastToPeers(MessageGossip msg) {
 
        var current_age = uvNetworkManager.getTimechain().getCurrentBlock() -msg.getTimeStamp();
-       if (current_age> Config.getVal("max_p2p_age")) return;
-       if (msg.getForwardings()>= Config.getVal("max_p2p_hops")) {
+       if (current_age> Config.getVal("p2p_max_age")) return;
+       if (msg.getForwardings()>= Config.getVal("p2p_max_hops")) {
            //log("Too much forwardings ("+msg.getForwardings()+") discarding "+msg);
            return;
        }
@@ -804,9 +880,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    private synchronized void updateOnChainBalance(int new_balance) {
-        this.onchainBalance = new_balance;
-    }
 
     /**
      * Move sat from local side to the other side of the channel, update balance accordingly
@@ -835,7 +908,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             this.advanceChannelStatus(channel_id,new_node1_balance,new_node2_balance);
         }
         else {
-            log("Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getNode2PubKey());
+            log("pushSats: Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getNode2PubKey());
             return false;
         }
         return true;
@@ -852,7 +925,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         else size = 0;
 
         return "*PubKey:'" + pubkey + '\'' + "("+alias+")"+ ", ch:" + channels.size() +
-                ", onchain:" + onchainBalance + ", ln:" + getLightningBalance() + ", p2pq: "+size+'}';
+                ", onchain(pending):" + getOnChainBalance() + "("+getOnchainPending()+"), ln:" + getLightningBalance() + ", p2pq: "+size+'}';
     }
 
     /**

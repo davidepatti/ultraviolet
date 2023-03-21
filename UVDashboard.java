@@ -13,9 +13,9 @@ public class UVDashboard {
 
     private void showNodeCommand(String pubkey) {
 
-        if (networkManager.getUVNodes().size() == 0)
+        if (networkManager.getUVNodeList().size() == 0)
             System.out.println("EMPTY NODE LIST");
-        var node = networkManager.getUVNodes().get(pubkey);
+        var node = networkManager.getNode(pubkey);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
 
         node.getChannels().values().stream().sorted().forEach(System.out::println);
@@ -57,7 +57,6 @@ public class UVDashboard {
 
             entry = s.toString();
         }
-
         @Override
         public String toString() {
             return entry;
@@ -69,19 +68,64 @@ public class UVDashboard {
      */
     private void routeCmd() {
 
+        if (!networkManager.isBootstrapCompleted()) {
+            System.out.println("ERROR: must execute bootstrap or load/import a network!");
+            return;
+        }
+
         Scanner scanner = new Scanner(System.in);
         System.out.print("Starting node public key:");
         String start_id = scanner.nextLine();
+        var sender = networkManager.getNode(start_id);
         System.out.print("Destination node public key:");
         String end_id = scanner.nextLine();
+        var dest = networkManager.getNode(end_id);
+        System.out.print("Invoice amount:");
+        int amount = Integer.parseInt(scanner.nextLine());
 
-        var dest = networkManager.getUVNodes().get(end_id);
-        var sender = networkManager.getUVNodes().get(start_id);
-        var invoice = dest.generateInvoice(2000);
+        var invoice = dest.generateInvoice(amount);
         System.out.println("Generated Invoice: "+invoice);
-        sender.payInvoice(invoice);
+
+        var paths = sender.findPaths(invoice.getDestination(),false);
+        var validPaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
+
+
+        System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
+
+        for (var path:paths) {
+            if (sender.checkPath(path,invoice.getAmount(),777)) {
+                validPaths.add(path);
+            }
+            else {
+                System.out.println("Discarding path "+ ChannelGraph.pathString(path));
+            }
+        }
+        boolean success = false;
+        if (validPaths.size()>0) {
+            int n = 0;
+            for (var path: validPaths) {
+                n++;
+                System.out.println("Trying path: "+ChannelGraph.pathString(path));
+                sender.routeInvoiceOnPath(invoice,path);
+
+                if (sender.waitForInvoiceCleared(invoice.getHash())) {
+                    success = true;
+                    break;
+                }
+            }
+            if (success) {
+                System.out.println("Successfull processed invoice "+invoice.getHash());
+            }
+            else System.out.println("Failed routing for invoice "+invoice.getHash());
+        }
+
+        else
+            System.out.println("No suitable path for destination "+ invoice.getDestination());
     }
 
+    /**
+     *
+     */
     private void findPathsCmd() {
         Scanner scanner = new Scanner(System.in);
         String start;
@@ -94,12 +138,12 @@ public class UVDashboard {
         }
 
         System.out.print("Destination node public key:");
-        String end = scanner.nextLine();
+        String destination = scanner.nextLine();
         System.out.print("Single[1] or All [any key] paths?");
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.getUVNodes().get(start).findPath(start,end,stopfirst);
+        var paths = networkManager.getNode(start).findPaths(destination,stopfirst);
 
         if (paths.size()>0) {
             for (ArrayList<ChannelGraph.Edge> p: paths) {
@@ -163,11 +207,11 @@ public class UVDashboard {
         }));
 
         menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
-            if (networkManager.getUVNodes().size()== 0) {
+            if (networkManager.getUVNodeList().size()== 0) {
                 System.out.println("EMPTY NODE LIST");
                 return;
             }
-            var ln = networkManager.getUVNodes().values().stream().sorted().toList();
+            var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
 
             for (UVNode n : ln) {
                 System.out.println(n);
@@ -175,7 +219,7 @@ public class UVDashboard {
             }
         }));
 
-        menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> networkManager.getUVNodes().values().stream().sorted().forEach(System.out::println)));
+        menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println)));
         menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
@@ -190,6 +234,9 @@ public class UVDashboard {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showQueueCommand(node);
+        }));
+        menuItems.add(new MenuItem("test", "TEST", x -> {
+            networkManager.getAlias();
         }));
 
         menuItems.add(new MenuItem("conf", "Show configuration ", x -> {
@@ -255,6 +302,7 @@ public class UVDashboard {
 
 
         while (!quit) {
+            Set<Thread> threadSet = Thread.getAllStackTraces().keySet();
             System.out.print("\033[H\033[2J");
             System.out.flush();
             System.out.println(" Ultraviolet client ");
@@ -264,6 +312,7 @@ public class UVDashboard {
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
             if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
             else System.out.println(" Running...");
+            System.out.println("Threads: "+threadSet.size());
             System.out.println("__________________________________________________");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
@@ -287,7 +336,7 @@ public class UVDashboard {
 
     private void showQueueCommand(String node_id) {
         if (!networkManager.isBootstrapCompleted()) return;
-        var node = networkManager.getUVNodes().get(node_id);
+        var node = networkManager.getNode(node_id);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
         System.out.println("P2P message queue:");
         System.out.println("-------------------------------------------------------------");
@@ -312,10 +361,10 @@ public class UVDashboard {
         node.getGeneratedInvoices().values().stream().forEach(System.out::println);
     }
 
-    private void showGraphCommand(String node) {
+    private void showGraphCommand(String node_id) {
 
         if (!networkManager.isBootstrapCompleted()) return;
-        var g = networkManager.getUVNodes().get(node).getChannelGraph();
+        var g = networkManager.getNode(node_id).getChannelGraph();
         System.out.println(g);
     }
 
