@@ -509,9 +509,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     public synchronized boolean ongoingOpeningRequestWith(String nodeId) {
-        if (sentChannelOpenings.containsKey(nodeId)) return true;
-
-        return false;
+        return sentChannelOpenings.containsKey(nodeId);
     }
 
     /**
@@ -536,9 +534,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var searchPos = uvNetworkManager.getTimechain().getTxLocation(tx);
         var position = searchPos.get();
 
-        StringBuilder s = new StringBuilder();
-        s.append(position.height()+"x"+ position.tx_index());
-        return s.toString();
+        return position.height() + "x" + position.tx_index();
     }
     /**
      * Mapped to LN protocol message: open_channel
@@ -730,8 +726,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return this.p2PMessageQueue;
     }
 
-    public synchronized void stopP2PServices() {
-       this.p2pIsRunning = false;
+    public synchronized void setP2PServices(boolean status) {
+       this.p2pIsRunning = status;
     }
 
     public synchronized boolean isP2PRunning() {
@@ -744,12 +740,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * Messages older than a given number of blocks are discarded
      */
     private void p2pProcessGossip() {
-
-        /*
-        if (p2PMessageQueue.size()!=0)
-            debug(">>> Message queue not empty, processing "+ p2PMessageQueue.size()+" elements..");
-
-         */
 
         int max_msg = Config.getVal("p2p_flush_size");
         while (isP2PRunning() && !p2PMessageQueue.isEmpty() && max_msg>0) {
@@ -804,9 +794,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
      */
     public void runServices() {
-        synchronized (this) {
-            this.p2pIsRunning = true;
-        }
 
         try {
             checkChannels();

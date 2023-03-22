@@ -302,7 +302,6 @@ public class UVDashboard {
 
 
         while (!quit) {
-            Set<Thread> threadSet = Thread.getAllStackTraces().keySet();
             System.out.print("\033[H\033[2J");
             System.out.flush();
             System.out.println(" Ultraviolet client ");
@@ -312,7 +311,6 @@ public class UVDashboard {
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
             if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
             else System.out.println(" Running...");
-            System.out.println("Threads: "+threadSet.size());
             System.out.println("__________________________________________________");
 
             //networkManager.getUVNodes().values().stream().forEach(e->e.isP2PRunning());
@@ -344,21 +342,21 @@ public class UVDashboard {
 
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending HTLC:");
-        node.getReceivedHTLC().values().stream().forEach(System.out::println);
+        node.getReceivedHTLC().values().forEach(System.out::println);
 
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending opening:");
 
-        node.getSentChannelOpenings().values().stream().forEach(System.out::println);
+        node.getSentChannelOpenings().values().forEach(System.out::println);
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending accepted:");
-        node.getChannelsAcceptedQueue().stream().forEach(System.out::println);
+        node.getChannelsAcceptedQueue().forEach(System.out::println);
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending to accept:");
-        node.getChannelsToAcceptQueue().stream().forEach(System.out::println);
+        node.getChannelsToAcceptQueue().forEach(System.out::println);
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending Invoices:");
-        node.getGeneratedInvoices().values().stream().forEach(System.out::println);
+        node.getGeneratedInvoices().values().forEach(System.out::println);
     }
 
     private void showGraphCommand(String node_id) {

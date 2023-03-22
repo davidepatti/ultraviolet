@@ -24,9 +24,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     
     private int node1Balance;
     private int node2Balance;
-    @SuppressWarnings("FieldMayBeFinal")
     private int node1Pending;
-    @SuppressWarnings("FieldMayBeFinal")
     private int node2Pending;
     private final int reserve;
     private final boolean init_direction; // true -> from 1 to 2
@@ -216,7 +214,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         return commitNumber;
     }
 
-    public synchronized boolean newCommitment(int node1Balance, int node2Balance) {
+    public synchronized void newCommitment(int node1Balance, int node2Balance) {
 
         if (node1Balance+node2Balance != this.getCapacity()) {
             throw new IllegalArgumentException("Ch["+this.getId()+"] Wrong balances in commitment:"+node1Balance+"+"+node2Balance+"!= "+getCapacity());
@@ -225,7 +223,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.node1Balance = node1Balance;
         this.node2Balance = node2Balance;
         this.commitNumber = getLastCommitNumber()+1;
-        return true;
     }
 
     @Override

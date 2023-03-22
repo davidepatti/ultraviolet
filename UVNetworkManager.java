@@ -27,7 +27,7 @@ public class UVNetworkManager {
     private ScheduledExecutorService p2pExecutor;
 
 
-    private ArrayList<String> aliasNames = new ArrayList<>();
+    private final ArrayList<String> aliasNames = new ArrayList<>();
 
     /**
      * Initialize the logging functionality
@@ -195,6 +195,7 @@ public class UVNetworkManager {
             p2pExecutor = Executors.newScheduledThreadPool(Config.getVal("bootstrap_nodes"));
         }
         for (UVNode n : uvnodes.values()) {
+            n.setP2PServices(true);
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, Config.getVal("p2p_period"),TimeUnit.MILLISECONDS);
         }
     }
@@ -202,7 +203,7 @@ public class UVNetworkManager {
         log("Stopping p2p nodes services...");
 
         for (UVNode n : uvnodes.values()) {
-            n.stopP2PServices();
+            n.setP2PServices(false);
             n.p2pHandler.cancel(false);
         }
 

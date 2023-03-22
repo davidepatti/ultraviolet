@@ -4,7 +4,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ChannelGraph implements Serializable  {
 
-    private String root_node;
+    private final String root_node;
+    private final HashSet<String> channelSet = new HashSet<>();
+    @Serial
+    private static final long serialVersionUID = 120676L;
+    // We use Hashmap to store the edges in the graph, indexed by node id as keys
+    transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
+
 
     public static String pathString(ArrayList<Edge> path) {
         StringBuilder s = new StringBuilder("(");
@@ -28,11 +34,6 @@ public class ChannelGraph implements Serializable  {
         UVNetworkManager.log(s);
     }
 
-    @Serial
-    private static final long serialVersionUID = 120676L;
-    // We use Hashmap to store the edges in the graph, indexed by node id as keys
-    transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
-
     // This function adds a new vertex to the graph
     private synchronized void addNode(String node_id) {
         adj_map.putIfAbsent(node_id, new LinkedList<>());
@@ -44,8 +45,9 @@ public class ChannelGraph implements Serializable  {
      */
     public synchronized void addLNChannel(LNChannel channel) {
 
-        if (channel==null) {
-            throw new IllegalArgumentException("Channel null");
+        final String id = channel.getId();
+        if (this.hasChannel(id)) {
+            throw new IllegalArgumentException(" WARNING: calling addChannel with already existing edge for channel "+channel.getId());
         }
 
         var node1pub = channel.getNode1PubKey();
@@ -55,16 +57,14 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new LinkedList<>());
         adj_map.putIfAbsent(node2pub, new LinkedList<>());
 
-        if (this.hasChannel(channel.getId())) {
-            throw new IllegalArgumentException(" WARNING: calling addChannel with already existing edge for channel "+channel.getId());
-        }
 
-        var edge1 = new Edge(channel.getId(),node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
-        var edge2 = new Edge(channel.getId(),node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
+        var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
+        var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
 
         adj_map.get(channel.getNode1PubKey()).add(edge1);
         adj_map.get(channel.getNode2PubKey()).add(edge2);
 
+        channelSet.add(id);
     }
 
     public synchronized void addAnnouncedChannel(MsgChannelAnnouncement msg) {
@@ -236,6 +236,11 @@ public class ChannelGraph implements Serializable  {
         throw new IllegalStateException("Check LOG!");
     }
 
+    public synchronized boolean hasChannel(String channelId) {
+        return channelSet.contains(channelId);
+    }
+
+    /*
     public synchronized boolean hasChannel(String channel_id) {
         for (List<Edge> list:adj_map.values() ) {
            for (Edge e:list) {
@@ -246,6 +251,8 @@ public class ChannelGraph implements Serializable  {
         }
         return false;
     }
+
+     */
 
     public ChannelGraph(String root_node){
         this.root_node = root_node;
