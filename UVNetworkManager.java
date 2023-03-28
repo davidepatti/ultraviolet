@@ -42,7 +42,7 @@ public class UVNetworkManager {
         Log = (s) ->  {
             try {
 
-                logfile.write("\n[block "+timechain.getCurrentBlock()+"]:"+s);
+                logfile.write("\n[timechain "+timechain.getCurrentBlock()+"]:"+s);
                 logfile.flush();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -135,9 +135,13 @@ public class UVNetworkManager {
      * Bootstraps the Lightning Network from scratch starting from configuration file
      */
     public void bootstrapNetwork() {
+
+        Thread.currentThread().setName("Bootstrap-thread");
+
+        var startTime = new Date();
         bootstrap_started = true;
 
-        log("UVM: Bootstrapping network from scratch...");
+        log(startTime.toString()+": Bootstrapping network from scratch...");
         bootstrap_latch = new CountDownLatch(Config.getVal("bootstrap_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ Config.getConfig());
@@ -149,10 +153,10 @@ public class UVNetworkManager {
             if (max==min) funding = (int)1e6*min;
             else
                 funding = (int)1e6*(random.nextInt(max-min)+min);
-            var n = new UVNode(this,"pk"+i,getAlias(),funding);
-            var behavior = new NodeBehavior(Config.getVal("bootstrap_min_channels"), Config.getVal("bootstrap_min_channel_size"), Config.getVal("bootstrap_max_channel_size"));
-            n.setBehavior(behavior);
-            uvnodes.put(n.getPubKey(),n);
+            var node = new UVNode(this,"pk"+i,getAlias(),funding);
+            var nchannels = random.nextInt(Config.getVal("bootstrap_max_channels")-Config.getVal("bootstrap_min_channels"))+Config.getVal("bootstrap_min_channels");
+            node.setBehavior(new UVNode.NodeBehavior(nchannels, Config.getVal("bootstrap_min_channel_size"), Config.getVal("bootstrap_max_channel_size")));
+            uvnodes.put(node.getPubKey(),node);
         }
 
         updatePubkeyList();
@@ -160,12 +164,13 @@ public class UVNetworkManager {
         log("UVM: Starting timechain: "+timechain);
         setTimechainRunning(true);
         log("Starting node threads...");
-        ExecutorService bootexec = Executors.newFixedThreadPool(Config.getVal("bootstrap_nodes"));
+        var bootexec = Executors.newFixedThreadPool(Config.getVal("bootstrap_nodes"));
         for (UVNode uvNode : uvnodes.values()) {
            bootexec.submit(()->bootstrapNode(uvNode));
         }
 
         try {
+            System.gc();
             bootstrap_latch.await();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
@@ -174,13 +179,19 @@ public class UVNetworkManager {
         boolean term;
 
         try {
-            term = bootexec.awaitTermination(60, TimeUnit.SECONDS);
+            term = bootexec.awaitTermination(120, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        if (!term) log("Bootstrap timeout! terminating...") ;
-        else
-            log("Bootstrap ended correctly");
+        if (!term)  {
+            log("Bootstrap timeout! terminating...") ;
+            System.out.println("Bootstrap timeout! terminating...");
+        }
+        else {
+            var after = new Date();
+            var duration = after.getTime()-startTime.getTime();
+            log(after+":Bootstrap Ended. Duration (ms):"+duration);
+        }
 
     }
 
@@ -194,6 +205,7 @@ public class UVNetworkManager {
             log("Initializing p2p scheduled executor...");
             p2pExecutor = Executors.newScheduledThreadPool(Config.getVal("bootstrap_nodes"));
         }
+        int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, Config.getVal("p2p_period"),TimeUnit.MILLISECONDS);
@@ -448,8 +460,8 @@ public class UVNetworkManager {
     public synchronized void setTimechainRunning(boolean running) {
         getTimechain().setRunning(running);
         if (running) {
-            new Thread(getTimechain()).start();
-            new Thread(this::startP2PNetwork).start();
+            new Thread(getTimechain(),"Timechain").start();
+            new Thread(this::startP2PNetwork,"P2P").start();
             log("Starting timechain!");
         }
         else {
@@ -460,6 +472,7 @@ public class UVNetworkManager {
     }
 
     private void waitForBlocks(int blocks) {
+        if (blocks==0) return;
         var ready_to_go = getTimechain().getTimechainLatch(blocks);
         try {
             ready_to_go.await();
@@ -476,17 +489,17 @@ public class UVNetworkManager {
 
         ///----------------------------------------------------------
         var warmup = Config.getVal("bootstrap_warmup");
+        log("BOOTSTRAPPING "+node.getPubKey());
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
-        if (warmup!=0) {
-            log(" waiting "+warmup+" blocks before bootstrap... ");
+
+        if (warmup!=0)
             waitForBlocks(ThreadLocalRandom.current().nextInt(0,warmup));
-        }
 
-        final int bootstrap_channels = node.getBehavior().getBoostrapChannels();
+        final int bootstrapChannels = node.getBehavior().getTargetChannelsNumber();
 
-        while (node.getLNChannelList().size() < bootstrap_channels) {
+        while (node.getLNChannelList().size() < bootstrapChannels) {
 
             // not mandatory, just to have different block timings in openings
             waitForBlocks(1);
@@ -524,5 +537,4 @@ public class UVNetworkManager {
         var uvnode = getNode(pubkey);
         uvnode.receiveMessage(message);
     }
-
 }

@@ -607,7 +607,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
         // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
 
-        log("Waiting for confirmation of "+tx);
+        Thread.currentThread().setName("WaitTx "+tx.txId().substring(0,4));
+        log("Waiting for confirmation of funding "+tx);
 
         var wait_conf = uvNetworkManager.getTimechain().getTimechainLatch(min_depth);
         try {
@@ -616,7 +617,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             throw new RuntimeException(e);
         }
 
-        log("Confirmed tx "+tx.txId());
+        log("Confirmed funding tx "+tx.txId());
 
         var timestamp = uvNetworkManager.getTimechain().getCurrentBlock();
         var request = sentChannelOpenings.get(peer_id);
@@ -635,10 +636,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         uvNetworkManager.getNode(peer_id).fundingLocked(newChannel);
 
         // when funding tx is confirmed after minimim depth
-        var msg_announcement = new MsgChannelAnnouncement(channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
-        broadcastToPeers(msg_announcement);
-        var msg_update = new MsgChannelUpdate(this.getPubKey(),channel_id,timestamp,0,newPolicy);
-        broadcastToPeers(msg_update);
+        String from = this.getPubKey();
+        String signer = this.getPubKey();
+        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        broadcastToPeers(from,msg_announcement);
+        var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
+        broadcastToPeers(from,msg_update);
 
         sentChannelOpenings.remove(peer_id);
     }
@@ -657,31 +660,30 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph.addLNChannel(newChannel);
         channelGraph.updateChannel(newChannel.getId(), newPolicy);
 
+        // sender is set as the channel initiator, so that it's excluded from broadcasting
         var timestamp = uvNetworkManager.getTimechain().getCurrentBlock();
-        var message_ann = new MsgChannelAnnouncement(newChannel.getId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
-        broadcastToPeers(message_ann);
+        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        broadcastToPeers(newChannel.getInitiator(), message_ann);
 
-        var msg_update = new MsgChannelUpdate(this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
-        broadcastToPeers(msg_update);
-
+        // here sender is set as current node, all the other peers should receive the update
+        String sender = this.getPubKey();
+        var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
+        broadcastToPeers(sender,msg_update);
     }
 
     /**
      * Not broadcasted if too old or too many forwardings
      * @param msg
      */
-   public void broadcastToPeers(MessageGossip msg) {
+   public void broadcastToPeers(String fromID, GossipMsg msg) {
 
        var current_age = uvNetworkManager.getTimechain().getCurrentBlock() -msg.getTimeStamp();
        if (current_age> Config.getVal("p2p_max_age")) return;
-       if (msg.getForwardings()>= Config.getVal("p2p_max_hops")) {
-           //log("Too much forwardings ("+msg.getForwardings()+") discarding "+msg);
-           return;
-       }
+       if (msg.getForwardings()>= Config.getVal("p2p_max_hops"))  return;
 
        for (P2PNode peer: peers.values()) {
-            if (!peer.getPubKey().equals(this.getPubKey()))
-                sendToPeer(peer,msg);
+            if (peer.getPubKey().equals(fromID)) continue;
+            sendToPeer(peer,msg);
         }
     }
 
@@ -741,21 +743,22 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void p2pProcessGossip() {
 
-        int max_msg = Config.getVal("p2p_flush_size");
+        int max_msg = Config.getVal("gossip_flush_size");
+
         while (isP2PRunning() && !p2PMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
-            MessageGossip msg = (MessageGossip) p2PMessageQueue.poll();
+            GossipMsg msg = (GossipMsg) p2PMessageQueue.poll();
 
             // Do again the control on message age, maybe it's been stuck in the queue for long...
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
-                    var announce_msg = (MsgChannelAnnouncement) msg.getNext();
+                    var announce_msg = (GossipMsgChannelAnnouncement) msg.nextMsgToForward(this.getPubKey());
                     var new_channel_id = announce_msg.getChannelId();
                     if (!channelGraph.hasChannel(new_channel_id)) {
                         //log("Adding to graph non existent channel "+new_channel_id);
                         this.channelGraph.addAnnouncedChannel(announce_msg);
-                        broadcastToPeers(announce_msg);
+                        broadcastToPeers(msg.getSender(),announce_msg);
                     }
                     else {
                         //log("Not adding already existing graph element for channel "+new_channel_id);
@@ -764,9 +767,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 }
                 // TODO: 4 times per day, per channel (antonopoulos)
                 case CHANNEL_UPDATE -> {
-                    var message = (MsgChannelUpdate) msg;
+                    var message = (GossipMsgChannelUpdate) msg;
                     // skip channel updates of own channels
-                    var updater_id = message.getNode();
+                    var updater_id = message.getSignerId();
                     var channel_id = message.getChannelId();
 
                     // sent from my channel partners, update related data
@@ -781,8 +784,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                      */
                     if (getChannelGraph().hasChannel(channel_id)) {
                         getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
-                        var next = message.getNext();
-                        broadcastToPeers(next);
+                        var next = message.nextMsgToForward(this.getPubKey());
+                        broadcastToPeers(message.getSender(),next);
                     }
                 }
             }
@@ -796,8 +799,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public void runServices() {
 
         try {
-            checkChannels();
-            checkHTLC();
+            checkChannelsMsgQueue();
+            checkHTLCMsgQueue();
             p2pProcessGossip();
 
         }
@@ -806,7 +809,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
     }
 
-    private void checkChannels() {
+    /**
+     * Check for incoming openchannel request/acceptance
+     */
+    private void checkChannelsMsgQueue() {
 
         final int max = 20;
         int n = 0;
@@ -823,7 +829,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
     }
 
-    private void checkHTLC() {
+    /**
+     * Check for HTLC related messages
+     */
+    private void checkHTLCMsgQueue() {
         final int max = 20;
         int n = 0;
 
@@ -1032,5 +1041,40 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peers_id)
             peers.put(p, uvNetworkManager.getP2PNode(p));
+    }
+
+    public static class NodeBehavior implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 9579L;
+        // TODO: define more profiles here
+        public final static int Msat = (int)1e6;
+        public final static NodeBehavior MANY_SMALL = new NodeBehavior(100,Msat/10,5*Msat);
+        public final static NodeBehavior MANY_BIG = new NodeBehavior(100,5*Msat,10*Msat);
+        public final static NodeBehavior MEDIUM_SMALL = new NodeBehavior(30,Msat/10,5*Msat);
+        public final static NodeBehavior MEDIUM_BIG = new NodeBehavior(30,5*Msat,10*Msat);
+        public final static NodeBehavior FEW_SMALL = new NodeBehavior(10,Msat/10,5*Msat);
+        public final static NodeBehavior FEW_BIG = new NodeBehavior(10,5*Msat,10*Msat);
+
+        private final int target_channel_number;
+        private final int min_channel_size;
+        private final int max_channel_size;
+
+        public int getTargetChannelsNumber() {
+            return target_channel_number;
+        }
+
+        public int getMinChannelSize() {
+            return min_channel_size;
+        }
+
+        public int getMaxChannelSize() {
+            return max_channel_size;
+        }
+
+        public NodeBehavior(int target_channel_number, int min_channel_size, int max_channel_size) {
+            this.target_channel_number = target_channel_number;
+            this.min_channel_size = min_channel_size;
+            this.max_channel_size = max_channel_size;
+        }
     }
 }

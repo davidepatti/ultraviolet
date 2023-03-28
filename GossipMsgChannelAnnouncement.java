@@ -1,12 +1,12 @@
-public class MsgChannelAnnouncement extends MessageGossip {
+public class GossipMsgChannelAnnouncement extends GossipMsg {
 
     private final String short_channel_id;
     private final String node_id_1;
     private final String node_id_2;
     private final int funding;
 
-    public MsgChannelAnnouncement(String channel_id, String pubkey1, String pubkey2, int funding, int timestamp, int forwardings) {
-        super("ANN:"+channel_id,forwardings,timestamp, Type.CHANNEL_ANNOUNCE);
+    public GossipMsgChannelAnnouncement(String sender, String channel_id, String pubkey1, String pubkey2, int funding, int timestamp, int forwardings) {
+        super(sender,forwardings,timestamp, Type.CHANNEL_ANNOUNCE);
         this.short_channel_id = channel_id;
         this.node_id_1 = pubkey1;
         this.node_id_2 = pubkey2;
@@ -29,8 +29,8 @@ public class MsgChannelAnnouncement extends MessageGossip {
         return funding;
     }
 
-    public synchronized MsgChannelAnnouncement getNext() {
-        return new MsgChannelAnnouncement(short_channel_id,getNodeId1(),getNodeId2(),this.funding, this.timestamp,this.forwardings+1);
+    public synchronized GossipMsgChannelAnnouncement nextMsgToForward(String sender) {
+        return new GossipMsgChannelAnnouncement(sender,short_channel_id,getNodeId1(),getNodeId2(),funding, timestamp,forwardings+1);
     }
 
     @Override

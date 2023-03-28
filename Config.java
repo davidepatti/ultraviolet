@@ -31,7 +31,7 @@ public class Config implements Serializable {
         properties.setProperty("bootstrap_max_channel_size","1000000");
 
         // p2p
-        properties.setProperty("p2p_flush_size","500");
+        properties.setProperty("gossip_flush_size","500");
         properties.setProperty("debug","true");
         properties.setProperty("p2p_max_hops","2");
         properties.setProperty("p2p_max_age","3");

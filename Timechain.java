@@ -36,7 +36,7 @@ public class Timechain implements Runnable, Serializable  {
        blockChain.add(newBlock);
 
        if (newBlock.txs().size()>0) {
-           log("Confirmed block "+newBlock.height()+" with txs: ");
+           log("New block "+newBlock.height()+" with txs: ");
            for (Transaction t: newBlock.txs()) {
                log(t.toString());
            }

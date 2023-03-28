@@ -1,7 +1,7 @@
 import java.io.Serializable;
 
-public abstract class MessageGossip extends Message implements Serializable {
-    protected final String ID;
+public abstract class GossipMsg extends Message implements Serializable {
+    private final String senderID;
     protected final int forwardings;
     protected final int timestamp;
 
@@ -9,15 +9,20 @@ public abstract class MessageGossip extends Message implements Serializable {
         return forwardings;
     }
 
+    public String getSender() {
+        return senderID;
+    }
 
     public int getTimeStamp() {
         return timestamp;
     }
-    abstract public MessageGossip getNext();
+    abstract public GossipMsg nextMsgToForward(String sender);
 
-    public MessageGossip(String ID, int forwardings, int timestamp, Type msgType) {
+
+
+    public GossipMsg(String fromID, int forwardings, int timestamp, Type msgType) {
         super(msgType);
-        this.ID = ID;
+        this.senderID = fromID;
         this.forwardings = forwardings;
         this.timestamp = timestamp;
     }
@@ -25,7 +30,7 @@ public abstract class MessageGossip extends Message implements Serializable {
     @Override
     public String toString() {
         return "P2PMessage{" +
-                "ID='" + ID + '\'' +
+                "sender='" + senderID + '\'' +
                 ", forwardings=" + forwardings +
                 ", timestamp=" + timestamp +
                 ", msgType=" + msgType +

@@ -67,7 +67,7 @@ public class ChannelGraph implements Serializable  {
         channelSet.add(id);
     }
 
-    public synchronized void addAnnouncedChannel(MsgChannelAnnouncement msg) {
+    public synchronized void addAnnouncedChannel(GossipMsgChannelAnnouncement msg) {
 
         var channel_id = msg.getChannelId();
         var node1 = msg.getNodeId1();
@@ -75,7 +75,7 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1, new LinkedList<>());
         adj_map.putIfAbsent(node2, new LinkedList<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
-        adj_map.get(node1).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
+        adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
     }
 
     /**

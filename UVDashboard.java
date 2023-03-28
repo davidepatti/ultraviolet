@@ -146,9 +146,8 @@ public class UVDashboard {
         var paths = networkManager.getNode(start).findPaths(destination,stopfirst);
 
         if (paths.size()>0) {
-            for (ArrayList<ChannelGraph.Edge> p: paths) {
-                System.out.println("PATH------------------------------------- ");
-                p.forEach(System.out::println);
+            for (ArrayList<ChannelGraph.Edge> path: paths) {
+                System.out.println(ChannelGraph.pathString(path));
             }
         }
         else System.out.println("NO PATH FOUND");
@@ -171,6 +170,54 @@ public class UVDashboard {
         System.out.println("Done!");
     }
 
+
+    private void showQueueCommand(String node_id) {
+        if (!networkManager.isBootstrapCompleted()) return;
+        var node = networkManager.getNode(node_id);
+        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+        System.out.println("P2P message queue:");
+        System.out.println("-------------------------------------------------------------");
+        node.getP2PMessageQueue().forEach(System.out::println);
+
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending HTLC:");
+        node.getReceivedHTLC().values().forEach(System.out::println);
+
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending opening:");
+
+        node.getSentChannelOpenings().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending accepted:");
+        node.getChannelsAcceptedQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending to accept:");
+        node.getChannelsToAcceptQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending Invoices:");
+        node.getGeneratedInvoices().values().forEach(System.out::println);
+    }
+
+    private void showGraphCommand(String node_id) {
+
+        if (!networkManager.isBootstrapCompleted()) return;
+        var g = networkManager.getNode(node_id).getChannelGraph();
+        System.out.println(g);
+    }
+
+    public static void main(String[] args) {
+
+        if (args.length==1) {
+            System.out.println("Using configuration "+args[0]);
+            Config.loadConfig(args[0]);
+        }
+        else {
+            System.out.println("No config, using default...");
+            Config.setDefaults();
+        }
+
+        var uvm_client = new UVDashboard(new UVNetworkManager());
+    }
     /**
      *
      * @param nm Network Manager instance controlled by the dashboard
@@ -185,7 +232,7 @@ public class UVDashboard {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
                 System.out.println("Bootstrap Started, check " + Config.get("logfile"));
-                ExecutorService bootstrap_exec= Executors.newSingleThreadExecutor();
+                var bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
                 _waitForFuture(bootstrap);
@@ -330,54 +377,6 @@ public class UVDashboard {
         }
         System.out.println("Disconnecting client");
         System.exit(0);
-    }
-
-    private void showQueueCommand(String node_id) {
-        if (!networkManager.isBootstrapCompleted()) return;
-        var node = networkManager.getNode(node_id);
-        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
-        System.out.println("P2P message queue:");
-        System.out.println("-------------------------------------------------------------");
-        node.getP2PMessageQueue().forEach(System.out::println);
-
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending HTLC:");
-        node.getReceivedHTLC().values().forEach(System.out::println);
-
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending opening:");
-
-        node.getSentChannelOpenings().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending accepted:");
-        node.getChannelsAcceptedQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending to accept:");
-        node.getChannelsToAcceptQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending Invoices:");
-        node.getGeneratedInvoices().values().forEach(System.out::println);
-    }
-
-    private void showGraphCommand(String node_id) {
-
-        if (!networkManager.isBootstrapCompleted()) return;
-        var g = networkManager.getNode(node_id).getChannelGraph();
-        System.out.println(g);
-    }
-
-    public static void main(String[] args) {
-
-        if (args.length==1) {
-            System.out.println("Using configuration "+args[0]);
-            Config.loadConfig(args[0]);
-        }
-        else {
-            System.out.println("No config, using default...");
-            Config.setDefaults();
-        }
-
-        var uvm_client = new UVDashboard(new UVNetworkManager());
     }
 
 }
