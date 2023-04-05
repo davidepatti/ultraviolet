@@ -2,16 +2,29 @@
 
 _**U**tilizing **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
 
-The goal is to provide an open-source extensible high-level simulation platform for the Bitcoin Lightning Network, abstracting some complexity of the underlying elements while still providing a timechain-level accuracy.
+The goal of UltraViolet (UV) is to provide an open-source extensible high-level simulation platform for the Bitcoin Lightning Network, abstracting some of the major complexities of the underlying elements, while still providing a timechain-level accuracy.
 
 Ultraviolet (UV) makes a massive usage of independent threads to make each simulated Lightning Node a living entity in its own "behavioral space".
 
 ### Main features of Ultraviolet:
 
-*   _Timechain-level simulation_:  UVNodes communicate with each other by means of Gossip/P2P messages, as specified in the BOLT protocol
-*   _Large-scale simulation_: Possibility of instantiating thousands of running nodes, where each can be characterized according to the typical node features (funding, channel sizes distribution, frequency of opening/closing, cltv deltas, fees etc..)
-*   _Real Topology Testing_: support for pre-existing topologies imported from a json file, e.g. the output of the "lncli describegraph" command executed in a real node.
-*   _Pathfinding and Routing_: it is possible to test the routing of payment invoices, emulating the exchange of HTLC update/fulfill messages to experiment with new potential protocol evolutions.
+*   _Timechain-level simulation_:  all the LN BOLT protocol events, Gossip/P2P messages, funding/closing on-chain transactions, are simulated according to a scaled-down timechain flow, allowing a fast evaluation of several LN scenarios, while still providing  a fine-grained block-level "vision" of the interactions with the base Bitcoin layer
+*   _Large-scale simulation_: Possibility of instantiating thousands of running nodes, where each can be characterized according to some common node features (funding, channel sizes distribution, frequency of opening/closing, cltv deltas, fees etc..)
+*   _Real Topology Testing_: support for pre-existing topologies imported from a json file, e.g. using the output of the "lncli describegraph" command executed on a real node.
+*   _Pathfinding and Routing_: it is possible to test the routing of payment invoices, emulating the exchange of HTLC update/fulfill messages to experiment with new potential protocol evolutions, e.g., new routing strategies etc...
+
+## Quick Start
+
+from  terminal:  
+_`java UltraViolet`_
+
+This command will start the main menu
+
+![](https://user-images.githubusercontent.com/3337669/230136438-e1419961-d2cd-48cd-9983-9d3fc169ce87.png)
+
+For further details about usage and commands please refer to the wikipage (coming soon!)
+
+## Ultraviolet Architecture
 
 ### Components exposed by UltraViolet
 
@@ -30,11 +43,6 @@ The architecture of the Ultraviolet environment hides all the complex aspects of
 *   Timing: the speed of all events is related and expressed in a scaled, simulated time. So while the real-world timechain produces on average a Bitcoin block every 10 minutes, it would be unpractical to maintain such timing in a simulated scenario. Thus, UV users can scale the timing according to their preference, and all the other events should be referred to the same scaling. E.g. if I scale the 10 minutes blocktime to 1 second,  then an LN node that in real-world would flush/broadcast gossip messages every minute should do it every 100ms in the simulation time.
 
 All the above abstractions are not meant to be a definitive design choice, as the modularity of UV allows for extension and implementation of aspects that have been originally intentionally hidden. For example, the Timechain class contains a mempool list, and when a new block is created all the transactions are removed from such list. But just adding an additional "fee" field in the tx would easily allow implementation of a selection policy to model base-layer congestion scenarios. 
-
-## Quick Start
-
-from some terminal:  
-_java UVDashboard_
 
 # Components
 
