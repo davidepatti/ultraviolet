@@ -1,11 +1,10 @@
 import java.util.*;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 
-public class UVDashboard {
+public class UltraViolet {
 
     private final UVNetworkManager networkManager;
     boolean quit = false;
@@ -205,29 +204,16 @@ public class UVDashboard {
         System.out.println(g);
     }
 
-    public static void main(String[] args) {
-
-        if (args.length==1) {
-            System.out.println("Using configuration "+args[0]);
-            Config.loadConfig(args[0]);
-        }
-        else {
-            System.out.println("No config, using default...");
-            Config.setDefaults();
-        }
-
-        var uvm_client = new UVDashboard(new UVNetworkManager());
-    }
     /**
      *
      * @param nm Network Manager instance controlled by the dashboard
      */
-    public UVDashboard(UVNetworkManager nm) {
+    public UltraViolet(UVNetworkManager nm) {
         networkManager = nm;
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
 
-        menuItems.add(new MenuItem("boot", "Bootstrap Lightning Network from scratch", (x) -> {
+        menuItems.add(new MenuItem("boot", "Bootstrap a Lightning Network from scratch", (x) -> {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
@@ -238,7 +224,19 @@ public class UVDashboard {
                 _waitForFuture(bootstrap);
             }
         }));
-        menuItems.add(new MenuItem("t", "Start/Stop Timechain", (x) -> {
+        menuItems.add(new MenuItem("import", "Import a Network Topology", x -> {
+            if (!networkManager.resetUVM()) {
+                System.out.println("Cannot reset UVM");
+            }
+            System.out.println("A graph topology will be imported using the json output of 'lncli describegraph' command on some root node");
+            System.out.print("Enter a JSON file: ");
+            String json = scanner.nextLine();
+            System.out.print("Enter root node pubkey:");
+            String root = scanner.nextLine();
+            imported_graph_root = root;
+            new Thread(()-> networkManager.importTopology(json,root)).start();
+        }));
+        menuItems.add(new MenuItem("t", "Start/Stop Timechain and P2P", (x) -> {
             if (!networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: must execute bootstrap or load/import a network!");
                 return;
@@ -253,7 +251,7 @@ public class UVDashboard {
             }
         }));
 
-        menuItems.add(new MenuItem("all", "Show All newtork Nodes and Channels", x -> {
+        menuItems.add(new MenuItem("all", "Show Nodes and Channels", x -> {
             if (networkManager.getUVNodeList().size()== 0) {
                 System.out.println("EMPTY NODE LIST");
                 return;
@@ -272,21 +270,20 @@ public class UVDashboard {
             String node = scanner.nextLine();
             showNodeCommand(node);
         }));
-        menuItems.add(new MenuItem("graph", "Show a node graph", x -> {
+        menuItems.add(new MenuItem("graph", "Show a Node Graph", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showGraphCommand(node);
         }));
-        menuItems.add(new MenuItem("p2pq", "Show node queue", x -> {
+        menuItems.add(new MenuItem("p2pq", "Show a Node Message Queue", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showQueueCommand(node);
         }));
         menuItems.add(new MenuItem("test", "TEST", x -> {
-            networkManager.getAlias();
         }));
 
-        menuItems.add(new MenuItem("conf", "Show configuration ", x -> {
+        menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
             Config.print();
             System.out.println("-----------------------------------");
@@ -304,28 +301,10 @@ public class UVDashboard {
             }
         }));
 
-        menuItems.add(new MenuItem("import", "Import Network Topology", x -> {
-            if (!networkManager.resetUVM()) {
-                System.out.println("Cannot reset UVM");
-            }
-            System.out.println("A graph topology will be imported using the json output of 'lncli describegraph' command on some root node");
-            System.out.print("Enter a JSON file: ");
-            String json = scanner.nextLine();
-            System.out.print("Enter root node pubkey:");
-            String root = scanner.nextLine();
-            imported_graph_root = root;
-            new Thread(()-> networkManager.importTopology(json,root)).start();
-        }));
-        menuItems.add(new MenuItem("stats", "Show Global stats", x -> {
+        menuItems.add(new MenuItem("stats", "Show Global Stats", x -> {
             if (networkManager.isBootstrapCompleted())  {
-                var max = networkManager.getStats().getMaxGraphSizeNode();
-                var min = networkManager.getStats().getMinGraphSizeNode();
-                String s = "Max Graph size:" + max + " (node/channels) " +
-                        max.getChannelGraph().getNodeCount() + "/" + max.getChannelGraph().getChannelCount() +
-                        "\nMin Graph size:" + min + " (node/channels) " +
-                        min.getChannelGraph().getNodeCount() + "/" + min.getChannelGraph().getChannelCount() +
-                        "Average graph size (nodes): " + networkManager.getStats().getAverageGraphSize();
-                System.out.println(s);
+                networkManager.getStats().writeReport(new Date()+"_report.txt");
+                System.out.println(networkManager.getStats().generateReport());
             }
             else System.out.println("Bootstrap not completed!");
         } ));
@@ -333,12 +312,12 @@ public class UVDashboard {
         menuItems.add(new MenuItem("route", "Route Payment", x -> routeCmd()));
         menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
         menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
-        menuItems.add(new MenuItem("save", "Save UVM status", x -> {
+        menuItems.add(new MenuItem("save", "Save UV Network Status", x -> {
             System.out.print("Save to:");
             String file_to_save = scanner.nextLine();
             networkManager.saveStatus(file_to_save);
         }));
-        menuItems.add(new MenuItem("load", "Load UVM status", x -> {
+        menuItems.add(new MenuItem("load", "Load UV Network Status", x -> {
             System.out.print("Load from:");
             String file_to_load = scanner.nextLine();
             if (networkManager.loadStatus(file_to_load))
@@ -377,6 +356,20 @@ public class UVDashboard {
         }
         System.out.println("Disconnecting client");
         System.exit(0);
+    }
+
+    public static void main(String[] args) {
+
+        if (args.length==1) {
+            System.out.println("Using configuration "+args[0]);
+            Config.loadConfig(args[0]);
+        }
+        else {
+            System.out.println("No config, using default...");
+            Config.setDefaults();
+        }
+
+        var uvm_client = new UltraViolet(new UVNetworkManager());
     }
 
 }

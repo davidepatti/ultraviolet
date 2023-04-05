@@ -2,9 +2,8 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Consumer;
 
-public class Timechain implements Runnable, Serializable  {
+public class UVTimechain implements Runnable, Serializable  {
 
 
     private void log(String s) {
@@ -65,7 +64,7 @@ public class Timechain implements Runnable, Serializable  {
 
     boolean running = false;
 
-    public Timechain(int blocktime) {
+    public UVTimechain(int blocktime) {
         current_block = 0;
         this.blocktime = blocktime;
         this.running = false;

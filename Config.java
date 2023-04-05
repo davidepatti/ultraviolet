@@ -16,6 +16,8 @@ public class Config implements Serializable {
     }
 
     public static void setDefaults() {
+        if (properties==null) properties = new Properties();
+
         properties.setProperty("debug","true");
         properties.setProperty("blocktime","1000");
         properties.setProperty("logfile","default.log");

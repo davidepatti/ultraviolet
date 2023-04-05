@@ -530,7 +530,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         s.append("tmp_id").append(getPubKey()).append("_").append(peerPubKey);
         return s.toString();
     }
-    private String generateChannelId(Timechain.Transaction tx) {
+    private String generateChannelId(UVTimechain.Transaction tx) {
         var searchPos = uvNetworkManager.getTimechain().getTxLocation(tx);
         var position = searchPos.get();
 
@@ -585,7 +585,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Channel Accepted by peer "+ peerPubKey+ " ("+temp_channel_id+")");
         var pseudo_hash = Kit.bytesToHexString(Kit.hash256(temp_channel_id));
-        var funding_tx = new Timechain.Transaction(pseudo_hash, Timechain.TxType.FUNDING_TX,getPubKey(),peerPubKey);
+        var funding_tx = new UVTimechain.Transaction(pseudo_hash, UVTimechain.TxType.FUNDING_TX,getPubKey(),peerPubKey);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
         // bolt: received funding_signed
@@ -600,7 +600,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param peer_id
      * @param tx
      */
-    private void waitFundingConfirmation(String peer_id, Timechain.Transaction tx, int min_depth) {
+    private void waitFundingConfirmation(String peer_id, UVTimechain.Transaction tx, int min_depth) {
 
         // Abstractions:
         // - No in-mempool waiting room after broadcasting (just wait the blocks...)
