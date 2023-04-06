@@ -22,14 +22,4 @@ This command will start the main menu
 
 ![](https://user-images.githubusercontent.com/3337669/230136438-e1419961-d2cd-48cd-9983-9d3fc169ce87.png)
 
-For further details about usage and commands please refer to the wikipage (coming soon!)
-
-## Ultraviolet Architecture
-
-### Components exposed by UltraViolet
-
-*   UVNode: an object (one per LN node) mapping the main functionalities of a running node, implemented as multiple thread instances (e.g., HTLC forwarding, Gossip messages, channels management)
-*   Timechain: a global thread, representing the blockchain time flow
-*   UVChannel: one instance for each channel, representing the main attributes of
-*   UVNetworkManager: a global thread, interacting with other threads via synchronized methods when necessary, to implement the common services (start/stop p2p, timechain, load/restore status etc.)
-
+For further details about usage and commands please refer to the [wikipage](https://github.com/davidepatti/ultraviolet/wiki)
