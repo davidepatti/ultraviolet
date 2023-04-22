@@ -94,12 +94,15 @@ public class UltraViolet {
         System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
 
         for (var path:paths) {
-            if (sender.checkPath(path,invoice.getAmount(),fees)) {
-                validPaths.add(path);
+            if (sender.checkPathFees(path,invoice.getAmount()) > fees) {
+                System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
+                continue;
             }
-            else {
-                System.out.println("Discarding path "+ ChannelGraph.pathString(path));
+            if (sender.checkPathLiquidity(path, invoice.getAmount()))  {
+                System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
+                continue;
             }
+            validPaths.add(path);
         }
         boolean success = false;
         if (validPaths.size()>0) {

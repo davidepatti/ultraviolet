@@ -209,7 +209,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
 
-    private boolean checkPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
+    public boolean checkPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
         log("Checking path "+ChannelGraph.pathString(path));
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
@@ -233,7 +233,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     }
 
-    private int checkPathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
+    public int checkPathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
         int fees = 0;
 
         for (ChannelGraph.Edge e: path) {
