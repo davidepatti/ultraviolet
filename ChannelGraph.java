@@ -9,7 +9,8 @@ public class ChannelGraph implements Serializable  {
     @Serial
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph, indexed by node id as keys
-    transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
+    //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
+    transient private Map<String, List<Edge>> adj_map = new HashMap<>();
 
 
     public static String pathString(ArrayList<Edge> path) {
@@ -36,7 +37,7 @@ public class ChannelGraph implements Serializable  {
 
     // This function adds a new vertex to the graph
     private synchronized void addNode(String node_id) {
-        adj_map.putIfAbsent(node_id, new LinkedList<>());
+        adj_map.putIfAbsent(node_id, new ArrayList<>());
     }
 
     /**
@@ -54,8 +55,8 @@ public class ChannelGraph implements Serializable  {
         var node2pub = channel.getNode2PubKey();
 
 
-        adj_map.putIfAbsent(node1pub, new LinkedList<>());
-        adj_map.putIfAbsent(node2pub, new LinkedList<>());
+        adj_map.putIfAbsent(node1pub, new ArrayList<>());
+        adj_map.putIfAbsent(node2pub, new ArrayList<>());
 
 
         var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
@@ -72,8 +73,8 @@ public class ChannelGraph implements Serializable  {
         var channel_id = msg.getChannelId();
         var node1 = msg.getNodeId1();
         var node2 = msg.getNodeId2();
-        adj_map.putIfAbsent(node1, new LinkedList<>());
-        adj_map.putIfAbsent(node2, new LinkedList<>());
+        adj_map.putIfAbsent(node1, new ArrayList<>());
+        adj_map.putIfAbsent(node2, new ArrayList<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
         adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
     }
@@ -190,7 +191,7 @@ public class ChannelGraph implements Serializable  {
 
             for (int i=0;i<n_keys;i++) {
                 var pubkey = (String) s.readObject();
-                @SuppressWarnings("unchecked") var list = (LinkedList<Edge>)s.readObject();
+                @SuppressWarnings("unchecked") var list = (ArrayList<Edge>)s.readObject();
                 adj_map.put(pubkey,list);
              }
 
