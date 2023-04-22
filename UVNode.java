@@ -5,7 +5,14 @@ import java.util.concurrent.*;
 
 public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
-    private int skipped_msg = 0;
+    private double stat_failed_path_liquidity = 0;
+    private double stat_checked_path_liquidity = 0;
+    private double stat_checked_path_fees = 0;
+    private double stat_failed_path_fees = 0;
+    private double stat_attempted_invoice_routings = 0;
+    private double stat_successfull_invoice_routings = 0;
+    private double stat_processed_invoices = 0;
+
 
     @Serial
     private static final long serialVersionUID = 120675L;
@@ -38,6 +45,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> pendingHTLC = new HashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
+
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
      * @param uvNetworkManager an instance of a Ultraviolet Manager to attach
@@ -201,7 +209,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
 
-    public boolean checkPath(ArrayList<ChannelGraph.Edge> path, int amount, int maxFees) {
+    private boolean checkPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
         log("Checking path "+ChannelGraph.pathString(path));
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
@@ -218,9 +226,27 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    public void payInvoice(LNInvoice invoice) {
+    private int computeFees(int amount, int base_fee_rate, int fee_ppm_rate) {
+        double fee_ppm = fee_ppm_rate*(amount/(double)1e6);
+        double base_fee = base_fee_rate/(double)1000;
+        return (int)(fee_ppm+base_fee);
+
+    }
+
+    private int checkPathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
+        int fees = 0;
+
+        for (ChannelGraph.Edge e: path) {
+            fees+= computeFees(amount,e.policy().base_fee(),e.policy().fee_ppm());
+        }
+
+        return fees;
+    }
+
+    public void processInvoice(LNInvoice invoice, int max_fees) {
 
         log("Processing "+invoice);
+        stat_processed_invoices++;
         var paths = this.findPaths(invoice.getDestination(),false);
 
         boolean success = false;
@@ -231,10 +257,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             for (var path: paths) {
                 n++;
                 log("Trying path #"+n);
-                if (!checkPath(path,invoice.getAmount(),777)) continue;
+                stat_checked_path_liquidity++;
+                if (!checkPathLiquidity(path,invoice.getAmount())) {
+                    stat_failed_path_liquidity++;
+                    continue;
+                }
+
+                stat_checked_path_fees++;
+                if (checkPathFees(path,invoice.getAmount())>max_fees)  {
+                    stat_failed_path_fees++;
+                    continue;
+                }
+
+                stat_attempted_invoice_routings++;
                 routeInvoiceOnPath(invoice,path);
 
                 if (waitForInvoiceCleared(invoice.getHash())) {
+                    stat_successfull_invoice_routings++;
                     success = true;
                     break;
                 }
@@ -297,7 +336,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 // the fees in the carol->dina channel will be put in the Bob payload in the next loop
                 // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
                 //fees += channel.getPolicy(source).fee_ppm()+channel.getPolicy(source).base_fee();
-                cumulatedFees += channel.getPolicy(source).fee_ppm();
+                cumulatedFees += computeFees(amount,channel.getPolicy(source).base_fee(),channel.getPolicy(source).fee_ppm());
                 out_cltv += channel.getPolicy(source).cltv();
             }
             else {

@@ -65,7 +65,7 @@ public class UltraViolet {
     /**
      *
      */
-    private void routeCmd() {
+    private void testInvoiceRoutingCmd() {
 
         if (!networkManager.isBootstrapCompleted()) {
             System.out.println("ERROR: must execute bootstrap or load/import a network!");
@@ -81,6 +81,8 @@ public class UltraViolet {
         var dest = networkManager.getNode(end_id);
         System.out.print("Invoice amount:");
         int amount = Integer.parseInt(scanner.nextLine());
+        System.out.print("Max fees:");
+        int fees = Integer.parseInt(scanner.nextLine());
 
         var invoice = dest.generateInvoice(amount);
         System.out.println("Generated Invoice: "+invoice);
@@ -92,7 +94,7 @@ public class UltraViolet {
         System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
 
         for (var path:paths) {
-            if (sender.checkPath(path,invoice.getAmount(),777)) {
+            if (sender.checkPath(path,invoice.getAmount(),fees)) {
                 validPaths.add(path);
             }
             else {
@@ -312,7 +314,7 @@ public class UltraViolet {
             else System.out.println("Bootstrap not completed!");
         } ));
         menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> findPathsCmd()));
-        menuItems.add(new MenuItem("route", "Route Payment", x -> routeCmd()));
+        menuItems.add(new MenuItem("route", "Route Payment", x -> testInvoiceRoutingCmd()));
         menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
         menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
         menuItems.add(new MenuItem("save", "Save UV Network Status", x -> {
