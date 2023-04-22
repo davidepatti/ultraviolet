@@ -488,14 +488,14 @@ public class UVNetworkManager {
     public void bootstrapNode(UVNode node) {
 
         ///----------------------------------------------------------
-        var warmup = ThreadLocalRandom.current().nextInt(0,Config.getVal("bootstrap_warmup"));
+        var duration = ThreadLocalRandom.current().nextInt(0,Config.getVal("bootstrap_duration"));
 
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
-        // Also: large warmups with short p2p message deadline can cause some node no to consider earlier node messages
+        // Also: large durations with short p2p message deadline can cause some node no to consider earlier node messages
 
-        log("BOOTSTRAPPING "+node.getPubKey()+ " - waiting warmup blocks: "+warmup);
+        log("BOOTSTRAPPING "+node.getPubKey()+ " - waiting duration blocks: "+duration);
 
-        waitForBlocks(warmup);
+        waitForBlocks(duration);
 
         final int bootstrapChannels = node.getBehavior().getTargetChannelsNumber();
 
@@ -532,7 +532,7 @@ public class UVNetworkManager {
         getBootstrapLatch().countDown();
     }
 
-    public void sendMessageToNode(String pubkey, Message message) {
+    public void sendMessageToNode(String pubkey, P2PMessage message) {
         var uvnode = getNode(pubkey);
         uvnode.receiveMessage(message);
     }

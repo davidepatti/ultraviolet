@@ -23,7 +23,7 @@ public class Config implements Serializable {
         properties.setProperty("logfile","default.log");
         properties.setProperty("seed","1");
         // bootstrap
-        properties.setProperty("bootstrap_warmup","1");
+        properties.setProperty("bootstrap_duration","1");
         properties.setProperty("bootstrap_nodes","10");
         properties.setProperty("bootstrap_min_funding","10000000");
         properties.setProperty("bootstrap_min_funding","100000000");
