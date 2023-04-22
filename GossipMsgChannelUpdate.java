@@ -31,4 +31,12 @@ public class GossipMsgChannelUpdate extends GossipMsg {
     public String toString() {
         return super.toString() + "ch_id:" + channel_id + "}";
     }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof GossipMsgChannelUpdate that)) return false;
+
+        var e = channel_id.equals(that.channel_id) && timestamp == that.timestamp && signerId.equals(that.signerId);
+        return e;
+    }
 }

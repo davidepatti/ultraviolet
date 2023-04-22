@@ -1,6 +1,6 @@
 import java.io.Serializable;
 
-public class MsgOpenChannel extends Message implements Serializable {
+public class MsgOpenChannel extends P2PMessage implements Serializable {
 
     final private String temporary_channel_id;
     final private int funding_satoshis;

@@ -1,4 +1,4 @@
-public class MsgUpdateFailHTLC extends Message {
+public class MsgUpdateFailHTLC extends P2PMessage {
     private final String channel_id;
     private final int id;
     private final String reason;

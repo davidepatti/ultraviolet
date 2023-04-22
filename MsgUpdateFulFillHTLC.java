@@ -1,4 +1,4 @@
-public class MsgUpdateFulFillHTLC extends Message {
+public class MsgUpdateFulFillHTLC extends P2PMessage {
     private final String channel_id;
     private final int id;
     private final long payment_preimage;

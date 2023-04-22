@@ -28,8 +28,8 @@ public class UltraViolet {
         int vertex = node.getChannelGraph().getNodeCount();
         System.out.println("Graph nodes:" + vertex);
         System.out.println("Graph channels:" + edges);
-        if (node.getP2PMsgQueue() != null)
-            System.out.println("Current p2p message queue:" + node.getP2PMsgQueue().size());
+        if (node.getGossipMsgQueue() != null)
+            System.out.println("Current p2p message queue:" + node.getGossipMsgQueue().size());
         else
             System.out.println("No p2p queued messages");
 
@@ -158,10 +158,13 @@ public class UltraViolet {
      * @param f
      */
     private void _waitForFuture(Future f) {
+        int i =0;
         while (!f.isDone()) {
+            i++;
             System.out.print(".");
+            if (i%20 ==0 ) System.out.println("");
             try {
-                Thread.sleep(200);
+                Thread.sleep(300);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -176,7 +179,7 @@ public class UltraViolet {
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
         System.out.println("P2P message queue:");
         System.out.println("-------------------------------------------------------------");
-        node.getP2PMessageQueue().forEach(System.out::println);
+        node.getGossipMessageQueue().forEach(System.out::println);
 
         System.out.println("-------------------------------------------------------------");
         System.out.println("Pending HTLC:");

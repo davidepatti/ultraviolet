@@ -5,6 +5,8 @@ import java.util.concurrent.*;
 
 public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
+    private int skipped_msg = 0;
+
     @Serial
     private static final long serialVersionUID = 120675L;
 
@@ -24,7 +26,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private ArrayList<String> saved_peers_id;
 
     transient public ScheduledFuture<?> p2pHandler;
-    transient private Queue<Message> p2PMessageQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateAddHTLC> updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
@@ -51,8 +53,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph = new ChannelGraph(pubkey);
     }
 
-    public Queue<Message> getP2PMessageQueue() {
-        return p2PMessageQueue;
+    public Queue<GossipMsg> getGossipMessageQueue() {
+        return GossipMessageQueue;
     }
     public Queue<MsgOpenChannel> getChannelsToAcceptQueue() {
         return channelsToAcceptQueue;
@@ -687,7 +689,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
     }
 
-    private void sendToPeer(P2PNode peer, Message msg) {
+    private void sendToPeer(P2PNode peer, P2PMessage msg) {
        //debug("Sending message "+msg+ " to "+peer.getPubKey());
        uvNetworkManager.sendMessageToNode(peer.getPubKey(), msg);
     }
@@ -696,7 +698,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      *
      * @param msg
      */
-    public void receiveMessage(Message msg) {
+    public void receiveMessage(P2PMessage msg) {
         //debug("Received "+msg);
         switch (msg.getType()) {
             case OPEN_CHANNEL -> {
@@ -720,12 +722,19 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 updateFailHTLCQueue.add(htlc);
             }
 
-            default -> this.p2PMessageQueue.add(msg);
+            // assuming all the other message type are gossip
+
+            default ->  {
+                var message = (GossipMsg) msg;
+                if (!GossipMessageQueue.contains(message)) {
+                    GossipMessageQueue.add(message);
+                }
+            }
         }
     }
 
-    public Queue<Message> getP2PMsgQueue() {
-        return this.p2PMessageQueue;
+    public Queue<GossipMsg> getGossipMsgQueue() {
+        return this.GossipMessageQueue;
     }
 
     public synchronized void setP2PServices(boolean status) {
@@ -745,9 +754,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         int max_msg = Config.getVal("gossip_flush_size");
 
-        while (isP2PRunning() && !p2PMessageQueue.isEmpty() && max_msg>0) {
+        while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
-            GossipMsg msg = (GossipMsg) p2PMessageQueue.poll();
+            GossipMsg msg = (GossipMsg) GossipMessageQueue.poll();
 
             // Do again the control on message age, maybe it's been stuck in the queue for long...
 
@@ -916,8 +925,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public String toString() {
 
         int size;
-        if (getP2PMsgQueue()!=null)
-            size = getP2PMsgQueue().size();
+        if (getGossipMsgQueue()!=null)
+            size = getGossipMsgQueue().size();
         else size = 0;
 
         return "*PubKey:'" + pubkey + '\'' + "("+alias+")"+ ", ch:" + channels.size() +
@@ -968,7 +977,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 s.writeObject(p.getPubKey());
             }
 
-            s.writeObject(p2PMessageQueue);
+            s.writeObject(GossipMessageQueue);
             s.writeObject(this.channelsAcceptedQueue);
             s.writeObject(this.channelsToAcceptQueue);
             s.writeObject(this.updateAddHTLCQueue);
@@ -1011,7 +1020,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
 
             //noinspection unchecked
-            p2PMessageQueue = (Queue<Message>)s.readObject();
+            GossipMessageQueue = (Queue<GossipMsg>)s.readObject();
             channelsAcceptedQueue = (Queue<MsgAcceptChannel>) s.readObject();
             channelsToAcceptQueue = (Queue<MsgOpenChannel>) s.readObject();
             updateAddHTLCQueue = (Queue<MsgUpdateAddHTLC>) s.readObject();

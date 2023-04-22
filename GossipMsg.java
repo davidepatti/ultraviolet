@@ -1,6 +1,6 @@
 import java.io.Serializable;
 
-public abstract class GossipMsg extends Message implements Serializable {
+public abstract class GossipMsg extends P2PMessage implements Serializable {
     private final String senderID;
     protected final int forwardings;
     protected final int timestamp;

@@ -1,3 +1,5 @@
+import java.util.Objects;
+
 public class GossipMsgChannelAnnouncement extends GossipMsg {
 
     private final String short_channel_id;
@@ -36,5 +38,14 @@ public class GossipMsgChannelAnnouncement extends GossipMsg {
     @Override
     public String toString() {
         return super.toString()+" id:" + short_channel_id +", node1:'" + node_id_1 + ", node2:" + node_id_2 + '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof GossipMsgChannelAnnouncement that)) return false;
+
+        var e =  short_channel_id.equals(that.short_channel_id) && timestamp == that.timestamp;
+        return e;
     }
 }

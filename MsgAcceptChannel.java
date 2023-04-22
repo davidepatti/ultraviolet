@@ -1,6 +1,6 @@
 import java.io.Serializable;
 
-public class MsgAcceptChannel extends Message implements Serializable {
+public class MsgAcceptChannel extends P2PMessage implements Serializable {
     final private int to_self_delay;
     final private String temporary_channel_id;
     final private String funding_pubkey;
