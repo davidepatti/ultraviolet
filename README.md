@@ -2,24 +2,37 @@
 
 _**U**tilizing **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
 
-The goal of UltraViolet (UV) is to provide an open-source extensible high-level simulation platform for the Bitcoin Lightning Network, abstracting some of the major complexities of the underlying elements, while still providing a timechain-level accuracy.
+The goal of UltraViolet (UV) is to provide an open-source extensible high-level simulation platform for the Bitcoin
+Lightning Network, abstracting some of the major complexities of the underlying elements, while still providing a
+timechain-level accuracy.
 
-Ultraviolet (UV) makes a massive usage of independent threads to make each simulated Lightning Node a living entity in its own "behavioral space".
+Ultraviolet (UV) makes a massive usage of independent threads to make each simulated Lightning Node a living entity in
+its own "behavioral space".
 
 ### Main features of Ultraviolet:
 
-*   _Timechain-level simulation_:  all the LN BOLT protocol events, Gossip/P2P messages, funding/closing on-chain transactions, are simulated according to a scaled-down timechain flow, allowing a fast evaluation of several LN scenarios, while still providing  a fine-grained block-level "vision" of the interactions with the base Bitcoin layer
-*   _Large-scale simulation_: Possibility of instantiating thousands of running nodes, where each can be characterized according to some common node features (funding, channel sizes distribution, frequency of opening/closing, cltv deltas, fees etc..)
-*   _Real Topology Testing_: support for pre-existing topologies imported from a json file, e.g. using the output of the "lncli describegraph" command executed on a real node.
-*   _Pathfinding and Routing_: it is possible to test the routing of payment invoices, emulating the exchange of HTLC update/fulfill messages to experiment with new potential protocol evolutions, e.g., new routing strategies etc...
+* **Timechain-level simulation**:all the LN BOLT protocol events, Gossip/P2P messages, funding/closing on-chain
+  transactions, are simulated according to a scaled-down timechain flow, allowing a fast evaluation of several LN
+  scenarios, while still providing a fine-grained block-level "vision" of the interactions with the base Bitcoin layer
+* **Large-scale simulation**: Possibility of instantiating thousands of running nodes, where each can be characterized
+  according to some common node features (funding, channel sizes distribution, frequency of opening/closing, cltv
+  deltas, fees etc..)
+* **Real Topology Testing**: support for pre-existing topologies imported from a json file, e.g. using the output of
+  the _lncli describegraph_ command executed on a real node.
+* **Pathfinding and Routing**: it is possible to test the routing of payment invoices, emulating the exchange of HTLC
+  update/fulfill messages to experiment with new potential protocol evolutions, e.g., new routing strategies etc...
 
 ## Quick Start
 
-from  terminal:  
-_`java UltraViolet`_
+* compile source: `javac *.java`
+* the just execute:  _`java UltraViolet` configuration_file_
 
-This command will start the main menu
+The configuration allows to customize different aspects of the deployed network, including nodes behavior, channels,
+fee/routing policies, p2p/gossip etc... Please refere to the provided _template.properties_ file for a description of the various sections.
+
+
+This command will start the main menu:
 
 ![](https://user-images.githubusercontent.com/3337669/230136438-e1419961-d2cd-48cd-9983-9d3fc169ce87.png)
 
-For further details about usage and commands please refer to the [wikipage](https://github.com/davidepatti/ultraviolet/wiki)
+For further details about usage and commands please refer to the [wikipage](https://github.com/davidepatti/ultraviolet/wiki/UltraViolet-Wiki)
