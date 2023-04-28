@@ -233,7 +233,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     }
 
-    public int checkPathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
+    public int computePathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
         int fees = 0;
 
         for (ChannelGraph.Edge e: path) {
@@ -264,7 +264,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 }
 
                 stat_checked_path_fees++;
-                if (checkPathFees(path,invoice.getAmount())>max_fees)  {
+                if (computePathFees(path,invoice.getAmount())>max_fees)  {
                     stat_failed_path_fees++;
                     continue;
                 }
@@ -823,6 +823,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     // sent from my channel partners, update related data
                     if (channels.containsKey(channel_id)) {
                         channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
+                        getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
+                        var next = message.nextMsgToForward(this.getPubKey());
+                        broadcastToPeers(message.getSender(),next);
+                    } // not my local channel, but I have an entry to be updated...
+                    else {
+                        //debug("Received update for non local channel ");
+                        if (getChannelGraph().hasChannel(channel_id)) {
+                            getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
+                            var next = message.nextMsgToForward(this.getPubKey());
+                            broadcastToPeers(message.getSender(),next);
+                        }
                     }
                     //https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#the-channel_update-message
                     /*
@@ -830,11 +841,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     if the short_channel_id does NOT match a previous channel_announcement, OR if the channel has been closed in the meantime:
                     MUST ignore channel_updates that do NOT correspond to one of its own channels.
                      */
-                    if (getChannelGraph().hasChannel(channel_id)) {
-                        getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
-                        var next = message.nextMsgToForward(this.getPubKey());
-                        broadcastToPeers(message.getSender(),next);
-                    }
                 }
             }
         }

@@ -77,6 +77,7 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node2, new ArrayList<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
         adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
+        channelSet.add(channel_id);
     }
 
     /**
