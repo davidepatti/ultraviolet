@@ -62,6 +62,7 @@ public class UltraViolet {
         }
     }
 
+
     /**
      *
      */
@@ -94,7 +95,7 @@ public class UltraViolet {
         System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
 
         for (var path:paths) {
-            if (sender.checkPathFees(path,invoice.getAmount()) > fees) {
+            if (sender.computePathFees(path,invoice.getAmount()) > fees) {
                 System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
                 continue;
             }
@@ -289,12 +290,24 @@ public class UltraViolet {
             showQueueCommand(node);
         }));
         menuItems.add(new MenuItem("test", "TEST", x -> {
+            System.out.println("HI!");
         }));
 
         menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
             Config.print();
             System.out.println("-----------------------------------");
+        }));
+        menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
+            System.out.print("Number of invoice events:");
+            int n = Integer.parseInt(scanner.nextLine());
+            System.out.println("Max amount");
+            int amt = Integer.parseInt(scanner.nextLine());
+            System.out.println("Max fees");
+            int fees = Integer.parseInt(scanner.nextLine());
+
+            networkManager.generateInvoiceEvents(n,amt,fees);
+
         }));
 
 

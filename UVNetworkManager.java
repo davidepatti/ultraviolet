@@ -536,4 +536,79 @@ public class UVNetworkManager {
         var uvnode = getNode(pubkey);
         uvnode.receiveMessage(message);
     }
+
+    public void generateInvoiceEvents(int n_events, int max_amount, int max_fees) {
+        if (!isBootstrapCompleted()) {
+            System.out.println("ERROR: must execute bootstrap or load/import a network!");
+            return;
+        }
+
+
+        log("Generating "+n_events+" invoice events"+"(max amt:"+max_amount+",max_fees"+max_fees+")");
+
+        FileWriter fw;
+
+        try {
+            fw = new FileWriter("inv_"+n_events+"_"+max_amount+"_"+max_fees+"_"+new Date().toString()+".csv");
+            fw.write("sender,dest,amount,found_paths,viable_paths,miss_fees,miss_liquidity,failed_htlc,success_htlc");
+
+            for (int n=0;n<n_events;n++) {
+                int miss_fees = 0;
+                int miss_liquidity = 0;
+                int failed_htlc = 0;
+                int success_htlc = 0;
+                int viable_paths = 0;
+
+                var sender = getRandomNode();
+                var dest = getRandomNode();
+                int amount = new Random().nextInt(max_amount);
+                var invoice = dest.generateInvoice(amount);
+                var validPaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
+
+                var found_paths = sender.findPaths(invoice.getDestination(),false);
+
+                boolean to_discard;
+                for (var path:found_paths) {
+                    to_discard = false;
+
+                    if (sender.computePathFees(path,invoice.getAmount()) > max_fees) {
+                        System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
+                        to_discard = true;
+                        miss_fees++;
+                    }
+                    if (sender.checkPathLiquidity(path, invoice.getAmount()))  {
+                        System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
+                        to_discard = true;
+                        miss_liquidity++;
+                    }
+
+                    if (!to_discard) validPaths.add(path);
+                }
+
+                viable_paths = validPaths.size();
+
+                boolean success = false;
+                if (validPaths.size()>0) {
+                    for (var path: validPaths) {
+                        sender.routeInvoiceOnPath(invoice,path);
+
+                        if (sender.waitForInvoiceCleared(invoice.getHash())) {
+                            success = true;
+                            success_htlc++;
+                            break;
+                        }
+                        else {
+                            failed_htlc++;
+                        }
+                    }
+                }
+                fw.write(sender.getPubKey()+","+dest.getPubKey()+","+amount+","+found_paths+","+viable_paths+","+miss_fees+","+miss_liquidity+","+failed_htlc+","+success_htlc);
+                fw.flush();
+            }
+            fw.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
 }
