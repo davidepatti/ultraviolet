@@ -550,50 +550,60 @@ public class UVNetworkManager {
 
         try {
             fw = new FileWriter("inv_"+n_events+"_"+max_amount+"_"+max_fees+"_"+new Date().toString()+".csv");
-            fw.write("sender,dest,amount,found_paths,viable_paths,miss_fees,miss_liquidity,failed_htlc,success_htlc");
+            fw.write("sender,dest,amount,total_paths,candidate_paths,missing_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
 
             for (int n=0;n<n_events;n++) {
-                int miss_fees = 0;
-                int miss_liquidity = 0;
-                int failed_htlc = 0;
-                int success_htlc = 0;
-                int viable_paths = 0;
+                // pathfinding stats
+                var  candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
+                int miss_capacity = 0;
+                int miss_outbound_liquidity = 0;
+                int exceeded_max_fees = 0;
+
 
                 var sender = getRandomNode();
                 var dest = getRandomNode();
                 int amount = new Random().nextInt(max_amount);
                 var invoice = dest.generateInvoice(amount);
-                var validPaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
 
-                var found_paths = sender.findPaths(invoice.getDestination(),false);
+                var totalPaths = sender.getPaths(invoice.getDestination(),false);
 
                 boolean to_discard;
-                for (var path:found_paths) {
+                for (var path:totalPaths) {
+
                     to_discard = false;
+                    if (!sender.checkPathCapacity(path, invoice.getAmount()))  {
+                        System.out.println("Discarding path (capacity)"+ ChannelGraph.pathString(path));
+                        to_discard = true;
+                        miss_capacity++;
+                    }
+
+                    if (!sender.checkPathLiquidity(path, invoice.getAmount()))  {
+                        System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
+                        to_discard = true;
+                        miss_outbound_liquidity++;
+                    }
 
                     if (sender.computePathFees(path,invoice.getAmount()) > max_fees) {
                         System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
                         to_discard = true;
-                        miss_fees++;
-                    }
-                    if (sender.checkPathLiquidity(path, invoice.getAmount()))  {
-                        System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
-                        to_discard = true;
-                        miss_liquidity++;
+                        exceeded_max_fees++;
                     }
 
-                    if (!to_discard) validPaths.add(path);
+                    if (!to_discard) candidatePaths.add(path);
                 }
 
-                viable_paths = validPaths.size();
+                // routing stats
+                int failed_htlc = 0;
+                int success_htlc = 0;
+                int attempted_paths = 0;
 
                 boolean success = false;
-                if (validPaths.size()>0) {
-                    for (var path: validPaths) {
+                if ( candidatePaths.size()>0) {
+                    for (var path:  candidatePaths) {
+                        attempted_paths++;
                         sender.routeInvoiceOnPath(invoice,path);
 
                         if (sender.waitForInvoiceCleared(invoice.getHash())) {
-                            success = true;
                             success_htlc++;
                             break;
                         }
@@ -602,7 +612,7 @@ public class UVNetworkManager {
                         }
                     }
                 }
-                fw.write(sender.getPubKey()+","+dest.getPubKey()+","+amount+","+found_paths+","+viable_paths+","+miss_fees+","+miss_liquidity+","+failed_htlc+","+success_htlc);
+                fw.write(sender.getPubKey()+","+dest.getPubKey()+","+amount+","+totalPaths.size()+","+candidatePaths.size()+","+miss_capacity+","+miss_outbound_liquidity+","+exceeded_max_fees+","+attempted_paths+","+failed_htlc+","+success_htlc);
                 fw.flush();
             }
             fw.close();

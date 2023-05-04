@@ -88,7 +88,7 @@ public class UltraViolet {
         var invoice = dest.generateInvoice(amount);
         System.out.println("Generated Invoice: "+invoice);
 
-        var paths = sender.findPaths(invoice.getDestination(),false);
+        var paths = sender.getPaths(invoice.getDestination(),false);
         var validPaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
 
 
@@ -148,7 +148,7 @@ public class UltraViolet {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.getNode(start).findPaths(destination,stopfirst);
+        var paths = networkManager.getNode(start).getPaths(destination,stopfirst);
 
         if (paths.size()>0) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {

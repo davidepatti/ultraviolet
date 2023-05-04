@@ -197,10 +197,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     public boolean waitForInvoiceCleared(String hash) {
+        final long delay = uvNetworkManager.getTimechain().getBlockToMillisecTimeDelay(1);
         while (pendingInvoices.containsKey(hash)) {
             try {
                 System.out.println("WAITING...");
-                Thread.sleep(1000);
+                Thread.sleep(delay);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -208,6 +209,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return (payedInvoices.containsKey(hash));
     }
 
+    public boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
+
+        log("Checking path "+ChannelGraph.pathString(path));
+        for (ChannelGraph.Edge e: path) {
+            if (e.capacity()< amount) return false;
+        }
+        return true;
+    }
 
     public boolean checkPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
@@ -247,7 +256,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Processing "+invoice);
         stat_processed_invoices++;
-        var paths = this.findPaths(invoice.getDestination(),false);
+        var paths = this.getPaths(invoice.getDestination(),false);
 
         boolean success = false;
         if (paths.size()>0) {
@@ -287,7 +296,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             log("No path found for destination "+ invoice.getDestination());
     }
 
-    public ArrayList<ArrayList<ChannelGraph.Edge>> findPaths(String destination, boolean stopfirst) {
+    public ArrayList<ArrayList<ChannelGraph.Edge>> getPaths(String destination, boolean stopfirst) {
         return this.getChannelGraph().findPath(this.getPubKey(),destination,stopfirst);
     }
 
