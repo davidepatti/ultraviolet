@@ -13,6 +13,19 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private double stat_successfull_invoice_routings = 0;
     private double stat_processed_invoices = 0;
 
+    public record InvoiceReport(String hash,
+                            String sender,
+                            String dest,
+                            int total_paths,
+                            int candidate_paths,
+                            int missing_capacity,
+                            int missing_fees,
+                            int missing_outbound_liquidity,
+                            int attempted_paths,
+                            boolean htlc_success) {};
+
+    transient private ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
+
 
     @Serial
     private static final long serialVersionUID = 120675L;
@@ -105,6 +118,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
     public String getPubKey() {
         return pubkey;
+    }
+
+
+    public ArrayList<InvoiceReport> getInvoiceReports() {
+        return invoiceReports;
     }
 
     @Override
@@ -211,14 +229,22 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
-        log("Checking path "+ChannelGraph.pathString(path));
+        log("Checking path capacity"+ChannelGraph.pathString(path));
         for (ChannelGraph.Edge e: path) {
             if (e.capacity()< amount) return false;
         }
         return true;
     }
+    public boolean checkPathPolicies(ArrayList<ChannelGraph.Edge> path) {
 
-    public boolean checkPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
+        log("Checking path policies "+ChannelGraph.pathString(path));
+        for (ChannelGraph.Edge e: path) {
+            if (e.policy()==null) return false;
+        }
+        return true;
+    }
+
+    public boolean checkOutboundPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
         log("Checking path "+ChannelGraph.pathString(path));
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
@@ -242,58 +268,81 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     }
 
-    public int computePathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
+    public int getPathFees(ArrayList<ChannelGraph.Edge> path, int amount)  {
         int fees = 0;
 
         for (ChannelGraph.Edge e: path) {
             fees+= computeFees(amount,e.policy().base_fee(),e.policy().fee_ppm());
         }
-
         return fees;
     }
+
+    /**
+     *
+     * @param invoice
+     * @param max_fees
+     */
 
     public void processInvoice(LNInvoice invoice, int max_fees) {
 
         log("Processing "+invoice);
-        stat_processed_invoices++;
         var paths = this.getPaths(invoice.getDestination(),false);
 
-        boolean success = false;
-        if (paths.size()>0) {
-            log("Found "+paths.size()+" paths to "+invoice.getDestination());
+        // pathfinding stats
+        var  candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
+        int miss_capacity = 0;
+        int miss_outbound_liquidity = 0;
+        int exceeded_max_fees = 0;
 
-            int n = 0;
-            for (var path: paths) {
-                n++;
-                log("Trying path #"+n);
-                stat_checked_path_liquidity++;
-                if (!checkPathLiquidity(path,invoice.getAmount())) {
-                    stat_failed_path_liquidity++;
-                    continue;
-                }
+        var totalPaths = getPaths(invoice.getDestination(),false);
 
-                stat_checked_path_fees++;
-                if (computePathFees(path,invoice.getAmount())>max_fees)  {
-                    stat_failed_path_fees++;
-                    continue;
-                }
+        for (var path:totalPaths) {
 
-                stat_attempted_invoice_routings++;
+            var to_discard = false;
+
+            if (!checkPathPolicies(path)) {
+                to_discard = true;
+                log("Discarding path due to missing policies");
+            }
+
+            if (!checkPathCapacity(path, invoice.getAmount()))  {
+                log("Discarding path (missing capacity)"+ ChannelGraph.pathString(path));
+                to_discard = true;
+                miss_capacity++;
+            }
+
+            if (!checkOutboundPathLiquidity(path, invoice.getAmount()))  {
+                System.out.println("Discarding path (missing liquidity)"+ ChannelGraph.pathString(path));
+                to_discard = true;
+                miss_outbound_liquidity++;
+            }
+
+            if (getPathFees(path,invoice.getAmount()) > max_fees) {
+                System.out.println("Discarding path (exceed fees)"+ ChannelGraph.pathString(path));
+                to_discard = true;
+                exceeded_max_fees++;
+            }
+
+            if (!to_discard) candidatePaths.add(path);
+        }
+
+        // routing stats
+        boolean success_htlc = false;
+        int attempted_paths = 0;
+
+        if ( candidatePaths.size()>0) {
+            for (var path:  candidatePaths) {
+                attempted_paths++;
                 routeInvoiceOnPath(invoice,path);
 
                 if (waitForInvoiceCleared(invoice.getHash())) {
-                    stat_successfull_invoice_routings++;
-                    success = true;
+                    success_htlc = true;
                     break;
                 }
             }
-            if (success) {
-                log("Successfull processed invoice "+invoice.getHash());
-            }
-            else log("Failed routing for invoice "+invoice.getHash());
         }
-        else
-            log("No path found for destination "+ invoice.getDestination());
+
+        invoiceReports.add(new InvoiceReport(this.getPubKey(), invoice.getDestination(),invoice.getHash(),totalPaths.size(),candidatePaths.size(),miss_capacity,exceeded_max_fees,miss_outbound_liquidity,attempted_paths,success_htlc));
     }
 
     public ArrayList<ArrayList<ChannelGraph.Edge>> getPaths(String destination, boolean stopfirst) {
@@ -673,24 +722,27 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var request = sentChannelOpenings.get(peer_id);
         var channel_id = generateChannelId(tx);
         var newChannel = new UVChannel(channel_id, this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
-        this.channels.put(channel_id,newChannel);
-        channelGraph.addLNChannel(newChannel);
 
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
         updateOnchainPending(getOnchainPending()-request.getFunding());
 
+        this.channels.put(channel_id,newChannel);
+        channelGraph.addLNChannel(newChannel);
+
         var newPolicy = new LNChannel.Policy(20,1000,50);
+        String from = this.getPubKey();
+        String signer = this.getPubKey();
+        // when funding tx is confirmed after minimim depth
+        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
+
+        // local update
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
-        channelGraph.updateChannel(channel_id,newPolicy);
+        channelGraph.updateChannel(msg_update);
 
         uvNetworkManager.getNode(peer_id).fundingLocked(newChannel);
 
-        // when funding tx is confirmed after minimim depth
-        String from = this.getPubKey();
-        String signer = this.getPubKey();
-        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
         broadcastToPeers(from,msg_announcement);
-        var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
         broadcastToPeers(from,msg_update);
 
         sentChannelOpenings.remove(peer_id);
@@ -708,7 +760,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var newPolicy = new LNChannel.Policy(20,1000,200);
         channels.get(newChannel.getId()).setPolicy(getPubKey(),newPolicy);
         channelGraph.addLNChannel(newChannel);
-        channelGraph.updateChannel(newChannel.getId(), newPolicy);
+        channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
 
         // sender is set as the channel initiator, so that it's excluded from broadcasting
         var timestamp = uvNetworkManager.getTimechain().getCurrentBlock();
@@ -804,16 +856,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
-            GossipMsg msg = (GossipMsg) GossipMessageQueue.poll();
-
-            // Do again the control on message age, maybe it's been stuck in the queue for long...
+            GossipMsg msg = GossipMessageQueue.poll();
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
                     var announce_msg = (GossipMsgChannelAnnouncement) msg.nextMsgToForward(this.getPubKey());
                     var new_channel_id = announce_msg.getChannelId();
                     if (!channelGraph.hasChannel(new_channel_id)) {
-                        //log("Adding to graph non existent channel "+new_channel_id);
+                        debug("GOSSIP: Adding to graph new channel "+new_channel_id);
                         this.channelGraph.addAnnouncedChannel(announce_msg);
                         broadcastToPeers(msg.getSender(),announce_msg);
                     }
@@ -831,19 +881,25 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
                     // sent from my channel partners, update related data
                     if (channels.containsKey(channel_id)) {
+                        debug("GOSSIP: Updating local channel "+channel_id);
                         channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
-                        getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
+                        getChannelGraph().updateChannel(message);
                         var next = message.nextMsgToForward(this.getPubKey());
                         broadcastToPeers(message.getSender(),next);
                     } // not my local channel, but I have an entry to be updated...
                     else {
                         //debug("Received update for non local channel ");
                         if (getChannelGraph().hasChannel(channel_id)) {
-                            getChannelGraph().updateChannel(channel_id,message.getUpdatedPolicy());
+                            debug("GOSSIP: Updating non-local channel "+channel_id);
+                            getChannelGraph().updateChannel(message);
                             var next = message.nextMsgToForward(this.getPubKey());
                             broadcastToPeers(message.getSender(),next);
                         }
+                        else {
+                            debug("GOSSIP: Skipping update for unknown channel "+channel_id);
+                        }
                     }
+
                     //https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#the-channel_update-message
                     /*
                     The receiving node:

@@ -68,10 +68,13 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public void setPolicy(String node, Policy policy) {
         if (node.equals(node_id_1))  {
             node1Policy = policy;
-            return;
         }
+        else
         if (node.equals(node_id_2)) {
             node2Policy = policy;
+        }
+        else {
+            throw new IllegalArgumentException("Wrong node "+node);
         }
     }
 
@@ -139,12 +142,19 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
     public Policy getPolicy(String pubkey) {
+        Policy p;
         if (pubkey.equals(node_id_1))
-            return getNode1Policy();
+            p = getNode1Policy();
+        else
         if (pubkey.equals(node_id_2))
-            return getNode2Policy();
+            p = getNode2Policy();
+        else {
+            throw new IllegalArgumentException("WRONG pubkey "+pubkey);
+        }
 
-        return null;
+        Objects.requireNonNull(p);
+
+        return p;
     }
 
 

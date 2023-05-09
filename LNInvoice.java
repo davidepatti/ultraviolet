@@ -40,12 +40,7 @@ public class LNInvoice {
 
     @Override
     public String toString() {
-        return "LNInvoice{" +
-                "H='" + H + '\'' +
-                ", amount=" + amount +
-                ", recipient='" + destination + '\'' +
-                ", message=" + message +
-                '}';
+        return "LNInvoice{" + "H='" + H + '\'' + ", amount=" + amount + ", recipient='" + destination + '\'' + ", message=" + message + '}';
     }
 
     @Override

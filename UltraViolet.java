@@ -95,11 +95,11 @@ public class UltraViolet {
         System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
 
         for (var path:paths) {
-            if (sender.computePathFees(path,invoice.getAmount()) > fees) {
+            if (sender.getPathFees(path,invoice.getAmount()) > fees) {
                 System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
                 continue;
             }
-            if (sender.checkPathLiquidity(path, invoice.getAmount()))  {
+            if (sender.checkOutboundPathLiquidity(path, invoice.getAmount()))  {
                 System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
                 continue;
             }
@@ -325,6 +325,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("stats", "Show Global Stats", x -> {
             if (networkManager.isBootstrapCompleted())  {
                 networkManager.getStats().writeReport(new Date()+"_report.txt");
+                networkManager.getStats().writeInvoiceReports();
                 System.out.println(networkManager.getStats().generateReport());
             }
             else System.out.println("Bootstrap not completed!");

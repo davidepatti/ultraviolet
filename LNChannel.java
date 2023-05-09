@@ -4,7 +4,9 @@ public interface LNChannel {
     record Policy(int cltv,int base_fee, int fee_ppm) implements Serializable {
         @Override
         public String toString() {
-            return "{" + "cltv:" + cltv + ", base:" + base_fee + ", ppm:" + fee_ppm + '}';
+            StringBuilder s = new StringBuilder("(");
+            s.append(cltv).append("/").append(base_fee).append("/").append(fee_ppm).append(")");
+            return s.toString();
         }
     }
 

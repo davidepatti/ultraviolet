@@ -10,7 +10,7 @@ public class ChannelGraph implements Serializable  {
     private static final long serialVersionUID = 120676L;
     // We use Hashmap to store the edges in the graph, indexed by node id as keys
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
-    transient private Map<String, List<Edge>> adj_map = new HashMap<>();
+    transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
 
     public static String pathString(ArrayList<Edge> path) {
@@ -27,7 +27,7 @@ public class ChannelGraph implements Serializable  {
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
-            return "{ch:"+id+"("+source + "-"+ destination + ")["+capacity +"]"+policy+"}";
+            return "{ch:"+id+"("+source + "->"+ destination + ")["+capacity +"]"+policy+"}";
         }
     }
 
@@ -37,7 +37,7 @@ public class ChannelGraph implements Serializable  {
 
     // This function adds a new vertex to the graph
     private synchronized void addNode(String node_id) {
-        adj_map.putIfAbsent(node_id, new ArrayList<>());
+        adj_map.putIfAbsent(node_id, new HashSet<>());
     }
 
     /**
@@ -55,8 +55,8 @@ public class ChannelGraph implements Serializable  {
         var node2pub = channel.getNode2PubKey();
 
 
-        adj_map.putIfAbsent(node1pub, new ArrayList<>());
-        adj_map.putIfAbsent(node2pub, new ArrayList<>());
+        adj_map.putIfAbsent(node1pub, new HashSet<>());
+        adj_map.putIfAbsent(node2pub, new HashSet<>());
 
 
         var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
@@ -73,8 +73,8 @@ public class ChannelGraph implements Serializable  {
         var channel_id = msg.getChannelId();
         var node1 = msg.getNodeId1();
         var node2 = msg.getNodeId2();
-        adj_map.putIfAbsent(node1, new ArrayList<>());
-        adj_map.putIfAbsent(node2, new ArrayList<>());
+        adj_map.putIfAbsent(node1, new HashSet<>());
+        adj_map.putIfAbsent(node2, new HashSet<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
         adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
         channelSet.add(channel_id);
@@ -192,7 +192,7 @@ public class ChannelGraph implements Serializable  {
 
             for (int i=0;i<n_keys;i++) {
                 var pubkey = (String) s.readObject();
-                @SuppressWarnings("unchecked") var list = (ArrayList<Edge>)s.readObject();
+                @SuppressWarnings("unchecked") var list = (HashSet<Edge>)s.readObject();
                 adj_map.put(pubkey,list);
              }
 
@@ -220,22 +220,29 @@ public class ChannelGraph implements Serializable  {
     }
 
 
-    // to edge properties
-    public synchronized void updateChannel(String channel_id, LNChannel.Policy policy) {
-        for (List<Edge> list:adj_map.values()){
-            for (Edge e:list) {
-                if (e.id().equals(channel_id)) {
-                    var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,policy);
-                    if (!list.remove(e)) {
-                        throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
-                    }
-                    list.add(new_edge);
-                    return;
+    public synchronized void updateChannel(String updater, LNChannel.Policy new_policy, String channel_id) {
+        var edges = adj_map.get(updater);
+        for (Edge e:edges) {
+            if (e.id().equals(channel_id)) {
+                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,new_policy);
+                if (!edges.remove(e)) {
+                    throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
                 }
+                edges.add(new_edge);
+                return;
             }
         }
         log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" in "+this.root_node);
         throw new IllegalStateException("Check LOG!");
+
+    }
+
+    public synchronized void updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {
+        var updater = msgChannelUpdate.getSignerId();
+        var new_policy = msgChannelUpdate.getUpdatedPolicy();
+        var channel_id = msgChannelUpdate.getChannelId();
+
+        updateChannel(updater,new_policy,channel_id);
     }
 
     public synchronized boolean hasChannel(String channelId) {
