@@ -1,21 +1,32 @@
 import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Scanner;
 
-public class Config implements Serializable {
+public class UVConfig implements Serializable {
 
-    private static Properties properties;
+    Map<String,Map<String,String>> profiles = new HashMap<>();
+
+    private Properties properties;
 
     @Serial
     private static final long serialVersionUID = 120678L;
 
-    private static boolean initialized = false;
+    private boolean initialized = false;
 
-    public static boolean isInitialized() {
+    public boolean isInitialized() {
         return initialized;
     }
 
-    public static void setDefaults() {
+    public void setDefaults() {
+
+        if (isInitialized()) {
+            System.out.println("WARNING: setting defaults to an already initialized configuration");
+            System.out.println("PRESS ENTER");
+            new Scanner(System.in).nextLine();
+        }
+
         if (properties==null) properties = new Properties();
 
         properties.setProperty("debug","true");
@@ -25,12 +36,12 @@ public class Config implements Serializable {
         // bootstrap
         properties.setProperty("bootstrap_duration","1");
         properties.setProperty("bootstrap_nodes","10");
-        properties.setProperty("bootstrap_min_funding","10000000");
-        properties.setProperty("bootstrap_min_funding","100000000");
-        properties.setProperty("bootstrap_min_channels","3");
-        properties.setProperty("bootstrap_max_channels","5");
-        properties.setProperty("bootstrap_min_channel_size","500000");
-        properties.setProperty("bootstrap_max_channel_size","1000000");
+        properties.setProperty("profile.default.min_funding","10000000");
+        properties.setProperty("profile.default.min_funding","100000000");
+        properties.setProperty("profile.default.min_channels","3");
+        properties.setProperty("profile.default.max_channels","5");
+        properties.setProperty("profile.default.min_channel_size","500000");
+        properties.setProperty("profile.default.max_channel_size","1000000");
 
         // p2p
         properties.setProperty("gossip_flush_size","500");
@@ -42,7 +53,7 @@ public class Config implements Serializable {
         initialized = true;
     }
 
-    public static void setConfig (Properties newconfig) {
+    public void setConfig (Properties newconfig) {
 
         for (String k: newconfig.stringPropertyNames()) {
            properties.setProperty(k,newconfig.getProperty(k));
@@ -51,11 +62,13 @@ public class Config implements Serializable {
         for (String k: properties.stringPropertyNames()) {
             if (!newconfig.stringPropertyNames().contains(k)) {
                 System.out.println("Warning: config parameter '"+k+"' missing in new loaded config, leaving old value "+properties.getProperty(k));
+                System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+                new Scanner(System.in).nextLine();
             }
         }
     }
 
-    public static void loadConfig(String config_file) {
+    public void loadConfig(String config_file) {
         properties = new Properties();
         // this is needed so that parameters not set in config file can be assumed as default
         setDefaults();
@@ -64,24 +77,43 @@ public class Config implements Serializable {
             properties.load(new FileReader(config_file));
             initialized = true;
 
+            for (String propertyName : properties.stringPropertyNames()) {
+                if (propertyName.startsWith("profile.")) {
+                    // Parse the property name into profile name and attribute
+                    String[] parts = propertyName.split("\\.");
+                    String profileName = parts[1];
+                    String attribute = parts[2];
+
+                    profiles.putIfAbsent(profileName,new HashMap<>());
+                    profiles.get(profileName).put(attribute,properties.getProperty(propertyName));
+                }
+            }
+            System.out.println("Loaded profiles");
+
         } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
             System.out.println("Setting defaults...");
             setDefaults();
+            System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+            new Scanner(System.in).nextLine();
         } catch (
                 IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static void print() {
+    public String getProfileAttribute(String profile, String attribute) {
+        return profiles.get(profile).get(attribute);
+    }
+
+    public void print() {
         var l = properties.stringPropertyNames();
 
         for (String s:l)
             System.out.println("name: "+s+" val: "+properties.get(s));
     }
 
-    public static String get(String parameter) {
+    public String getStringAttribute(String parameter) {
 
         if (!properties.containsKey(parameter)) {
             System.out.println("Missing parameter "+parameter);
@@ -95,26 +127,16 @@ public class Config implements Serializable {
         return properties.get(parameter).toString();
     }
 
-    public static int getVal(String parameter) {
+    public int getIntAttribute(String parameter) {
 
-        if (!properties.containsKey(parameter)) {
-            System.out.println("Missing parameter "+parameter);
-            System.out.print("Please enter value or enter 'q' to exit:");
-            var input = new Scanner(System.in);
-            var val = input.nextLine();
-            if (val.equals("q")) System.exit(-1);
-            properties.setProperty(parameter,val);
-        }
-        return Integer.parseInt(properties.get(parameter).toString());
+        String attribute = getStringAttribute(parameter);
+
+        return Integer.parseInt(attribute.toString());
     }
 
     @Override
     public String toString() {
         return properties.toString();
-    }
-
-    public static Properties getConfig() {
-        return properties;
     }
 
 }

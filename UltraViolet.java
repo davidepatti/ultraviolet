@@ -6,9 +6,11 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private final UVNetworkManager networkManager;
+    private UVConfig configuration;
+    private UVNetworkManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
+
 
     private void showNodeCommand(String pubkey) {
 
@@ -213,12 +215,10 @@ public class UltraViolet {
         System.out.println(g);
     }
 
-    /**
-     *
-     * @param nm Network Manager instance controlled by the dashboard
-     */
-    public UltraViolet(UVNetworkManager nm) {
-        networkManager = nm;
+    public UltraViolet(UVConfig config) {
+        this.configuration = config;
+        this.networkManager = new UVNetworkManager(config);
+
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
 
@@ -226,7 +226,7 @@ public class UltraViolet {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                System.out.println("Bootstrap Started, check " + Config.get("logfile"));
+                System.out.println("Bootstrap Started, check " + configuration.getStringAttribute("logfile"));
                 var bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
@@ -251,7 +251,7 @@ public class UltraViolet {
                 return;
             }
             if (!networkManager.isTimechainRunning()) {
-                System.out.println("Starting Timechain, check " + Config.get("logfile"));
+                System.out.println("Starting Timechain, check " + configuration.getStringAttribute("logfile"));
                 networkManager.setTimechainRunning(true);
             }
             else {
@@ -295,7 +295,7 @@ public class UltraViolet {
 
         menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
-            Config.print();
+            System.out.println(configuration);
             System.out.println("-----------------------------------");
         }));
         menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
@@ -315,7 +315,7 @@ public class UltraViolet {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
-                System.out.println("Generating events, check " + Config.get("logfile"));
+                System.out.println("Generating events, check " + configuration.getStringAttribute("logfile"));
                 networkManager.generateRandomEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");
@@ -382,16 +382,18 @@ public class UltraViolet {
 
     public static void main(String[] args) {
 
+        var configuration = new UVConfig();
+
         if (args.length==1) {
             System.out.println("Using configuration "+args[0]);
-            Config.loadConfig(args[0]);
+            configuration.loadConfig(args[0]);
         }
         else {
             System.out.println("No config, using default...");
-            Config.setDefaults();
+            configuration.setDefaults();
         }
 
-        var uvm_client = new UltraViolet(new UVNetworkManager());
+        var uvm_client = new UltraViolet(configuration);
     }
 
 }

@@ -14,7 +14,7 @@ public class UVTimechain implements Runnable, Serializable  {
     record Transaction(String txId, TxType type, String node1_pub, String node2_pub) implements Serializable{
         @Override
         public String toString() {
-            return "Tx{" + "Id='" + txId + '\'' + ", type=" + type + ", node1_pub='" + node1_pub + '\'' + ", node2_pub='" + node2_pub + '\'' + '}';
+            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + ", node1:" + node1_pub + ", node2:" + node2_pub + '}';
         }
     };
     record Block(int height, List<Transaction> txs) implements Serializable {};

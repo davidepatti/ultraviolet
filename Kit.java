@@ -471,6 +471,17 @@ public class Kit {
         return true;
     }
 
+    public static String shortString(String input) {
+        if (input == null || input.length() < 2) {
+            return "";
+        } else {
+            String firstTwo = input.substring(0, 2);
+            String lastTwo = input.substring(input.length() - 2);
+            return firstTwo + ".." + lastTwo;
+        }
+    }
+
+
 }
 
 

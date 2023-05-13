@@ -1,6 +1,5 @@
 import java.io.*;
-import java.util.Comparator;
-import java.util.Optional;
+import java.util.*;
 
 @SuppressWarnings("OptionalGetWithoutIsPresent")
 public class GlobalStats {
@@ -26,7 +25,6 @@ public class GlobalStats {
         return uvm.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).average().getAsDouble();
     }
 
-
     public String generateReport() {
         StringBuilder s = new StringBuilder("Statistical Resport");
 
@@ -47,6 +45,34 @@ public class GlobalStats {
         return s.toString();
     }
 
+
+    public void writeInvoiceReports() {
+
+        FileWriter fw;
+
+        try {
+            fw = new FileWriter("report_inv_"+new Date().toString()+".csv");
+            fw.write("hash,sender,dest,amount,total_paths,candidate_paths,missing_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
+            for (UVNode node: uvm.getUVNodeList().values()) {
+                if (node.getInvoiceReports().size()>0) {
+                    System.out.println("Node: "+node.getPubKey());
+                    System.out.println("-------------------------------------------------------------");
+                    for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
+                        System.out.println(report);
+                        fw.write(report.toString());
+                    }
+                    fw.flush();
+                }
+            }
+            fw.close();
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
+    }
+
     public void writeReport(String filename) {
         String report = generateReport();
         try (PrintWriter os = new PrintWriter(filename)){
@@ -54,5 +80,21 @@ public class GlobalStats {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static double calculateLambda(ArrayList<Double> V) {
+        double sum = 0;
+        for (Double value : V) {
+            sum += value;
+        }
+        double mean = sum / V.size();
+        return 1 / mean;
+    }
+
+    public static double getValue(double lambda) {
+        
+        Random rand = new Random();
+        double u = rand.nextDouble(); // a uniform random number between 0 (inclusive) and 1 (exclusive)
+        return -Math.log(1 - u) / lambda;
     }
 }
