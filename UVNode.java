@@ -13,6 +13,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private double stat_successfull_invoice_routings = 0;
     private double stat_processed_invoices = 0;
 
+
+    private final Map<String,String> profile;
+
     public record InvoiceReport(String hash,
                             String sender,
                             String dest,
@@ -30,7 +33,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     @Serial
     private static final long serialVersionUID = 120675L;
 
-    private NodeBehavior behavior;
     private final String pubkey;
     private final String alias;
     private int onchainBalance;
@@ -61,17 +63,21 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
-     * @param uvNetworkManager an instance of a Ultraviolet Manager to attach
      * @param pubkey the public key to be used as node id
      * @param alias an alias
      * @param funding initial onchain balance
      */
-    public UVNode(UVNetworkManager uvNetworkManager, String pubkey, String alias, int funding) {
-        this.uvManager = uvNetworkManager;
+    public UVNode(UVNetworkManager manager, String pubkey, String alias, int funding, Map<String,String> profile) {
+        this.uvManager = manager;
         this.pubkey = pubkey;
         this.alias = alias;
         updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
+        this.profile = profile;
+    }
+
+    public Map<String, String> getProfile() {
+        return profile;
     }
 
     public Queue<GossipMsg> getGossipMessageQueue() {
@@ -94,9 +100,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
     public HashMap<String, MsgOpenChannel> getSentChannelOpenings() {
         return sentChannelOpenings;
-    }
-    public NodeBehavior getBehavior() {
-        return behavior;
     }
     private void log(String s) {
          UVNetworkManager.log(this.getPubKey()+":"+s);
@@ -573,14 +576,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var next_channel_peer = getChannelPeer(forwardingChannel.getId());
         sendToPeer(next_channel_peer,new_msg);
-    }
-
-    /**
-     *
-     * @param behavior defines some operational policies,e.g., how many channel try to open, of which size etc
-     */
-    public void setBehavior(NodeBehavior behavior) {
-        this.behavior = behavior;
     }
 
     /**
@@ -1160,40 +1155,5 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peers_id)
             peers.put(p, uvManager.getP2PNode(p));
-    }
-
-    public static class NodeBehavior implements Serializable {
-        @Serial
-        private static final long serialVersionUID = 9579L;
-        // TODO: define more profiles here
-        public final static int Msat = (int)1e6;
-        public final static NodeBehavior MANY_SMALL = new NodeBehavior(100,Msat/10,5*Msat);
-        public final static NodeBehavior MANY_BIG = new NodeBehavior(100,5*Msat,10*Msat);
-        public final static NodeBehavior MEDIUM_SMALL = new NodeBehavior(30,Msat/10,5*Msat);
-        public final static NodeBehavior MEDIUM_BIG = new NodeBehavior(30,5*Msat,10*Msat);
-        public final static NodeBehavior FEW_SMALL = new NodeBehavior(10,Msat/10,5*Msat);
-        public final static NodeBehavior FEW_BIG = new NodeBehavior(10,5*Msat,10*Msat);
-
-        private final int target_channel_number;
-        private final int min_channel_size;
-        private final int max_channel_size;
-
-        public int getTargetChannelsNumber() {
-            return target_channel_number;
-        }
-
-        public int getMinChannelSize() {
-            return min_channel_size;
-        }
-
-        public int getMaxChannelSize() {
-            return max_channel_size;
-        }
-
-        public NodeBehavior(int target_channel_number, int min_channel_size, int max_channel_size) {
-            this.target_channel_number = target_channel_number;
-            this.min_channel_size = min_channel_size;
-            this.max_channel_size = max_channel_size;
-        }
     }
 }

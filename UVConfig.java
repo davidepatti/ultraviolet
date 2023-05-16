@@ -1,12 +1,9 @@
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Scanner;
+import java.util.*;
 
 public class UVConfig implements Serializable {
 
-    Map<String,Map<String,String>> profiles = new HashMap<>();
+    private Map<String,Map<String,String>> profiles = new HashMap<>();
 
     private Properties properties;
 
@@ -17,6 +14,10 @@ public class UVConfig implements Serializable {
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    public Map<String, Map<String, String>> getProfiles() {
+        return profiles;
     }
 
     public void setDefaults() {
@@ -88,7 +89,11 @@ public class UVConfig implements Serializable {
                     profiles.get(profileName).put(attribute,properties.getProperty(propertyName));
                 }
             }
-            System.out.println("Loaded profiles");
+
+            // put the name of each profile as attribute of the profile itself
+            for (String name:profiles.keySet()) {
+                profiles.get(name).put("name",name);
+            }
 
         } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
@@ -100,6 +105,28 @@ public class UVConfig implements Serializable {
                 IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public Map<String,String> getRandomProfile() {
+        double p = new Random().nextDouble();
+        double cumulativeProbability = 0.0;
+        for (String profileName: profiles.keySet()) {
+
+            if (!profileName.equals("default")) {
+                try {
+                    cumulativeProbability += Double.parseDouble(profiles.get(profileName).get("prob"));
+                }
+                catch (RuntimeException e) {
+                    System.out.println("Wrong get request!");
+                    e.printStackTrace();
+                }
+
+            }
+            if (p <= cumulativeProbability) {
+                return profiles.get(profileName);
+            }
+        }
+        return profiles.get("default");
     }
 
     public String getProfileAttribute(String profile, String attribute) {

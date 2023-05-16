@@ -151,22 +151,17 @@ public class UVNetworkManager {
         bootstrap_latch = new CountDownLatch(uvConfig.getIntAttribute("bootstrap_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ uvConfig);
-        int def_max_capacity = Integer.parseInt(uvConfig.getProfileAttribute("default","max_funding")) /(int)1e3;
-        int def_min_capacity = Integer.parseInt(uvConfig.getProfileAttribute("default","min_funding")) /(int)1e3;
-        int def_max_channels = Integer.parseInt(uvConfig.getProfileAttribute("default","max_channels"));
-        int def_min_channels = Integer.parseInt(uvConfig.getProfileAttribute("default","min_channels"));
-        int def_max_channel_size = Integer.parseInt(uvConfig.getProfileAttribute("default","max_channel_size"));
-        int def_min_channel_size = Integer.parseInt(uvConfig.getProfileAttribute("default","min_channel_size"));
 
         for (int i = 0; i< uvConfig.getIntAttribute("bootstrap_nodes"); i++) {
+            var random_profile = uvConfig.getRandomProfile();
+            int max_capacity = Integer.parseInt(random_profile.get("max_funding")) /(int)1e3;
+            int min_capacity = Integer.parseInt(random_profile.get("min_funding")) /(int)1e3;
             int funding;
-            if (def_max_capacity==def_min_capacity) funding = (int)1e3*def_min_capacity;
+            if (max_capacity==min_capacity) funding = (int)1e3*min_capacity;
             else
-                funding = (int)1e3*(random.nextInt(def_max_capacity-def_min_capacity)+def_min_capacity);
+                funding = (int)1e3*(random.nextInt(max_capacity-min_capacity)+min_capacity);
 
-            var node = new UVNode(this,"pk"+i,getAlias(),funding);
-            var nchannels = random.nextInt(def_max_channels-def_min_channels)+ def_min_channels;
-            node.setBehavior(new UVNode.NodeBehavior(nchannels,def_min_channel_size, def_max_channel_size));
+            var node = new UVNode(this,"pk"+i,getAlias(),funding,random_profile);
             uvnodes.put(node.getPubKey(),node);
         }
 
@@ -297,7 +292,7 @@ public class UVNetworkManager {
                 String pub_key = (String) nodeObject.get("pub_key");
                 String alias = (String) nodeObject.get("alias");
 
-                var uvNode = new UVNode(this,pub_key,alias,999);
+                var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getProfiles().get("default"));
                 uvnodes.put(pub_key,uvNode);
             }
             log("Node import ended, importing channels...");
@@ -508,14 +503,20 @@ public class UVNetworkManager {
 
         waitForBlocks(duration);
 
-        final int bootstrapChannels = node.getBehavior().getTargetChannelsNumber();
+        var profile = node.getProfile();
+        int max_channels = Integer.parseInt(profile.get("max_channels"));
+        int min_channels = Integer.parseInt(profile.get("min_channels"));
+        final int target_channel_number = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
 
-        while (node.getLNChannelList().size() < bootstrapChannels) {
+        int max_ch_size = Integer.parseInt(profile.get("max_channel_size"));
+        int min_ch_size = Integer.parseInt(profile.get("min_channel_size"));
+
+        while (node.getLNChannelList().size() < target_channel_number) {
             // not mandatory, just to have different block timings in openings
             waitForBlocks(1);
 
-            if (node.getOnchainLiquidity() <= node.getBehavior().getMinChannelSize()) {
-                log("Node "+node.getPubKey()+": No more onchain balance for opening further channels of min size "+node.getBehavior().getMinChannelSize());
+            if (node.getOnchainLiquidity() <= min_ch_size) {
+                log("Node "+node.getPubKey()+": No more onchain balance for opening channels of min size "+min_ch_size);
                 break; // exit while loop
             }
 
@@ -528,8 +529,8 @@ public class UVNetworkManager {
 
             log("Node "+node.getPubKey()+" Trying to open a channel with "+peerPubkey);
 
-            int max = Math.min(node.getBehavior().getMaxChannelSize(), node.getOnChainBalance());
-            int min = node.getBehavior().getMinChannelSize();
+            int max = Math.min(max_ch_size, node.getOnChainBalance());
+            int min = min_ch_size;
             var newChannelSize = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
 
             if (node.getOnchainLiquidity()< newChannelSize) {
@@ -542,6 +543,7 @@ public class UVNetworkManager {
         log(node.getPubKey()+":Bootstrap Completed");
         getBootstrapLatch().countDown();
     }
+
 
     public void sendMessageToNode(String pubkey, P2PMessage message) {
         var uvnode = getNode(pubkey);
