@@ -226,7 +226,7 @@ public class UltraViolet {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                System.out.println("Bootstrap Started, check " + configuration.getStringAttribute("logfile"));
+                System.out.println("Bootstrap Started, check " + configuration.getStringProperty("logfile"));
                 var bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
@@ -251,7 +251,7 @@ public class UltraViolet {
                 return;
             }
             if (!networkManager.isTimechainRunning()) {
-                System.out.println("Starting Timechain, check " + configuration.getStringAttribute("logfile"));
+                System.out.println("Starting Timechain, check " + configuration.getStringProperty("logfile"));
                 networkManager.setTimechainRunning(true);
             }
             else {
@@ -315,7 +315,7 @@ public class UltraViolet {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
-                System.out.println("Generating events, check " + configuration.getStringAttribute("logfile"));
+                System.out.println("Generating events, check " + configuration.getStringProperty("logfile"));
                 networkManager.generateRandomEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");

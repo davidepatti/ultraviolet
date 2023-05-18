@@ -106,7 +106,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     private void debug(String s) {
-        if (uvManager.getConfig().getStringAttribute("debug").equals("true"))  {
+        if (uvManager.getConfig().getStringProperty("debug").equals("true"))  {
             UVNetworkManager.log("*DEBUG*:"+this.getPubKey()+":"+s);
         }
     }
@@ -275,7 +275,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int fees = 0;
 
         for (ChannelGraph.Edge e: path) {
-            fees+= computeFees(amount,e.policy().base_fee(),e.policy().fee_ppm());
+            fees+= computeFees(amount,e.policy().getBaseFee(),e.policy().getFeePpm());
         }
         return fees;
     }
@@ -397,8 +397,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 // the fees in the carol->dina channel will be put in the Bob payload in the next loop
                 // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
                 //fees += channel.getPolicy(source).fee_ppm()+channel.getPolicy(source).base_fee();
-                cumulatedFees += computeFees(amount,channel.getPolicy(source).base_fee(),channel.getPolicy(source).fee_ppm());
-                out_cltv += channel.getPolicy(source).cltv();
+                cumulatedFees += computeFees(amount,channel.getPolicy(source).getBaseFee(),channel.getPolicy(source).getFeePpm());
+                out_cltv += channel.getPolicy(source).getCLTV();
             }
             else {
                 log("ERROR: No channel from "+source+ " to "+dest);
@@ -534,7 +534,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         int currentBlock = uvManager.getTimechain().getCurrentBlock();
-        var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).cltv();
+        var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).getCLTV();
 
         var incomingPeer = getChannelPeer(msg.getChannel_id());
 
@@ -663,7 +663,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvManager.getP2PNode(initiator_id);
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
-        var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().getIntAttribute("minimum_depth"), uvManager.getConfig().getIntAttribute("to_self_delay"),this.getPubKey());
+        var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().getIntProperty("minimum_depth"), uvManager.getConfig().getIntProperty("to_self_delay"),this.getPubKey());
         sendToPeer(channel_peer,acceptance);
     }
 
@@ -724,7 +724,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         this.channels.put(channel_id,newChannel);
         channelGraph.addLNChannel(newChannel);
 
-        var newPolicy = new LNChannel.Policy(20,1000,50);
+        int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
+        int fee_ppm = uvManager.getConfig().getMultivalPropertyRandomIntItem("ppm_fee_set");
+        var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
+
         String from = this.getPubKey();
         String signer = this.getPubKey();
         // when funding tx is confirmed after minimim depth
@@ -752,8 +755,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         log("Received funding_locked for "+newChannel.getId());
 
         channels.put(newChannel.getId(), newChannel);
-        var newPolicy = new LNChannel.Policy(20,1000,200);
+
+        // setting a random policy
+        int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
+        int fee_ppm = uvManager.getConfig().getMultivalPropertyRandomIntItem("ppm_fee_set");
+        var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
         channels.get(newChannel.getId()).setPolicy(getPubKey(),newPolicy);
+
         channelGraph.addLNChannel(newChannel);
         channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
 
@@ -775,8 +783,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
    public void broadcastToPeers(String fromID, GossipMsg msg) {
 
        var current_age = uvManager.getTimechain().getCurrentBlock() -msg.getTimeStamp();
-       if (current_age> uvManager.getConfig().getIntAttribute("p2p_max_age")) return;
-       if (msg.getForwardings()>= uvManager.getConfig().getIntAttribute("p2p_max_hops"))  return;
+       if (current_age> uvManager.getConfig().getIntProperty("p2p_max_age")) return;
+       if (msg.getForwardings()>= uvManager.getConfig().getIntProperty("p2p_max_hops"))  return;
 
        for (P2PNode peer: peers.values()) {
             if (peer.getPubKey().equals(fromID)) continue;
@@ -847,7 +855,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void p2pProcessGossip() {
 
-        int max_msg = uvManager.getConfig().getIntAttribute("gossip_flush_size");
+        int max_msg = uvManager.getConfig().getIntProperty("gossip_flush_size");
 
         while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;

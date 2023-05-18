@@ -1,9 +1,30 @@
 import java.io.*;
 import java.util.*;
+/* a .properties file is used to initialize this class with a set of key/value pair, readable from other classes
+While some of them a hardcode into UV, user can add and define new keys/value pairs for new purposes, as they
+will be automatically loaded into the properties object and retrieved with:
+getStringProperty/getIntProperty(String key)
+
+Properties that begin with "profile.", e.g., profile.PROFILENAME.SOME_KEY= value will be also copied into a "profiles"
+map, so that attribute can be grouped in different namespaces.
+For example:
+getProfileAttribute("big_nodes","max_channel_size") will be different from
+getProfileAttribute("small_nodes", "max_channel_size")
+
+Finally, when properties are in the particular form: key=a,b,c,d,e... they will be considered as multiple possible
+values of that property, accessible with:
+ArrayList<String> getMultivalProperty(String key)
+String getRandomMultivalProperty(String key)
+
+
+
+
+ */
 
 public class UVConfig implements Serializable {
 
     private Map<String,Map<String,String>> profiles = new HashMap<>();
+    private Map<String,ArrayList<String>> multival_properties = new HashMap<>();
 
     private Properties properties;
 
@@ -79,6 +100,7 @@ public class UVConfig implements Serializable {
             initialized = true;
 
             for (String propertyName : properties.stringPropertyNames()) {
+                var value = properties.getProperty(propertyName);
                 if (propertyName.startsWith("profile.")) {
                     // Parse the property name into profile name and attribute
                     String[] parts = propertyName.split("\\.");
@@ -86,18 +108,25 @@ public class UVConfig implements Serializable {
                     String attribute = parts[2];
 
                     profiles.putIfAbsent(profileName,new HashMap<>());
-                    profiles.get(profileName).put(attribute,properties.getProperty(propertyName));
+                    profiles.get(profileName).put(attribute,value);
+                }
+
+                if (value.contains(",")) {
+                    var values = new ArrayList<>(Arrays.asList(value.split(",")));
+                    multival_properties.put(propertyName,values);
+                    System.out.println("Detected multival: "+propertyName+ ": "+values);
                 }
             }
 
             // put the name of each profile as attribute of the profile itself
             for (String name:profiles.keySet()) {
                 profiles.get(name).put("name",name);
+                System.out.println("Loaded profile: "+name);
             }
 
         } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
-            System.out.println("Setting defaults...");
+            System.out.println("Trying to set defauls. Please notice this is not expected to always work.");
             setDefaults();
             System.out.println("\n[PRESS ENTER TO CONTINUE...]");
             new Scanner(System.in).nextLine();
@@ -105,6 +134,27 @@ public class UVConfig implements Serializable {
                 IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+
+    public ArrayList<String> getMultivalProperty(String key) {
+       return multival_properties.get(key);
+    }
+
+    public ArrayList<Integer> getMultivalIntProperty(String key) {
+        var values = new ArrayList<Integer>();
+        for (String s: getMultivalProperty(key)) {
+            values.add(Integer.parseInt(s));
+        }
+        return values;
+    }
+
+    public String getMultivalPropertyRandomItem(String key) {
+        int index = new Random().nextInt(getMultivalProperty(key).size()-1);
+        return getMultivalProperty(key).get(index);
+    }
+    public int getMultivalPropertyRandomIntItem(String key) {
+        return Integer.parseInt(getMultivalPropertyRandomItem(key));
     }
 
     public Map<String,String> getRandomProfile() {
@@ -133,14 +183,7 @@ public class UVConfig implements Serializable {
         return profiles.get(profile).get(attribute);
     }
 
-    public void print() {
-        var l = properties.stringPropertyNames();
-
-        for (String s:l)
-            System.out.println("name: "+s+" val: "+properties.get(s));
-    }
-
-    public String getStringAttribute(String parameter) {
+    public String getStringProperty(String parameter) {
 
         if (!properties.containsKey(parameter)) {
             System.out.println("Missing parameter "+parameter);
@@ -154,9 +197,9 @@ public class UVConfig implements Serializable {
         return properties.get(parameter).toString();
     }
 
-    public int getIntAttribute(String parameter) {
+    public int getIntProperty(String parameter) {
 
-        String attribute = getStringAttribute(parameter);
+        String attribute = getStringProperty(parameter);
 
         return Integer.parseInt(attribute.toString());
     }
