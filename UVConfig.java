@@ -25,8 +25,8 @@ public class UVConfig implements Serializable {
 
     private Map<String,Map<String,String>> profiles = new HashMap<>();
     private Map<String,ArrayList<String>> multival_properties = new HashMap<>();
-
     private Properties properties;
+    private Random random;
 
     @Serial
     private static final long serialVersionUID = 120678L;
@@ -134,6 +134,9 @@ public class UVConfig implements Serializable {
                 IOException e) {
             throw new RuntimeException(e);
         }
+
+        random = new Random(getIntProperty("seed"));
+        System.out.println("Setting seed to "+getIntProperty("seed"));
     }
 
 
@@ -149,16 +152,16 @@ public class UVConfig implements Serializable {
         return values;
     }
 
-    public String getMultivalPropertyRandomItem(String key) {
-        int index = new Random().nextInt(getMultivalProperty(key).size()-1);
+    public synchronized String getMultivalRandomItem(String key) {
+        int index = random.nextInt(getMultivalProperty(key).size()-1);
         return getMultivalProperty(key).get(index);
     }
     public int getMultivalPropertyRandomIntItem(String key) {
-        return Integer.parseInt(getMultivalPropertyRandomItem(key));
+        return Integer.parseInt(getMultivalRandomItem(key));
     }
 
-    public Map<String,String> getRandomProfile() {
-        double p = new Random().nextDouble();
+    public synchronized Map<String,String> getRandomProfile() {
+        double p = random.nextDouble();
         double cumulativeProbability = 0.0;
         for (String profileName: profiles.keySet()) {
 

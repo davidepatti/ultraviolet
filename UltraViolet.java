@@ -14,8 +14,10 @@ public class UltraViolet {
 
     private void showNodeCommand(String pubkey) {
 
-        if (networkManager.getUVNodeList().size() == 0)
+        if (networkManager.getUVNodeList().size() == 0) {
             System.out.println("EMPTY NODE LIST");
+            return;
+        }
         var node = networkManager.getNode(pubkey);
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
 

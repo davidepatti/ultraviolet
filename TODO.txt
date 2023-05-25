@@ -1,4 +1,33 @@
+URGENT:
+
+see mini.log
+[timechain 1]:pk29:Updating pending current: 0 to 13260000
+
+[timechain 1]:pk29:Waiting for confirmation of funding Tx{ 0xf7..af,FUNDING_TXamt:1326000, node1:pk29, node2:pk14}
+
+the same amount is found here:
+*PubKey:'pk76'(Pop), ch:9, onchain(pending):1386000(1326000), ln:16437000, p2pq: 0}
+
+[timechain 2]:pk29:Updating pending current: 1326000 to 7680001326000
+[timechain 38]:pk76:Updating pending current: 1326000 to 10140001326000
+
+CHECK random generator and/or overflow
+
 Notes:
+
+- move the logic of testing invoice events to the local in-node processInvoice and implement per-node stats
+- check how to deal with non-local not-yet-set policy channels when routing etc...
+- graph syncing using the appropriate query gossip messages, not normal gossip
+- check for duplicate entries in p2pq
+- use realistic data format when possible without complication (e.g. short channel id, secret, hashes)
+- implement the update channel message for fees and lock delta
+
+- profiles in properties
+- initial_routing_sync to query for past gossip:
+https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#initial-sync
+
+Increase heapn 
+-  java -Xmx6g  UltraViolet config
 
 Optional:
 if should not be null, use .get a go with exception if it happens
@@ -14,27 +43,19 @@ of having directly access to some LNChannle object
 
 
 
-- implement tx storing events in timechain blocks (e.g. channel opening/closing)
-- check for concurrency problems in for loops
-- check for duplicate entries in p2pq
-- use realistic data format when possible without complication (e.g. short channel id, secret, hashes)
-- node1 node2 order should only reflect the alphabetical order, not initiator
-- implement the update channel message for fees and lock delta
 
-- channel confirmation delay, also similar blockchain related events
+
+DONE
 - importing real topology (e.g. lncli describegraph)
-- profiles in properties
-- initial_routing_sync to query for past gossip:
-https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#initial-sync
-
 lncli describegraph > graph.json
-
 cat graph.json | grep "pub_key" | wc -l
 16184
 cat graph.json | grep "channel_id" | wc -l
 76347
-
-DONE
+- channel confirmation delay, also similar blockchain related events
+- node1 node2 order should only reflect the alphabetical order, not initiator
+- check for concurrency problems in for loops
+- implement tx storing events in timechain blocks (e.g. channel opening/closing)
 - set a proper gossip propagation policy (stop after hops? periodically broadcast from thread?)
 - saving state
 - deterministic random in nodes

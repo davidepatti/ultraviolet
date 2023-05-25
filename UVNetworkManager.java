@@ -232,7 +232,7 @@ public class UVNetworkManager {
      * Select a random node in the network using the list of the currently know pubkeys
      * @return a UVNode instance of the selected node
      */
-    public UVNode getRandomNode() {
+    private UVNode getRandomNode() {
         // TODO: to change if nodes will be closed in future versions
         var n = random.nextInt(pubkeys_list.length);
         var some_random_key = pubkeys_list[n];
@@ -485,7 +485,6 @@ public class UVNetworkManager {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-
     }
 
     /**
@@ -560,7 +559,7 @@ public class UVNetworkManager {
         for (int n = 0; n < n_events; n++) {
             var sender = getRandomNode();
             var dest = getRandomNode();
-            int amount = new Random().nextInt(max_amount);
+            int amount = random.nextInt(max_amount);
             var invoice = dest.generateInvoice(amount);
             sender.processInvoice(invoice, max_fees);
         }

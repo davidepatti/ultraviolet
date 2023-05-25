@@ -642,9 +642,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+")");
 
+        log("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
         updateOnchainPending(getOnchainPending()+channel_size);
 
-        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, 30, this.pubkey);
+        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().getIntProperty("to_self_delay"), this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
     }
@@ -677,9 +678,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
 
+
         log("Channel Accepted by peer "+ peerPubKey+ " ("+temp_channel_id+")");
         var pseudo_hash = Kit.bytesToHexString(Kit.hash256(temp_channel_id));
-        var funding_tx = new UVTimechain.Transaction(pseudo_hash, UVTimechain.TxType.FUNDING_TX,getPubKey(),peerPubKey);
+
+        var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
+        var funding_tx = new UVTimechain.Transaction(pseudo_hash, UVTimechain.TxType.FUNDING_TX,funding_amount,getPubKey(),peerPubKey);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
         // bolt: received funding_signed
@@ -1042,8 +1046,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             size = getGossipMsgQueue().size();
         else size = 0;
 
-        return "*PubKey:'" + pubkey + '\'' + "("+alias+")"+ ", ch:" + channels.size() +
-                ", onchain(pending):" + getOnChainBalance() + "("+getOnchainPending()+"), ln:" + getLightningBalance() + ", p2pq: "+size+'}';
+
+        String s = String.format("%-4s %-25s %-4s %-3d %-5s %-10d %-2s %-10d",pubkey,"("+alias+")", "#ch:", channels.size(),"onchain:", getOnChainBalance(), "ln:", getLightningBalance());
+
+
+        return s;
     }
 
     /**

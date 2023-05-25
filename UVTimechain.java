@@ -11,10 +11,10 @@ public class UVTimechain implements Runnable, Serializable  {
     }
 
     enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
-    record Transaction(String txId, TxType type, String node1_pub, String node2_pub) implements Serializable{
+    record Transaction(String txId, TxType type, int amount, String node1_pub, String node2_pub) implements Serializable{
         @Override
         public String toString() {
-            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + ", node1:" + node1_pub + ", node2:" + node2_pub + '}';
+            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + "amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
         }
     };
     record Block(int height, List<Transaction> txs) implements Serializable {};
