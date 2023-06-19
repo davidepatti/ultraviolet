@@ -242,14 +242,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Checking path policies "+ChannelGraph.pathString(path));
         for (ChannelGraph.Edge e: path) {
-            if (e.policy()==null) return false;
+            if (e.policy()==null)  {
+                log("Invalid path, missing policy on edge "+e);
+                return false;
+            }
         }
         return true;
     }
 
     public boolean checkOutboundPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
-        log("Checking path "+ChannelGraph.pathString(path));
+        log("Checking outbound path liquidity "+ChannelGraph.pathString(path));
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
         var firstChannel = channels.get(firstChannelId);
 
@@ -289,7 +292,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public void processInvoice(LNInvoice invoice, int max_fees) {
 
         log("Processing "+invoice);
-        var paths = this.getPaths(invoice.getDestination(),false);
 
         // pathfinding stats
         var  candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
@@ -304,8 +306,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             var to_discard = false;
 
             if (!checkPathPolicies(path)) {
-                to_discard = true;
-                log("Discarding path due to missing policies");
+                // this path is not viable, some policies are missing
+                continue;
             }
 
             if (!checkPathCapacity(path, invoice.getAmount()))  {
@@ -525,7 +527,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         final var forwardingChannel = channels.get(payload.getShortChannelId());
 
-        int fees = msg.getAmount()-payload.getAmtToForward();
+        int amt = msg.getAmount();
+        int amt_forward = payload.getAmtToForward();
+
+        int fees = amt-amt_forward;
 
         if (fees>=0) {
             // TODO: check fees here...
@@ -552,7 +557,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
            return;
         }
 
-        if (msg.getAmount() > getLocalChannelBalance(forwardingChannel.getId())+forwardingChannel.getReserve()) {
+        int local_balance = getLocalChannelBalance(forwardingChannel.getId());
+
+        if (msg.getAmount() > local_balance+forwardingChannel.getReserve()) {
             log("Not enought local balance liquidity in channel "+forwardingChannel);
             var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
             sendToPeer(incomingPeer,fail_msg);
@@ -561,14 +568,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
-        var amt= payload.getAmtToForward();
         int cltv = payload.getOutgoingCLTV();
 
         // fields that does not depend on payload, but message received
         var onion_packet = msg.getOnionPacket().getInnerLayer();
         var payhash = msg.getPayment_hash();
 
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.increaseHTLCId(),amt,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.increaseHTLCId(),amt_forward,payhash,cltv,onion_packet.get());
 
         debug("Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
@@ -1022,8 +1028,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             new_node2_balance =target_channel.getNode2Balance()+amount;
         }
         else {
-            new_node1_balance =target_channel.getNode2Balance()+amount;
-            new_node2_balance =target_channel.getNode1Balance()-amount;
+            new_node1_balance =target_channel.getNode1Balance()+amount;
+            new_node2_balance =target_channel.getNode2Balance()-amount;
         }
 
         if (new_node1_balance > 0 && new_node2_balance > 0) {
