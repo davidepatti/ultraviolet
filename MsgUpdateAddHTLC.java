@@ -48,11 +48,11 @@ public class MsgUpdateAddHTLC extends P2PMessage {
     @Override
     public String toString() {
         return "MsgUpdateAddHTLC{" +
-                "ch_id='" + channel_id + '\'' +
-                ", id=" + id +
-                ", amount=" + amount +
-                ", hash='" + payment_hash + '\'' +
-                ", cltv=" + cltv_expiry +
+                "ch_id:'" + channel_id + '\'' +
+                ", id:" + id +
+                ", amt:" + amount +
+                ", hash:'" + Kit.shortString(payment_hash) + '\'' +
+                ", cltv:" + cltv_expiry +
                 '}';
     }
 }

@@ -66,7 +66,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
 
-    public void addPending(String node, int amt) {
+    public synchronized void addPending(String node, int amt) {
         if (node.equals(node_id_1))  {
             node1Pending += amt;
         }

@@ -27,9 +27,9 @@ public class MsgUpdateFulFillHTLC extends P2PMessage {
     @Override
     public String toString() {
         return "MsgUpdateFulFillHTLC{" +
-                "ch_id='" + channel_id + '\'' +
-                ", id=" + id +
-                ", preimage='" + payment_preimage + '\'' +
+                "ch_id:'" + channel_id + '\'' +
+                ", id:" + id +
+                ", preimage:'" + payment_preimage + '\'' +
                 '}';
     }
 }

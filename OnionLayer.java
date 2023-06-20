@@ -33,7 +33,7 @@ public class OnionLayer {
         @Override
         public String toString() {
             return "(*" +
-                    "ch_id='" + short_channel_id + '\'' + ", amt=" + amt_to_forward + ", out_cltv=" + outgoing_cltv_value + ", hash=" + payment_secret + "*)";
+                    "ch_id='" + short_channel_id + '\'' + ", amt:" + amt_to_forward + ", out_cltv:" + outgoing_cltv_value + ", hash:" + payment_secret + "*)";
         }
 
         public int getOutgoingCLTV() {

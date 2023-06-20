@@ -301,14 +301,18 @@ public class UltraViolet {
             System.out.println("-----------------------------------");
         }));
         menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
-            System.out.print("Number of invoice events:");
-            int n = Integer.parseInt(scanner.nextLine());
+            System.out.print("Injection Rate (per node events at each block):");
+            double node_events_per_block = Double.parseDouble(scanner.nextLine());
+            System.out.print("Timechain duration (blocks): ");
+            int n_blocks = Integer.parseInt(scanner.nextLine());
+            System.out.println("Min amount");
+            int amt_min = Integer.parseInt(scanner.nextLine());
             System.out.println("Max amount");
-            int amt = Integer.parseInt(scanner.nextLine());
+            int amt_max = Integer.parseInt(scanner.nextLine());
             System.out.println("Max fees");
             int fees = Integer.parseInt(scanner.nextLine());
 
-            networkManager.generateInvoiceEvents(n,amt,fees);
+            networkManager.generateInvoiceEvents(node_events_per_block,n_blocks,amt_min,amt_max,fees);
 
         }));
 

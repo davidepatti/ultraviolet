@@ -135,7 +135,6 @@ public class ChannelGraph implements Serializable  {
                         current = last_parent.get(current.source());
                     }
                     paths.add(path);
-                    System.out.println("Found path: "+ChannelGraph.pathString(path));
                     if (stopfirst) return paths;
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());

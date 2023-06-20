@@ -212,7 +212,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
         while (pendingInvoices.containsKey(hash)) {
             try {
-                System.out.println("WAITING...");
+                //System.out.println("WAITING...");
                 Thread.sleep(delay);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
@@ -308,13 +308,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
 
             if (!checkOutboundPathLiquidity(path, invoice.getAmount()))  {
-                System.out.println("Discarding path (missing liquidity)"+ ChannelGraph.pathString(path));
+                log("Discarding path (missing liquidity)"+ ChannelGraph.pathString(path));
                 to_discard = true;
                 miss_outbound_liquidity++;
             }
 
             if (getPathFees(path,invoice.getAmount()) > max_fees) {
-                System.out.println("Discarding path (exceed fees)"+ ChannelGraph.pathString(path));
+                log("Discarding path (exceed fees)"+ ChannelGraph.pathString(path));
                 to_discard = true;
                 exceeded_max_fees++;
             }

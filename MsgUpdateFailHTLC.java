@@ -26,10 +26,6 @@ public class MsgUpdateFailHTLC extends P2PMessage {
 
     @Override
     public String toString() {
-        return "MsgUpdateFailHTLC{" +
-                "ch_id='" + channel_id + '\'' +
-                ", id=" + id +
-                ", reason='" + reason + '\'' +
-                '}';
+        return "MsgUpdateFailHTLC{" + "ch_id:'" + channel_id + '\'' + ", id:" + id + ", reason:'" + reason + '\'' + '}';
     }
 }

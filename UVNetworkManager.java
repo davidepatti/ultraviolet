@@ -549,19 +549,30 @@ public class UVNetworkManager {
         uvnode.receiveMessage(message);
     }
 
-    public void generateInvoiceEvents(int n_events, int max_amount, int max_fees) {
+    public void generateInvoiceEvents(double node_events_per_block, int blocks, int min_amt, int max_amt, int max_fees) {
         if (!isBootstrapCompleted()) {
             System.out.println("ERROR: must execute bootstrap or load/import a network!");
             return;
         }
-        log("Generating " + n_events + " invoice events" + "(max amt:" + max_amount + ",max_fees" + max_fees + ")");
 
-        for (int n = 0; n < n_events; n++) {
-            var sender = getRandomNode();
-            var dest = getRandomNode();
-            int amount = random.nextInt(max_amount);
-            var invoice = dest.generateInvoice(amount);
-            sender.processInvoice(invoice, max_fees);
+        // node_events_per_block = 0.01 -> each node has (on average) one event every 100 blocks
+        // so, if there are 1000 nodes, 10 node events will happen globally at each block
+        int events_per_block = (int)(pubkeys_list.length*node_events_per_block);
+        int total_events = events_per_block*blocks;
+
+        log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
+        System.out.println("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
+
+        for (int nb = 0; nb < blocks; nb++) {
+            for (int eb = 0; eb<events_per_block; eb++ ) {
+                var sender = getRandomNode();
+                var dest = getRandomNode();
+                int amount = random.nextInt(max_amt-min_amt)+min_amt;
+                var invoice = dest.generateInvoice(amount);
+                new Thread(()->sender.processInvoice(invoice, max_fees)).start();
+            }
+            waitForBlocks(1);
         }
+
     }
 }
