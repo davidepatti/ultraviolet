@@ -51,16 +51,18 @@ public class GlobalStats {
         FileWriter fw;
 
         try {
-            fw = new FileWriter("report_inv_"+new Date().toString()+".csv");
+            fw = new FileWriter("report_inv_"+ new Date() +".csv");
             fw.write("hash,sender,dest,amount,total_paths,candidate_paths,missing_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (node.getInvoiceReports().size()>0) {
                     System.out.println("Node: "+node.getPubKey());
+                    fw.write("\nNode:"+node.getPubKey());
                     System.out.println("-------------------------------------------------------------");
+                    fw.write("\n-------------------------------------------------------------");
                     for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
                         System.out.println(report);
-                        fw.write(report.toString());
                         fw.write("\n");
+                        fw.write(report.toString());
                     }
                     fw.flush();
                 }
