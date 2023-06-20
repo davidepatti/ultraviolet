@@ -65,6 +65,23 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.reserve = channelReserveSatoshis;
     }
 
+
+    public void addPending(String node, int amt) {
+        if (node.equals(node_id_1))  {
+            node1Pending += amt;
+        }
+        else
+        if (node.equals(node_id_2)) {
+            node2Pending +=amt;
+        }
+        else {
+            throw new IllegalArgumentException("Wrong node "+node);
+        }
+    }
+    public void removePending(String node, int amt) {
+        addPending(node,-amt);
+    }
+
     public void setPolicy(String node, Policy policy) {
         if (node.equals(node_id_1))  {
             node1Policy = policy;
@@ -209,9 +226,13 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
      */
     public synchronized int getLiquidity(String pubkey) {
         if (pubkey.equals(node_id_1))
-            return getNode1Balance()-getReserve()- getNode1Pending();
+            return getNode1Liquidity();
         else
-        return getNode2Balance()-getReserve()- getNode2Pending();
+        if (pubkey.equals(node_id_2))
+            return getNode2Liquidity();
+        else {
+            throw new IllegalArgumentException("WRONG pubkey "+pubkey);
+        }
     }
 
     public synchronized int increaseHTLCId() {
@@ -237,15 +258,17 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     @Override
     public String toString() {
-        return "Ch{" +
-                " Id:'" + channel_id + '\'' +
-                ", n1:" + node_id_1 + '\'' +
-                ", n2:" + node_id_2 + '\'' +
-                ", [" + node1Balance + "," + node2Balance +"]"+
-                ", "+ node1Policy +
-                ", " + node2Policy +
-                ", ups:" + commitNumber +
-                '}';
+
+        StringBuilder p1 = new StringBuilder("(");
+        p1.append(channel_id).append(") ").append("n1:").append(node_id_1);
+        p1.append(" n2:").append(node_id_2).append(", [").append(node1Balance);
+        if (this.getNode1Pending()!=0) p1.append("(pending ").append(getNode1Pending()).append(")");
+        p1.append(",").append(node2Balance);
+        if (this.getNode2Pending()!=0) p1.append("(pending ").append(getNode2Pending()).append(")");
+        p1.append("]").append(node1Policy).append(node2Policy);
+        p1.append(", commit:").append(commitNumber);
+
+        return p1.toString();
     }
 
     /**

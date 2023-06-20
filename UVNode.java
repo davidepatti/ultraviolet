@@ -5,15 +5,6 @@ import java.util.concurrent.*;
 
 public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
-    private double stat_failed_path_liquidity = 0;
-    private double stat_checked_path_liquidity = 0;
-    private double stat_checked_path_fees = 0;
-    private double stat_failed_path_fees = 0;
-    private double stat_attempted_invoice_routings = 0;
-    private double stat_successfull_invoice_routings = 0;
-    private double stat_processed_invoices = 0;
-
-
     private final Map<String,String> profile;
 
     public record InvoiceReport(String hash,
@@ -435,13 +426,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // I offered a HTLC with the same hash
         if (pendingHTLC.containsKey(computed_hash)) {
             var htlc = pendingHTLC.get(computed_hash);
-            log("Fulfilling " + htlc + " by pushing " + htlc.getAmount() + " from me:" + this.getPubKey() + " to channel " + channel);
+            log("Fulfilling " + htlc + " by pushing " + htlc.getAmount() + " from " + this.getPubKey() + " to channel " + channel);
 
             if (!pushSats(channel, htlc.getAmount())) {
                 throw new IllegalStateException("Cannot push sats!");
             }
 
             pendingHTLC.remove(computed_hash);
+            channels.get(channel).removePending(this.getPubKey(),htlc.getAmount());
 
             // If I forwarded an incoming htlc, must also send back the fulfill message
             if (receivedHTLC.containsKey(computed_hash)) {
@@ -473,6 +465,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 log("Found pending HTLC to remove for hash: " + hash);
 
                 pendingHTLC.remove(hash);
+                channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
                 // I offered a HTLC with the same hash
                 if (receivedHTLC.containsKey(hash)) {
@@ -526,11 +519,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         final var forwardingChannel = channels.get(payload.getShortChannelId());
-
-        int amt = msg.getAmount();
+        int amt_incoming = msg.getAmount();
         int amt_forward = payload.getAmtToForward();
 
-        int fees = amt-amt_forward;
+        int fees = amt_incoming-amt_forward;
 
         if (fees>=0) {
             // TODO: check fees here...
@@ -538,17 +530,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         }
 
-        int currentBlock = uvManager.getTimechain().getCurrentBlock();
-        var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).getCLTV();
-
-        var incomingPeer = getChannelPeer(msg.getChannel_id());
-
         //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
         // - once the cltv_expiry of an incoming HTLC has been reached,
         // O if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
         // MUST fail that incoming HTLC (update_fail_htlc).
 
+        var incomingPeer = getChannelPeer(msg.getChannel_id());
+        int currentBlock = uvManager.getTimechain().getCurrentBlock();
         var blocks_until_expire = msg.getCLTVExpiry()-currentBlock;
+        var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).getCLTV();
 
         if ( (blocks_until_expire <=0) || (blocks_until_expire < my_out_cltv)) {
            log("Expired (blocks until expire "+blocks_until_expire+ ", my out cltv:"+my_out_cltv+" for HTLC hash:"+msg.getPayment_hash());
@@ -557,10 +547,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
            return;
         }
 
-        int local_balance = getLocalChannelBalance(forwardingChannel.getId());
+        // check liquidity
+        int channel_liquidity = forwardingChannel.getLiquidity(this.getPubKey());
 
-        if (msg.getAmount() > local_balance+forwardingChannel.getReserve()) {
-            log("Not enought local balance liquidity in channel "+forwardingChannel);
+        if (amt_forward > channel_liquidity) {
+            log("Not enought local liquidity to forward "+amt_forward+ " in channel "+forwardingChannel);
             var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
             sendToPeer(incomingPeer,fail_msg);
             return;
@@ -579,6 +570,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
+        forwardingChannel.addPending(this.getPubKey(),amt_forward);
 
         var next_channel_peer = getChannelPeer(forwardingChannel.getId());
         sendToPeer(next_channel_peer,new_msg);
