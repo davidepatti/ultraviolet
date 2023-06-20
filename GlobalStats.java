@@ -60,6 +60,7 @@ public class GlobalStats {
                     for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
                         System.out.println(report);
                         fw.write(report.toString());
+                        fw.write("\n");
                     }
                     fw.flush();
                 }
