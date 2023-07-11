@@ -35,8 +35,10 @@ https://github.com/davidepatti/ultraviolet/blob/main/template.properties
 
 Also, you can easily define new properties and refer to them in code!
 
+For further details about usage and commands please refer to the [wikipage](https://github.com/davidepatti/ultraviolet/wiki/UltraViolet-Wiki)
+
+
 This command will start the main menu:
 
 ![](https://user-images.githubusercontent.com/3337669/230136438-e1419961-d2cd-48cd-9983-9d3fc169ce87.png)
 
-For further details about usage and commands please refer to the [wikipage](https://github.com/davidepatti/ultraviolet/wiki/UltraViolet-Wiki)
