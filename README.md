@@ -25,11 +25,15 @@ its own "behavioral space".
 ## Quick Start
 
 * compile source: `javac *.java`
-* the just execute:  _`java UltraViolet` configuration_file_
+* the just execute:  _`java UltraViolet` template.properties`_
 
-The configuration allows to customize different aspects of the deployed network, including nodes behavior, channels,
-fee/routing policies, p2p/gossip etc... Please refere to the provided _template.properties_ file for a description of the various sections.
+By customizing the properties file you can experiment different aspects of the deployed network, including nodes behavior, channels,
+fee/routing policies, p2p/gossip etc...
 
+Just give at look at the comments in the properties file here to get an idea:
+https://github.com/davidepatti/ultraviolet/blob/main/template.properties
+
+Also, you can easily define new properties and refer to them in code!
 
 This command will start the main menu:
 
