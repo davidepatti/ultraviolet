@@ -51,6 +51,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> pendingHTLC = new HashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
+    transient private HashSet<String> pendingAcceptedChannelPeers = new HashSet<>();
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -601,7 +602,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         throw new IllegalArgumentException(this.getPubKey()+" Has no channel with "+node_id);
     }
 
-    public boolean hasChannelWith(String nodeId) {
+    public synchronized boolean hasChannelWith(String nodeId) {
         for (UVChannel c:this.channels.values()) {
             if (c.getNode2PubKey().equals(nodeId) || c.getNode1PubKey().equals(nodeId)) {
                 return true;
@@ -609,8 +610,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
         return false;
     }
+    public synchronized boolean hasPendingChannelWith(String nodeId) {
+        return pendingAcceptedChannelPeers.contains(nodeId);
+    }
 
-    public synchronized boolean ongoingOpeningRequestWith(String nodeId) {
+    public synchronized boolean hasOpeningRequestWith(String nodeId) {
         return sentChannelOpenings.containsKey(nodeId);
     }
 
@@ -665,9 +669,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
+        pendingAcceptedChannelPeers.add(initiator_id);
+
         if (this.hasChannelWith(initiator_id)) {
-            log("Node has already a channel with "+initiator_id);
-            return;
+            throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
         }
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvManager.getP2PNode(initiator_id);
@@ -685,7 +690,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
-
 
         log("Channel Accepted by peer "+ peerPubKey+ " ("+temp_channel_id+")");
         var pseudo_hash = Kit.bytesToHexString(Kit.hash256(temp_channel_id));
@@ -786,6 +790,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         String sender = this.getPubKey();
         var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
         broadcastToPeers(sender,msg_update);
+        pendingAcceptedChannelPeers.remove(newChannel.getInitiator());
     }
 
     /**

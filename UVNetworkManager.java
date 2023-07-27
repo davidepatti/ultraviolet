@@ -65,7 +65,7 @@ public class UVNetworkManager {
         }
     }
 
-    public synchronized String getAlias() {
+    public synchronized String createAlias() {
         if (aliasNames.size()<1) return "_";
         var i = random.nextInt(0,aliasNames.size());
         String alias = aliasNames.get(i);
@@ -88,7 +88,6 @@ public class UVNetworkManager {
 
         log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
-
         loadAliasNames();
     }
 
@@ -161,7 +160,7 @@ public class UVNetworkManager {
             else
                 funding = (int)1e3*(random.nextInt(max_capacity-min_capacity)+min_capacity);
 
-            var node = new UVNode(this,"pk"+i,getAlias(),funding,random_profile);
+            var node = new UVNode(this,"pk"+i, createAlias(),funding,random_profile);
             uvnodes.put(node.getPubKey(),node);
         }
 
@@ -535,9 +534,14 @@ public class UVNetworkManager {
             var peerPubkey = getRandomNode().getPubKey();
 
             // checking problems with peer
-            if (peerPubkey.equals(node.getPubKey())) continue;
-            if (node.hasChannelWith(peerPubkey)) continue;
-            if (node.ongoingOpeningRequestWith(peerPubkey)) continue;
+            if (peerPubkey.equals(node.getPubKey()))
+                continue;
+            if (node.hasChannelWith(peerPubkey))
+                continue;
+            if (node.hasOpeningRequestWith(peerPubkey))
+                continue;
+            if (node.hasPendingChannelWith(peerPubkey))
+                continue;
 
             log("Node "+node.getPubKey()+" Trying to open a channel with "+peerPubkey);
 
