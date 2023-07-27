@@ -243,9 +243,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public boolean checkOutboundPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
-        log("Checking outbound path liquidity "+ChannelGraph.pathString(path));
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
         var firstChannel = channels.get(firstChannelId);
+        log("Checking outbound path liquidity (amt:"+amount+ ")"+ ChannelGraph.pathString(path)+" for first channel "+firstChannel);
 
         // this is the only liquidity check that can be performed in advance
         var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
@@ -255,6 +255,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             return false;
         }
 
+        log("Liquidity ok! ("+amount+" on "+ firstChannelId+ ")");
         return true;
     }
 
@@ -319,7 +320,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 exceeded_max_fees++;
             }
 
-            if (!to_discard) candidatePaths.add(path);
+            if (!to_discard) {
+                candidatePaths.add(path);
+                log("Added to candidates: "+ChannelGraph.pathString(path));
+            }
         }
 
         // routing stats
@@ -333,9 +337,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
                 if (waitForInvoiceCleared(invoice.getHash())) {
                     success_htlc = true;
+                    log(" Successfully routed invoice "+invoice.getHash());
                     break;
                 }
             }
+        }
+        else {
+            log("No viable candidate paths found for invoice "+ invoice.getHash());
         }
 
         invoiceReports.add(new InvoiceReport(this.getPubKey(), invoice.getDestination(),invoice.getHash(),totalPaths.size(),candidatePaths.size(),miss_capacity,exceeded_max_fees,miss_outbound_liquidity,attempted_paths,success_htlc));
@@ -472,7 +480,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     var prev_htlc = receivedHTLC.get(hash);
                     var prev_ch_id = prev_htlc.getChannel_id();
                     var prev_peer = getChannelPeer(prev_ch_id);
-                    sendToPeer(prev_peer, new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason()));
+                    var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
+                    log("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
+                    sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
                 else {
