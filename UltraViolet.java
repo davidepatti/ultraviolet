@@ -92,44 +92,7 @@ public class UltraViolet {
         var invoice = dest.generateInvoice(amount);
         System.out.println("Generated Invoice: "+invoice);
 
-        var paths = sender.getPaths(invoice.getDestination(),false);
-        var validPaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
-
-
-        System.out.println("Found "+paths.size()+" paths to "+invoice.getDestination());
-
-        for (var path:paths) {
-            if (sender.getPathFees(path,invoice.getAmount()) > fees) {
-                System.out.println("Discarding path (fees)"+ ChannelGraph.pathString(path));
-                continue;
-            }
-            if (sender.checkOutboundPathLiquidity(path, invoice.getAmount()))  {
-                System.out.println("Discarding path (liquidity)"+ ChannelGraph.pathString(path));
-                continue;
-            }
-            validPaths.add(path);
-        }
-        boolean success = false;
-        if (validPaths.size()>0) {
-            int n = 0;
-            for (var path: validPaths) {
-                n++;
-                System.out.println("Trying path: "+ChannelGraph.pathString(path));
-                sender.routeInvoiceOnPath(invoice,path);
-
-                if (sender.waitForInvoiceCleared(invoice.getHash())) {
-                    success = true;
-                    break;
-                }
-            }
-            if (success) {
-                System.out.println("Successfull processed invoice "+invoice.getHash());
-            }
-            else System.out.println("Failed routing for invoice "+invoice.getHash());
-        }
-
-        else
-            System.out.println("No suitable path for destination "+ invoice.getDestination());
+        new Thread(()->sender.processInvoice(invoice, fees)).start();
     }
 
     /**
