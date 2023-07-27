@@ -243,15 +243,28 @@ public class UVNetworkManager {
      *
      */
     public Optional<LNChannel> getChannelFromNodes(String pub1, String pub2) {
+        // as the name suggests, the usage of this method assumes that at max ONE channel
+        // is present between nodes. It should never be used when multiple channels
+        // are present between two nodes, so this incoherent condition should be checked
 
         var n1 = getNode(pub1);
         var n2 = getNode(pub2);
 
+        Optional<LNChannel> channel = Optional.empty();
+        int found_channels = 0;
+
         for (LNChannel c: n1.getLNChannelList()) {
-            if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2))
-                return Optional.of(c);
+            if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2)) {
+                channel = Optional.of(c);
+                found_channels++;
+            }
         }
-        return Optional.empty();
+
+        if (found_channels>1) {
+            throw new IllegalStateException(" Found multiple channels between "+n1.getPubKey()+" and "+n2.getPubKey());
+        }
+
+        return channel;
     }
 
     /**
