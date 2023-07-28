@@ -506,7 +506,6 @@ public class UVNetworkManager {
 
         ///----------------------------------------------------------
         var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
-
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large durations with short p2p message deadline can cause some node no to consider earlier node messages
 
@@ -540,19 +539,19 @@ public class UVNetworkManager {
                 continue;
             if (node.hasOpeningRequestWith(peerPubkey))
                 continue;
-            if (node.hasPendingChannelWith(peerPubkey))
+            if (node.hasPendingAcceptedChannelWith(peerPubkey))
                 continue;
-
-            log("Node "+node.getPubKey()+" Trying to open a channel with "+peerPubkey);
 
             int max = Math.min(max_ch_size, node.getOnChainBalance());
             int min = min_ch_size;
             var newChannelSize = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
+            log("Node "+node.getPubKey()+" Trying to open a channel (size:"+newChannelSize+") with "+peerPubkey);
+
 
             if (node.getOnchainLiquidity()< newChannelSize) {
+                log("Discarding attempt: liquidity ("+node.getOnchainLiquidity()+") < channelsize");
                 continue;
             }
-
             node.openChannel(peerPubkey,newChannelSize);
         } // while
 

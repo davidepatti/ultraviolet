@@ -256,7 +256,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             return false;
         }
 
-        log("Liquidity ok! ("+amount+" on "+ firstChannelId+ ")");
+        log("Liquidity ok for "+firstChannelId+" (required "+amount+" of "+senderLiquidity+")");
         return true;
     }
 
@@ -332,6 +332,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int attempted_paths = 0;
 
         if ( candidatePaths.size()>0) {
+
+            pendingInvoices.put(invoice.getHash(),invoice);
+
             for (var path:  candidatePaths) {
                 attempted_paths++;
                 routeInvoiceOnPath(invoice,path);
@@ -341,7 +344,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     log(" Successfully routed invoice "+invoice.getHash());
                     break;
                 }
+                else {
+                    log("Could not successful route invoice: "+invoice.getHash());
+                }
             }
+            pendingInvoices.remove(invoice.getHash());
         }
         else {
             log("No viable candidate paths found for invoice "+ invoice.getHash());
@@ -419,7 +426,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("Creating HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
 
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
-        pendingInvoices.put(invoice.getHash(),invoice);
+        // dont put invoice pending here, but when starting the routing attempts...
+        //pendingInvoices.put(invoice.getHash(),invoice);
         pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
     }
     /**
@@ -435,14 +443,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // I offered a HTLC with the same hash
         if (pendingHTLC.containsKey(computed_hash)) {
             var htlc = pendingHTLC.get(computed_hash);
-            log("Fulfilling " + htlc + " by pushing " + htlc.getAmount() + " from " + this.getPubKey() + " to channel " + channel);
+            log("Fulfilling " + msg + " by pushing " + htlc.getAmount() + " from " + this.getPubKey() + " to channel " + channel);
+
+            channels.get(channel).removePending(this.getPubKey(),htlc.getAmount());
+            pendingHTLC.remove(computed_hash);
 
             if (!pushSats(channel, htlc.getAmount())) {
-                throw new IllegalStateException("Cannot push sats!");
+                throw new IllegalStateException("Cannot push "+htlc.getAmount()+ " from "+ this.getPubKey()+ " along "+channel);
             }
-
-            pendingHTLC.remove(computed_hash);
-            channels.get(channel).removePending(this.getPubKey(),htlc.getAmount());
 
             // If I forwarded an incoming htlc, must also send back the fulfill message
             if (receivedHTLC.containsKey(computed_hash)) {
@@ -455,7 +463,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             else {
                 if (pendingInvoices.containsKey(computed_hash)) {
                     log("LN invoice for hash "+computed_hash+ " Completed!");
-                    payedInvoices.put(computed_hash,pendingInvoices.remove(computed_hash));
+                    payedInvoices.put(computed_hash,pendingInvoices.get(computed_hash));
                 }
                 else throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
             }
@@ -474,7 +482,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 log("Found pending HTLC to remove for hash: " + hash);
 
                 pendingHTLC.remove(hash);
-                channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
                 // I offered a HTLC with the same hash
                 if (receivedHTLC.containsKey(hash)) {
@@ -483,13 +490,16 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     var prev_peer = getChannelPeer(prev_ch_id);
                     var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
                     log("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
+                    channels.get(prev_ch_id).removePending(prev_peer.getPubKey(),prev_htlc.getAmount());
+                    log("Removing pending "+prev_htlc.getAmount()+" on previous channel "+prev_ch_id+" with "+prev_peer);
                     sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
                 else {
                     if (pendingInvoices.containsKey(hash)) {
-                        log("LN invoice for hash " + hash + " Failed!");
-                        pendingInvoices.remove(hash);
+                        log("LN invoice for hash " + hash + " failed for current path!");
+                        // to be removed when failed on all paths
+                        //pendingInvoices.remove(hash);
                     } else
                         throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending Invoice for hash " + hash);
 
@@ -529,6 +539,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             throw new IllegalStateException(" Received update_add_htlc, but no generated invoice was found!");
         }
 
+        // I'm not the final destination, must forward the HTLC
+        // IMPORTANT: a failure at this point, due to fees, missing liquidity or expiration, will NOT
+        // need any pending balance removal: it wil simply not be reserved at all
         final var forwardingChannel = channels.get(payload.getShortChannelId());
         int amt_incoming = msg.getAmount();
         int amt_forward = payload.getAmtToForward();
@@ -538,7 +551,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         if (fees>=0) {
             // TODO: check fees here...
             debug("Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
-
+        }
+        else {
+           throw new IllegalStateException("Non sufficient fees for forwading "+msg);
         }
 
         //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
@@ -567,6 +582,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             sendToPeer(incomingPeer,fail_msg);
             return;
         }
+        else {
+            log("Liquidity on "+forwardingChannel.getId()+ " is ok: "+channel_liquidity+ ", to forward: "+amt_forward);
+        }
 
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
@@ -581,7 +599,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
-        forwardingChannel.addPending(this.getPubKey(),amt_forward);
+        // Forwading successfull: the pending balance will be free on fullfill by current node or
+        // by the next node if failure happens...
+        forwardingChannel.reservePending(this.getPubKey(),amt_forward);
 
         var next_channel_peer = getChannelPeer(forwardingChannel.getId());
         sendToPeer(next_channel_peer,new_msg);
@@ -610,7 +630,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
         return false;
     }
-    public synchronized boolean hasPendingChannelWith(String nodeId) {
+    public synchronized boolean hasPendingAcceptedChannelWith(String nodeId) {
         return pendingAcceptedChannelPeers.contains(nodeId);
     }
 
@@ -646,7 +666,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * Mapped to LN protocol message: open_channel
      * @param peerPubKey the target node partner to open the channel
      */
-    public void openChannel(String peerPubKey, int channel_size) {
+    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
+
+        if (hasOpeningRequestWith(peerPubKey))
+            return false;
+        if (hasPendingAcceptedChannelWith(peerPubKey))
+            return false;
 
         var peer = uvManager.getP2PNode(peerPubKey);
         peers.putIfAbsent(peer.getPubKey(),peer);
@@ -660,15 +685,22 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().getIntProperty("to_self_delay"), this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
+        return true;
     }
     /**
      *
      * @param openRequest
      * @return
      */
-    private synchronized void acceptChannel(MsgOpenChannel openRequest) {
+    private synchronized boolean acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
+
+        if (hasOpeningRequestWith(initiator_id))
+            return false;
+        if (hasPendingAcceptedChannelWith(initiator_id))
+            return false;
+
         pendingAcceptedChannelPeers.add(initiator_id);
 
         if (this.hasChannelWith(initiator_id)) {
@@ -679,6 +711,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
         var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().getIntProperty("minimum_depth"), uvManager.getConfig().getIntProperty("to_self_delay"),this.getPubKey());
         sendToPeer(channel_peer,acceptance);
+        return true;
     }
 
 
@@ -1005,13 +1038,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance ) {
 
         var channel = channels.get(channel_id);
-        debug("Updating "+channel+ " to new balances "+node1_balance+","+node2_balance);
-        try {
-            channel.newCommitment(node1_balance,node2_balance);
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
+        log("Updating "+channel+ " to new balances "+node1_balance+","+node2_balance);
+        channel.newCommitment(node1_balance,node2_balance);
         return true;
     }
 
@@ -1039,11 +1067,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             new_node2_balance =target_channel.getNode2Balance()-amount;
         }
 
-        if (new_node1_balance > 0 && new_node2_balance > 0) {
+        if (new_node1_balance >= 0 && new_node2_balance >= 0) {
             this.advanceChannelStatus(channel_id,new_node1_balance,new_node2_balance);
         }
         else {
-            log("pushSats: Insufficient funds in channel "+target_channel.getId()+" : cannot push  "+amount+ " sats to "+target_channel.getNode2PubKey());
+            log("pushSats: Insufficient funds in channel "+target_channel.getId()+" cannot push  "+amount+ " sats to "+target_channel.getNode2PubKey());
             return false;
         }
         return true;

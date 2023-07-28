@@ -37,7 +37,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.channel_id = id;
         this.node1Balance = balance1;
         this.node2Balance = balance2;
-        this.reserve = reserve;
+        this.reserve = 0;
         this.init_direction = dir;
 
     }
@@ -62,16 +62,22 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.node1Pending = 0;
         this.node2Pending = 0;
         this.status = ChannelStatus.NONE;
-        this.reserve = channelReserveSatoshis;
+        this.reserve = 0;
     }
 
 
-    public synchronized void addPending(String node, int amt) {
+    public synchronized void reservePending(String node, int amt) {
         if (node.equals(node_id_1))  {
+            if (amt>getNode1Liquidity()) {
+                throw new IllegalStateException("Cannot reserve "+amt+", liquidity "+node1Balance);
+            }
             node1Pending += amt;
         }
         else
         if (node.equals(node_id_2)) {
+            if (amt>getNode2Liquidity()) {
+                throw new IllegalStateException("Cannot reserve "+amt+", liquidity "+node2Balance);
+            }
             node2Pending +=amt;
         }
         else {
@@ -79,7 +85,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         }
     }
     public void removePending(String node, int amt) {
-        addPending(node,-amt);
+        reservePending(node,-amt);
     }
 
     public void setPolicy(String node, Policy policy) {
