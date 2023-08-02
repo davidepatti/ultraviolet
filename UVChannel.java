@@ -5,6 +5,9 @@ import java.util.Objects;
 @SuppressWarnings("CanBeFinal")
 public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel> {
 
+    private void log(String s) {
+        UVNetworkManager.log(this.getId()+":"+s);
+    }
     @Serial
     private static final long serialVersionUID = 120897L;
     private int htlc_id =0;
@@ -66,26 +69,42 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
 
-    public synchronized void reservePending(String node, int amt) {
+    public synchronized boolean reservePending(String node, int amt) {
+
+        log("Checking liquidity for node "+node+ " , required: "+amt+ " in channel "+this);
         if (node.equals(node_id_1))  {
             if (amt>getNode1Liquidity()) {
-                throw new IllegalStateException("Cannot reserve "+amt+", liquidity "+node1Balance);
+                return false;
             }
+            log("Increasing pending from "+node1Pending+" to "+(node1Pending+amt));
             node1Pending += amt;
+            return true;
         }
         else
         if (node.equals(node_id_2)) {
             if (amt>getNode2Liquidity()) {
-                throw new IllegalStateException("Cannot reserve "+amt+", liquidity "+node2Balance);
+               return false;
             }
+            log("Increasing pending from "+node1Pending+" to "+(node1Pending+amt));
             node2Pending +=amt;
+            return true;
         }
         else {
             throw new IllegalArgumentException("Wrong node "+node);
         }
     }
-    public void removePending(String node, int amt) {
-        reservePending(node,-amt);
+    public synchronized void removePending(String node, int amt) {
+
+        if (node.equals(this.getNode1PubKey())) {
+            node1Pending+=amt;
+        }
+        else if (node.equals(this.getNode2PubKey())) {
+            node2Pending+=amt;
+        }
+        else
+
+        throw new IllegalArgumentException(" Unkown node "+node);
+
     }
 
     public void setPolicy(String node, Policy policy) {
