@@ -444,9 +444,8 @@ public class UVNetworkManager {
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
-            var config = (Properties)s.readObject();
+            this.uvConfig = (UVConfig)s.readObject();
             this.UVTimechain = (UVTimechain)s.readObject();
-            uvConfig.setConfig(config);
 
             int num_nodes = s.readInt();
             for (int i=0;i<num_nodes;i++) {
@@ -541,6 +540,7 @@ public class UVNetworkManager {
                 continue;
             if (node.hasPendingAcceptedChannelWith(peerPubkey))
                 continue;
+
 
             int max = Math.min(max_ch_size, node.getOnChainBalance());
             int min = min_ch_size;

@@ -95,11 +95,14 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
     public synchronized void removePending(String node, int amt) {
 
+
         if (node.equals(this.getNode1PubKey())) {
-            node1Pending+=amt;
+            log("Removing pending from "+node+" in channel "+this.channel_id+ " new pending "+node1Pending);
+            node1Pending-=amt;
         }
         else if (node.equals(this.getNode2PubKey())) {
-            node2Pending+=amt;
+            log("Removing pending from "+node+" in channel "+this.channel_id+ " new pending "+node2Pending);
+            node2Pending-=amt;
         }
         else
 
