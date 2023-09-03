@@ -585,10 +585,13 @@ public class UVNetworkManager {
                 var dest = getRandomNode();
                 int amount = random.nextInt(max_amt-min_amt)+min_amt;
                 var invoice = dest.generateInvoice(amount);
-                new Thread(()->sender.processInvoice(invoice, max_fees)).start();
+                new Thread(()->sender.processInvoice(invoice, max_fees,false)).start();
             }
             waitForBlocks(1);
         }
+        log("Completed events generation");
+        System.out.println("Completed events generation");
+
 
     }
 }

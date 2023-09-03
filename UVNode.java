@@ -210,15 +210,18 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     public boolean waitForInvoiceCleared(String hash) {
+        log("START WAIT ON "+this.getPubKey());
         final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
-        while (pendingInvoices.containsKey(hash)) {
-            try {
-                //System.out.println("WAITING...");
-                Thread.sleep(delay);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+        //while (pendingInvoices.containsKey(hash)) {
+        while (pendingHTLC.containsKey(hash)) {
+                try {
+                    //System.out.println("WAITING...");
+                    Thread.sleep(delay);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
         }
+        log("END WAIT ON "+this.getPubKey());
         return (payedInvoices.containsKey(hash));
     }
 
@@ -312,9 +315,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
 
             if (!checkOutboundPathLiquidity(path, invoice.getAmount()))  {
-                log("Discarding path (missing liquidity)"+ ChannelGraph.pathString(path));
+                log("Discarding path (missing liquidity on local channel)"+ ChannelGraph.pathString(path));
                 if (showui)
-                    System.out.println("Discarding path (missing liquidity)"+ ChannelGraph.pathString(path));
+                    System.out.println("Discarding path (missing liquidity on local channel)"+ ChannelGraph.pathString(path));
                 to_discard = true;
                 miss_outbound_liquidity++;
             }
@@ -373,7 +376,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 System.out.println("No viable candidate paths found for invoice "+ invoice.getHash());
         }
 
-        invoiceReports.add(new InvoiceReport(this.getPubKey(), invoice.getDestination(),invoice.getHash(),totalPaths.size(),candidatePaths.size(),miss_capacity,exceeded_max_fees,miss_outbound_liquidity,attempted_paths,success_htlc));
+        var report = new InvoiceReport(this.getPubKey(), invoice.getDestination(),invoice.getHash(),totalPaths.size(),candidatePaths.size(),miss_capacity,exceeded_max_fees,miss_outbound_liquidity,attempted_paths,success_htlc);
+        log("Adding report: "+report);
+        invoiceReports.add(report);
     }
 
     public ArrayList<ArrayList<ChannelGraph.Edge>> getPaths(String destination, boolean stopfirst) {
@@ -386,7 +391,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param path
      * @return
      */
-    public void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
+    private void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
         log("Routing on path:"+ChannelGraph.pathString(path));
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
@@ -442,12 +447,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
         var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
-        debug("Creating HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
 
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
             throw new IllegalStateException("Missing liquidity to reserve on first hop "+this.getPubKey()+"->"+first_hop);
         }
 
+        log("Sending HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
         // dont put invoice pending here, but when starting the routing attempts...
         //pendingInvoices.put(invoice.getHash(),invoice);
@@ -512,6 +517,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 log("Found pending HTLC to remove for hash: " + hash);
 
                 pendingHTLC.remove(hash);
+                debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
+                channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
                 // I offered a HTLC with the same hash
                 if (receivedHTLC.containsKey(hash)) {
@@ -520,8 +527,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     var prev_peer = getChannelPeer(prev_ch_id);
                     var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
                     log("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
-                    channels.get(prev_ch_id).removePending(prev_peer.getPubKey(),prev_htlc.getAmount());
-                    //log("Removing pending "+prev_htlc.getAmount()+" on previous channel "+prev_ch_id+" with "+prev_peer);
                     sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
@@ -596,13 +601,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var blocks_until_expire = msg.getCLTVExpiry()-currentBlock;
         var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).getCLTV();
 
+        /*
         if ( (blocks_until_expire <=0) || (blocks_until_expire < my_out_cltv)) {
            log("Expired (blocks until expire "+blocks_until_expire+ ", my out cltv:"+my_out_cltv+" for HTLC hash:"+msg.getPayment_hash());
-           var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "CLTV expired");
+           //var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "CLTV expired");
+            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), msg.getPayment_hash());
            sendToPeer(incomingPeer,fail_msg);
-           throw new IllegalStateException("CLTV not implemented yet!");
+           //throw new IllegalStateException("CLTV not implemented yet!");
            //return;
         }
+
+         */
 
         // check liquidity to be reserved before accepting htlc add
         log("Checking liquidity for "+forwardingChannel.getId());
@@ -710,7 +719,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+")");
 
-        log("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
+        debug("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
         updateOnchainPending(getOnchainPending()+channel_size);
 
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().getIntProperty("to_self_delay"), this.pubkey);

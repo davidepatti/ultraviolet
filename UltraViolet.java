@@ -92,7 +92,7 @@ public class UltraViolet {
         var invoice = dest.generateInvoice(amount);
         System.out.println("Generated Invoice: "+invoice);
 
-        new Thread(()->sender.processInvoice(invoice, fees)).start();
+        new Thread(()->sender.processInvoice(invoice, fees,true)).start();
     }
 
     /**
