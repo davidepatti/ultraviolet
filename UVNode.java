@@ -209,8 +209,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    public boolean waitForInvoiceCleared(String hash) {
-        log("START WAIT ON "+this.getPubKey());
+    public boolean waitForHTLCRouting(String hash) {
+        // TODO: conservative large delay of one block, could be far less
         final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
         //while (pendingInvoices.containsKey(hash)) {
         while (pendingHTLC.containsKey(hash)) {
@@ -221,13 +221,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     throw new RuntimeException(e);
                 }
         }
-        log("END WAIT ON "+this.getPubKey());
         return (payedInvoices.containsKey(hash));
     }
 
     public boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
-        log("Checking path capacity"+ChannelGraph.pathString(path));
+        debug("Checking path capacity"+ChannelGraph.pathString(path));
         for (ChannelGraph.Edge e: path) {
             if (e.capacity()< amount) return false;
         }
@@ -235,10 +234,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
     public boolean checkPathPolicies(ArrayList<ChannelGraph.Edge> path) {
 
-        log("Checking path policies "+ChannelGraph.pathString(path));
+        debug("Checking path policies "+ChannelGraph.pathString(path));
         for (ChannelGraph.Edge e: path) {
             if (e.policy()==null)  {
-                log("Invalid path, missing policy on edge "+e);
+                debug("Invalid path, missing policy on edge "+e);
                 return false;
             }
         }
@@ -249,17 +248,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var firstChannelId = getMyChannelWith(path.get(path.size()-1).destination());
         var firstChannel = channels.get(firstChannelId);
-        log("Checking outbound path liquidity (amt:"+amount+ ")"+ ChannelGraph.pathString(path)+" for first channel "+firstChannel);
+        debug("Checking outbound path liquidity (amt:"+amount+ ")"+ ChannelGraph.pathString(path)+" for first channel "+firstChannel);
 
         // this is the only liquidity check that can be performed in advance
         var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
 
         if (senderLiquidity< amount) {
-            log("Discarding route for missing liquidity in first channel "+firstChannel);
+            debug("Discarding route for missing liquidity in first channel "+firstChannel);
             return false;
         }
 
-        log("Liquidity ok for "+firstChannelId+" (required "+amount+" of "+senderLiquidity+")");
+        debug("Liquidity ok for "+firstChannelId+" (required "+amount+" of "+senderLiquidity+")");
         return true;
     }
 
@@ -355,7 +354,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     System.out.println("Trying path "+path);
                 routeInvoiceOnPath(invoice,path);
 
-                if (waitForInvoiceCleared(invoice.getHash())) {
+                if (waitForHTLCRouting(invoice.getHash())) {
                     success_htlc = true;
                     log(" Successfully routed invoice "+invoice.getHash());
                     if (showui)
@@ -363,9 +362,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     break;
                 }
                 else {
-                    log("Could not successful route invoice: "+invoice.getHash());
+                    log("Could not route invoice: "+invoice.getHash());
                     if (showui)
-                        System.out.println("Could not successful route invoice: "+invoice.getHash());
+                        System.out.println("Could not route invoice: "+invoice.getHash());
                 }
             }
             pendingInvoices.remove(invoice.getHash());
@@ -377,7 +376,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         var report = new InvoiceReport(this.getPubKey(), invoice.getDestination(),invoice.getHash(),totalPaths.size(),candidatePaths.size(),miss_capacity,exceeded_max_fees,miss_outbound_liquidity,attempted_paths,success_htlc);
-        log("Adding report: "+report);
+        //log("Adding report: "+report);
         invoiceReports.add(report);
     }
 
@@ -446,13 +445,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var id = local_channel.getLastCommitNumber()+1;
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
-        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
-
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
-            throw new IllegalStateException("Missing liquidity to reserve on first hop "+this.getPubKey()+"->"+first_hop);
+            //throw new IllegalStateException("No liquidity to reserve "+amt_to_forward+"  on first hop "+this.getPubKey()+"->"+first_hop+" , liquidity:"+local_channel.getLiquidity(this.getPubKey()));
+            // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
+            log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getId());
+            return;
         }
 
-        log("Sending HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
+        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
+
+
+        debug("Sending HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
         // dont put invoice pending here, but when starting the routing attempts...
         //pendingInvoices.put(invoice.getHash(),invoice);
@@ -526,7 +529,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     var prev_ch_id = prev_htlc.getChannel_id();
                     var prev_peer = getChannelPeer(prev_ch_id);
                     var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
-                    log("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
+                    debug("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
                     sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
@@ -614,7 +617,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
          */
 
         // check liquidity to be reserved before accepting htlc add
-        log("Checking liquidity for "+forwardingChannel.getId());
+        debug("Checking liquidity for forwarding channel "+forwardingChannel.getId());
         if (!forwardingChannel.reservePending(this.getPubKey(),amt_forward)) {
             log("Not enought local liquidity to forward "+amt_forward+ " in channel "+forwardingChannel.getId());
             //var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
@@ -1075,7 +1078,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance ) {
 
         var channel = channels.get(channel_id);
-        log("Updating "+channel+ " to new balances "+node1_balance+","+node2_balance);
+        debug("Updating "+channel+ " to new balances "+node1_balance+","+node2_balance);
         channel.newCommitment(node1_balance,node2_balance);
         return true;
     }

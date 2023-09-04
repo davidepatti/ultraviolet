@@ -71,7 +71,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public synchronized boolean reservePending(String node, int amt) {
 
-        log("Checking liquidity for node "+node+ " , required: "+amt+ " in channel "+this);
+        log("Trying to reserve pending for node "+node+ " , required: "+amt+ " in channel "+this);
         if (node.equals(node_id_1))  {
             if (amt>getNode1Liquidity()) {
                 return false;
