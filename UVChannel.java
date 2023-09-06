@@ -33,19 +33,30 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     private final boolean init_direction; // true -> from 1 to 2
 
 
-    public UVChannel(String pub1, String pub2, String id, Policy p1, Policy p2, int balance1, int balance2, int reserve, boolean dir) {
+    public UVChannel(String channel_id, String pub1, String pub2, int fundingSatoshis, int channelReserveSatoshis, int pushMsat, boolean init_direction) {
 
+        this.channel_id = channel_id;
         this.node_id_1 = pub1;
         this.node_id_2 = pub2;
-        this.channel_id = id;
-        this.node1Balance = balance1;
-        this.node2Balance = balance2;
-        this.reserve = 0;
-        this.init_direction = dir;
 
+        this.init_direction = init_direction;
+
+        if (init_direction) {
+            this.node1Balance = fundingSatoshis;
+            this.node2Balance = pushMsat;
+        }
+        else {
+            this.node2Balance = fundingSatoshis;
+            this.node1Balance = pushMsat;
+        }
+
+        this.node1Pending = 0;
+        this.node2Pending = 0;
+        this.status = ChannelStatus.NONE;
+        this.reserve = channelReserveSatoshis;
     }
     // constructor only fill the "proposal" for the channel
-    public UVChannel(String channel_id, String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
+    public UVChannel(String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
         if (initiator.compareTo(peer)<0) {
             node_id_1 = initiator;
             node_id_2 = peer;
@@ -61,13 +72,16 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             init_direction = false;
         }
 
-        this.channel_id = channel_id;
+        this.channel_id = "|"+node_id_1+"<=>"+node_id_2+"|";
         this.node1Pending = 0;
         this.node2Pending = 0;
         this.status = ChannelStatus.NONE;
-        this.reserve = 0;
+        this.reserve = channelReserveSatoshis;
     }
 
+    public String getChannel_id() {
+        return channel_id;
+    }
 
     public synchronized boolean reservePending(String node, int amt) {
 
@@ -206,11 +220,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public synchronized int getLastCommitNumber() {
         return this.commitNumber;
     }
-    public synchronized int getNextCommitNumber() {
-        this.commitNumber = getLastCommitNumber()+1;
-        return commitNumber;
-    }
-
     public synchronized int getNode1Balance() {
         return node1Balance;
     }
@@ -263,14 +272,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         }
     }
 
-    public synchronized int increaseHTLCId() {
+    public synchronized int getNextHTLCid() {
 
         this.htlc_id++;
         return htlc_id;
-    }
-
-    public int getCommitNumber() {
-        return commitNumber;
     }
 
     public synchronized void newCommitment(int node1Balance, int node2Balance) {

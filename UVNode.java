@@ -12,11 +12,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                             String dest,
                             int total_paths,
                             int candidate_paths,
-                            int missing_capacity,
-                            int missing_fees,
-                            int missing_outbound_liquidity,
+                            int fail_capacity,
+                            int fail_fees,
+                            int fail_local_out_liquidity,
                             int attempted_paths,
-                            boolean htlc_success) {};
+                            boolean htlc_routing_success) {};
 
     transient private ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
 
@@ -433,8 +433,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 out_cltv += channel.getPolicy(source).getCLTV();
             }
             else {
-                log("ERROR: No channel from "+source+ " to "+dest);
-                return;
+                throw new IllegalStateException("ERROR: No channel from "+source+ " to "+dest);
             }
         }
 
@@ -442,23 +441,19 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var channel_id = path.get(path.size()-1).id();
         var local_channel = channels.get(channel_id);
-        var id = local_channel.getLastCommitNumber()+1;
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
-            //throw new IllegalStateException("No liquidity to reserve "+amt_to_forward+"  on first hop "+this.getPubKey()+"->"+first_hop+" , liquidity:"+local_channel.getLiquidity(this.getPubKey()));
             // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
             log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getId());
             return;
         }
 
-        var update_htcl = new MsgUpdateAddHTLC(channel_id,id,amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
+        var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
 
 
         debug("Sending HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
-        // dont put invoice pending here, but when starting the routing attempts...
-        //pendingInvoices.put(invoice.getHash(),invoice);
         pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
     }
     /**
@@ -512,12 +507,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
 
-            // TODO: check is done on 'reason' field, currently used only for temporary failures
-            // this is ok, but should be made more compliant to specification in the future, using the 'id'
-            if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getPayment_hash().equals(msg.getReason())) {
-            //if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
+            if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
                 var hash = pending_msg.getPayment_hash();
-                log("Found pending HTLC to remove for hash: " + hash);
+                log("Found pending HTLC to remove for channel:"+ch_id+ " id:"+msg.getId());
 
                 pendingHTLC.remove(hash);
                 debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
@@ -599,29 +591,28 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // O if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
         // MUST fail that incoming HTLC (update_fail_htlc).
 
+        //TODO: expand with more failure cases (see antonop 263)
+
         var incomingPeer = getChannelPeer(msg.getChannel_id());
         int currentBlock = uvManager.getTimechain().getCurrentBlock();
         var blocks_until_expire = msg.getCLTVExpiry()-currentBlock;
         var my_out_cltv = forwardingChannel.getPolicy(this.getPubKey()).getCLTV();
 
-        /*
         if ( (blocks_until_expire <=0) || (blocks_until_expire < my_out_cltv)) {
            log("Expired (blocks until expire "+blocks_until_expire+ ", my out cltv:"+my_out_cltv+" for HTLC hash:"+msg.getPayment_hash());
-           //var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "CLTV expired");
-            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), msg.getPayment_hash());
+           var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
            sendToPeer(incomingPeer,fail_msg);
            //throw new IllegalStateException("CLTV not implemented yet!");
            //return;
         }
 
-         */
 
         // check liquidity to be reserved before accepting htlc add
         debug("Checking liquidity for forwarding channel "+forwardingChannel.getId());
         if (!forwardingChannel.reservePending(this.getPubKey(),amt_forward)) {
             log("Not enought local liquidity to forward "+amt_forward+ " in channel "+forwardingChannel.getId());
             //var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
-            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), msg.getPayment_hash());
+            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
             sendToPeer(incomingPeer,fail_msg);
             return;
         }
@@ -638,7 +629,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var onion_packet = msg.getOnionPacket().getInnerLayer();
         var payhash = msg.getPayment_hash();
 
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.increaseHTLCId(),amt_forward,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
 
         debug("Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
@@ -695,15 +686,16 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private String generateTempChannelId(String peerPubKey) {
         StringBuilder s = new StringBuilder();
-        var block = uvManager.getTimechain().getCurrentBlock();
         s.append("tmp_id").append(getPubKey()).append("_").append(peerPubKey);
         return s.toString();
     }
-    private String generateChannelId(UVTimechain.Transaction tx) {
+
+    private String generateChannelIdFromTimechain(UVTimechain.Transaction tx) {
         var searchPos = uvManager.getTimechain().getTxLocation(tx);
         var position = searchPos.get();
 
         return position.height() + "x" + position.tx_index();
+
     }
     /**
      * Mapped to LN protocol message: open_channel
@@ -807,11 +799,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var timestamp = uvManager.getTimechain().getCurrentBlock();
         var request = sentChannelOpenings.get(peer_id);
-        var channel_id = generateChannelId(tx);
-        var newChannel = new UVChannel(channel_id, this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
+        var newChannel = new UVChannel(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
 
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
         updateOnchainPending(getOnchainPending()-request.getFunding());
+
+        var channel_id = newChannel.getChannel_id();
 
         this.channels.put(channel_id,newChannel);
         channelGraph.addLNChannel(newChannel);
