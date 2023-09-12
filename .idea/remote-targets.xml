@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <targets>
+      <target name="dpatti@iridium.diit.unict.it:22" type="ssh/sftp" uuid="ed090ff0-53cc-459e-93c7-5e4fc32cb604">
+        <config>
+          <option name="projectRootOnTarget" value="$USER_HOME$/ultraviolet" />
+          <option name="serverName" value="dpatti@iridium.diit.unict.it:22 password" />
+          <option name="useRsync" value="true" />
+        </config>
+        <ContributedStateBase type="JavaLanguageRuntime">
+          <config>
+            <option name="javaVersionString" value="17.0.7" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>

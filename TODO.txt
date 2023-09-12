@@ -1,17 +1,8 @@
-URGENT:
+TODO
 
-see mini.log
-[timechain 1]:pk29:Updating pending current: 0 to 13260000
-
-[timechain 1]:pk29:Waiting for confirmation of funding Tx{ 0xf7..af,FUNDING_TXamt:1326000, node1:pk29, node2:pk14}
-
-the same amount is found here:
-*PubKey:'pk76'(Pop), ch:9, onchain(pending):1386000(1326000), ln:16437000, p2pq: 0}
-
-[timechain 2]:pk29:Updating pending current: 1326000 to 7680001326000
-[timechain 38]:pk76:Updating pending current: 1326000 to 10140001326000
-
-CHECK random generator and/or overflow
+- parallel invoice events generation (events/block + timechain duration)
+- check channel balances locking, check liquidity
+- check fee management
 
 Notes:
 

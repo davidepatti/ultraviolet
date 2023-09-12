@@ -12,10 +12,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     private static final long serialVersionUID = 120897L;
     private int htlc_id =0;
 
-    enum ChannelStatus { OPEN, CLOSED, PENDING, NONE }
-
-    private ChannelStatus status;
-
     final private String node_id_1;
     final private String node_id_2;
     private final String channel_id;
@@ -52,7 +48,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
         this.node1Pending = 0;
         this.node2Pending = 0;
-        this.status = ChannelStatus.NONE;
         this.reserve = channelReserveSatoshis;
     }
     // constructor only fill the "proposal" for the channel
@@ -75,7 +70,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.channel_id = "|"+node_id_1+"<=>"+node_id_2+"|";
         this.node1Pending = 0;
         this.node2Pending = 0;
-        this.status = ChannelStatus.NONE;
         this.reserve = channelReserveSatoshis;
     }
 
@@ -137,13 +131,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         }
     }
 
-
-    public void setStatus(ChannelStatus status) {
-        this.status = status;
-    }
-    public ChannelStatus getStatus() {
-        return status;
-    }
 
     /**
      * @return 
