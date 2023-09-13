@@ -10,13 +10,21 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public record InvoiceReport(String hash,
                                 String sender,
                                 String dest,
+                                int amt,
                                 int total_paths,
                                 int candidate_paths,
-                                int fail_capacity,
-                                int fail_fees,
-                                int fail_local_out_liquidity,
+                                int miss_capacity,
+                                int miss_local_liquidity,
+                                int miss_fees,
                                 int attempted_paths,
-                                boolean htlc_routing_success) {
+                                boolean htlc_routing_success) implements Serializable {
+
+        @Override
+        public String toString() {
+            return hash + ',' + sender + ',' + dest + ',' + ","+amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
+                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + htlc_routing_success;
+        }
+
     }
 
     ;
@@ -380,7 +388,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
         }
 
-        var report = new InvoiceReport(this.getPubKey(), invoice.getDestination(), invoice.getHash(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_max_fees, miss_local_liquidity, attempted_paths, success_htlc);
+        var report = new InvoiceReport(invoice.getHash(), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
         //log("Adding report: "+report);
         invoiceReports.add(report);
 

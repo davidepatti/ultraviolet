@@ -1,4 +1,3 @@
-import java.io.*;
 import java.util.*;
 
 @SuppressWarnings("OptionalGetWithoutIsPresent")
@@ -25,8 +24,8 @@ public class GlobalStats {
         return uvm.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).average().getAsDouble();
     }
 
-    public String generateReport() {
-        StringBuilder s = new StringBuilder("Statistical Resport");
+    public String generateNetworkReport() {
+        StringBuilder s = new StringBuilder("Network Resport");
 
         var graph_node_count =  uvm.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).summaryStatistics();
         var graph_channel_count =  uvm.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getChannelCount()).summaryStatistics();
@@ -45,44 +44,18 @@ public class GlobalStats {
         return s.toString();
     }
 
+    public String generateInvoiceReport() {
 
-    public void writeInvoiceReports() {
+        var s = new StringBuilder("hash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
 
-        FileWriter fw;
-
-        try {
-            fw = new FileWriter("report_inv_"+ new Date() +".csv");
-            fw.write("hash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (node.getInvoiceReports().size()>0) {
-                    System.out.println("Node: "+node.getPubKey());
-                    fw.write("\nNode:"+node.getPubKey());
-                    System.out.println("-------------------------------------------------------------");
-                    fw.write("\n-------------------------------------------------------------");
                     for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
-                        System.out.println(report);
-                        fw.write("\n");
-                        fw.write(report.toString());
+                        s.append("\n"+report);
                     }
-                    fw.flush();
                 }
             }
-            fw.close();
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-
-    }
-
-    public void writeReport(String filename) {
-        String report = generateReport();
-        try (PrintWriter os = new PrintWriter(filename)){
-            os.write(report);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+            return s.toString();
     }
 
     public static double calculateLambda(ArrayList<Double> V) {

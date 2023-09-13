@@ -1,3 +1,5 @@
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -291,14 +293,39 @@ public class UltraViolet {
             }
         }));
 
-        menuItems.add(new MenuItem("stats", "Show Global Stats", x -> {
+        menuItems.add(new MenuItem("rep", "Show Reports", x -> {
             if (networkManager.isBootstrapCompleted())  {
-                networkManager.getStats().writeReport(new Date()+"_report.txt");
-                networkManager.getStats().writeInvoiceReports();
-                System.out.println(networkManager.getStats().generateReport());
+                System.out.println(networkManager.getStats().generateNetworkReport());
+                System.out.println(networkManager.getStats().generateInvoiceReport());
             }
             else System.out.println("Bootstrap not completed!");
         } ));
+
+        menuItems.add(new MenuItem("wr", "Write Reports", x -> {
+
+            if (networkManager.isBootstrapCompleted())  {
+                System.out.println("Enter description prefix:");
+                var prefix = new Scanner(System.in).nextLine();
+                var s = new StringBuilder(prefix);
+                s.append(new Date()).append(".csv");
+
+                var rep = networkManager.getStats().generateNetworkReport();
+                var rep2 = networkManager.getStats().generateInvoiceReport();
+
+                try {
+                    var fw = new FileWriter(s.toString());
+                    fw.write(rep);
+                    fw.write(rep2);
+                    fw.close();
+                    System.out.println("Written "+s);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+            else System.out.println("Bootstrap not completed!");
+        } ));
+
         menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> findPathsCmd()));
         menuItems.add(new MenuItem("route", "Route Payment", x -> testInvoiceRoutingCmd()));
         menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));

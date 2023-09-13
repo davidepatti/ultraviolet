@@ -1,7 +1,8 @@
+import java.io.Serializable;
 import java.util.Objects;
 import java.util.Optional;
 
-public class LNInvoice {
+public class LNInvoice implements Serializable {
     // antonop 339
     private final String H;
     private final int amount;
