@@ -40,13 +40,14 @@ public class GlobalStats {
         s.append("\nnchannels:\t").append(channel_number);
         s.append("\nLightning balance:\t").append(lighting_balance);
         s.append("\nGenerated invoices:\t").append(generated_invoices);
+        s.append("\n");
 
         return s.toString();
     }
 
     public String generateInvoiceReport() {
 
-        var s = new StringBuilder("hash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, failed_htlc,success_htlc");
+        var s = new StringBuilder("hash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, success_htlc");
 
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (node.getInvoiceReports().size()>0) {

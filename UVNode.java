@@ -21,7 +21,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         @Override
         public String toString() {
-            return hash + ',' + sender + ',' + dest + ',' + ","+amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
+            return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
                     "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + htlc_routing_success;
         }
 
