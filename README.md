@@ -1,6 +1,6 @@
 # UltraViolet
 
-_**U**tilizing **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
+_**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
 
 The goal of UltraViolet (UV) is to provide an open-source extensible high-level simulation platform for the Bitcoin
 Lightning Network, abstracting some of the major complexities of the underlying elements, while still providing a
