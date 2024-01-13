@@ -27,7 +27,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     }
 
-    ;
 
     transient private ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
 
@@ -110,6 +109,30 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public HashMap<String, MsgOpenChannel> getSentChannelOpenings() {
         return sentChannelOpenings;
+    }
+
+    public Queue<MsgUpdateFulFillHTLC> getUpdateFulFillHTLCQueue() {
+        return updateFulFillHTLCQueue;
+    }
+
+    public Queue<MsgUpdateFailHTLC> getUpdateFailHTLCQueue() {
+        return updateFailHTLCQueue;
+    }
+
+    public HashMap<String, LNInvoice> getPendingInvoices() {
+        return pendingInvoices;
+    }
+
+    public HashMap<String, LNInvoice> getPayedInvoices() {
+        return payedInvoices;
+    }
+
+    public HashMap<String, MsgUpdateAddHTLC> getPendingHTLC() {
+        return pendingHTLC;
+    }
+
+    public HashSet<String> getPendingAcceptedChannelPeers() {
+        return pendingAcceptedChannelPeers;
     }
 
     private void log(String s) {
@@ -391,7 +414,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var report = new InvoiceReport(invoice.getHash(), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
         //log("Adding report: "+report);
         invoiceReports.add(report);
-
     }
 
 
@@ -467,7 +489,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
 
 
-        debug("Sending HTLC messsage for the first hop: "+first_hop+": "+update_htcl.toString());
+        debug("Sending HTLC messsage for the first hop: "+first_hop+": "+ update_htcl);
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
         pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
     }
@@ -712,14 +734,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
     /**
      * Mapped to LN protocol message: open_channel
+     *
      * @param peerPubKey the target node partner to open the channel
      */
-    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
+    public synchronized void openChannel(String peerPubKey, int channel_size) {
 
         if (hasOpeningRequestWith(peerPubKey))
-            return false;
+            return;
         if (hasPendingAcceptedChannelWith(peerPubKey))
-            return false;
+            return;
 
         var peer = uvManager.getP2PNode(peerPubKey);
         peers.putIfAbsent(peer.getPubKey(),peer);
@@ -733,23 +756,30 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().getIntProperty("to_self_delay"), this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
-        return true;
     }
     /**
-     *
      * @param openRequest
-     * @return
      */
-    private synchronized boolean acceptChannel(MsgOpenChannel openRequest) {
+    private synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
 
-        if (hasOpeningRequestWith(initiator_id))
-            return false;
-        if (hasPendingAcceptedChannelWith(initiator_id))
-            return false;
 
-        pendingAcceptedChannelPeers.add(initiator_id);
+        if (hasOpeningRequestWith(initiator_id)) {
+            log("WARNING:Cannot accept channel, already opening request with "+initiator_id);
+            return;
+        }
+
+        if (hasPendingAcceptedChannelWith(initiator_id)) {
+            log("WARNING:Cannot accept channel, already pending accepted channel with "+initiator_id);
+            return;
+        }
+
+        if (initiator_id!=null) pendingAcceptedChannelPeers.add(initiator_id);
+        else {
+            System.out.println("P");
+        }
+
 
         if (this.hasChannelWith(initiator_id)) {
             throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
@@ -759,7 +789,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
         var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().getIntProperty("minimum_depth"), uvManager.getConfig().getIntProperty("to_self_delay"),this.getPubKey());
         sendToPeer(channel_peer,acceptance);
-        return true;
     }
 
 
@@ -812,6 +841,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var timestamp = uvManager.getTimechain().getCurrentBlock();
         var request = sentChannelOpenings.get(peer_id);
+        sentChannelOpenings.remove(peer_id);
         var newChannel = new UVChannel(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
 
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
@@ -841,7 +871,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(from,msg_announcement);
         broadcastToPeers(from,msg_update);
 
-        sentChannelOpenings.remove(peer_id);
     }
 
     /**
@@ -1161,6 +1190,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return pubkey.hashCode();
     }
 
+    public boolean checkQueues() {
+        if (!GossipMessageQueue.isEmpty()) return false;
+        if (!channelsAcceptedQueue.isEmpty()) return false;
+        if (!channelsToAcceptQueue.isEmpty()) return false;
+        if (!updateAddHTLCQueue.isEmpty()) return false;
+        if (!updateFulFillHTLCQueue.isEmpty()) return false;
+        if (!updateFailHTLCQueue.isEmpty()) return false;
+        if (!pendingInvoices.isEmpty()) return false;
+        if (!receivedHTLC.isEmpty()) return false;
+        //if (!sentChannelOpenings.isEmpty())  return false;
+        if (!pendingHTLC.isEmpty()) return false;
+        if (!pendingAcceptedChannelPeers.isEmpty()) return false;
+
+        return true;
+
+    }
+
     /**
      * Custom Serialized format: number of element / objects
      * @param s The outputstream, as specified when choosing saving file
@@ -1181,23 +1227,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 s.writeObject(p.getPubKey());
             }
 
-            s.writeObject(GossipMessageQueue);
-            s.writeObject(this.channelsAcceptedQueue);
-            s.writeObject(this.channelsToAcceptQueue);
-            s.writeObject(this.updateAddHTLCQueue);
-            s.writeObject(this.updateFulFillHTLCQueue);
-            s.writeObject(this.updateFailHTLCQueue);
-
             s.writeObject(this.generatedInvoices);
-            s.writeObject(this.pendingInvoices);
-            s.writeObject(this.receivedHTLC);
-            s.writeObject(this.pendingHTLC);
-            s.writeObject(this.sentChannelOpenings);
-
             s.writeObject(this.invoiceReports);
             s.writeObject(this.payedInvoices);
-            s.writeObject(this.pendingAcceptedChannelPeers);
-
             s.writeObject(channelGraph);
 
         } catch (IOException e) {
@@ -1228,24 +1260,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
 
             //noinspection unchecked
-            GossipMessageQueue = (Queue<GossipMsg>)s.readObject();
-            channelsAcceptedQueue = (Queue<MsgAcceptChannel>) s.readObject();
-            channelsToAcceptQueue = (Queue<MsgOpenChannel>) s.readObject();
-            updateAddHTLCQueue = (Queue<MsgUpdateAddHTLC>) s.readObject();
-            updateFulFillHTLCQueue = (Queue<MsgUpdateFulFillHTLC>) s.readObject();
-            updateFailHTLCQueue = (Queue<MsgUpdateFailHTLC>) s.readObject();
-            pendingInvoices = (HashMap<String, LNInvoice>) s.readObject();
             generatedInvoices = (HashMap<Long, LNInvoice>)s.readObject();
-            receivedHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();
-            pendingHTLC = (HashMap<String, MsgUpdateAddHTLC>) s.readObject();
-            sentChannelOpenings = (HashMap<String, MsgOpenChannel>) s.readObject();
-
             invoiceReports = (ArrayList<InvoiceReport>) s.readObject();
             payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
-            pendingAcceptedChannelPeers = (HashSet<String>)  s.readObject();
-
             channelGraph = (ChannelGraph) s.readObject();
 
+
+            this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+            this.pendingAcceptedChannelPeers = new HashSet<>();
+            this.receivedHTLC = new HashMap<>();
+            this.pendingHTLC = new HashMap<>();
+            this.sentChannelOpenings = new HashMap<>();
+            this.updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.pendingInvoices = new HashMap<>();
+            this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
+            this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
         }
         catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
