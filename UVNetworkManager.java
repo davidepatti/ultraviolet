@@ -415,22 +415,36 @@ public class UVNetworkManager {
     public void saveStatus(String file) {
 
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
-            Log.accept("Bootstrap incomplete, cannot save");
+            log("Bootstrap incomplete, cannot save");
+            System.out.println("Bootstrap incomplete, cannot save");
             return;
         }
+
+        System.out.println("Checking queues...");
+        for (UVNode n: uvnodes.values()) {
+           if (!n.checkQueues())  {
+               System.out.println("Cannot save, queues still not empty in "+n.getPubKey());
+               return;
+           }
+        }
+        System.out.println("Stopping the Timechain...");
         log("Stopping timechain");
         setTimechainRunning(false);
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
+            System.out.println("Saving config...");
             f.writeObject(uvConfig);
+            System.out.println("Saving timechain...");
             f.writeObject(getTimechain());
+            System.out.println("Saving UVNodes...");
             f.writeInt(uvnodes.size());
 
             for (UVNode n: uvnodes.values()) f.writeObject(n);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        System.out.println("Ok, saving complete!");
         log("End saving ");
     }
 
@@ -445,9 +459,12 @@ public class UVNetworkManager {
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
+            System.out.println("Loading config...");
             this.uvConfig = (UVConfig)s.readObject();
+            System.out.println("Loading timechain status...");
             this.UVTimechain = (UVTimechain)s.readObject();
 
+            System.out.println("Loading UVNodes...");
             int num_nodes = s.readInt();
             for (int i=0;i<num_nodes;i++) {
                 UVNode n = (UVNode) s.readObject();
@@ -462,12 +479,13 @@ public class UVNetworkManager {
             updatePubkeyList();
             bootstrap_completed = true;
 
-
         } catch (IOException e) {
             return false;
         } catch (ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
+
+        System.out.println("Loading Ended (please notice: the timechain is currently stopped)");
         return true;
     }
 
@@ -504,6 +522,8 @@ public class UVNetworkManager {
      */
     public void bootstrapNode(UVNode node) {
 
+        // TODO: should be this an config value?
+        int max_discards = 500;
         ///----------------------------------------------------------
         var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
@@ -521,7 +541,7 @@ public class UVNetworkManager {
         int max_ch_size = Integer.parseInt(profile.get("max_channel_size"));
         int min_ch_size = Integer.parseInt(profile.get("min_channel_size"));
 
-        while (node.getLNChannelList().size() < target_channel_number) {
+        while (max_discards>0 && node.getLNChannelList().size() < target_channel_number) {
             // not mandatory, just to have different block timings in openings
             waitForBlocks(1);
 
@@ -551,6 +571,9 @@ public class UVNetworkManager {
 
             if (node.getOnchainLiquidity()< newChannelSize) {
                 log("Discarding attempt: liquidity ("+node.getOnchainLiquidity()+") < channelsize");
+                max_discards--;
+                if (max_discards==0)
+                    log("WARNING: Channel openings aborted due to max discards reached...");
                 continue;
             }
             node.openChannel(peerPubkey,newChannelSize);
