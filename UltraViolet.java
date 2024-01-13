@@ -155,24 +155,42 @@ public class UltraViolet {
         System.out.println("P2P message queue:");
         System.out.println("-------------------------------------------------------------");
         node.getGossipMessageQueue().forEach(System.out::println);
-
         System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending HTLC:");
-        node.getReceivedHTLC().values().forEach(System.out::println);
-
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending opening:");
-
-        node.getSentChannelOpenings().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending accepted:");
-        node.getChannelsAcceptedQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending to accept:");
+        System.out.println("Pending channels to accept:");
         node.getChannelsToAcceptQueue().forEach(System.out::println);
         System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending Invoices:");
+        System.out.println("Pending channel accepted:");
+        node.getChannelsAcceptedQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending updateAddHTLC:");
+        node.getUpdateAddHTLCQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending updateFulfilHTLC:");
+        node.getUpdateFulFillHTLCQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending updateFailHTLC:");
+        node.getUpdateFailHTLCQueue().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending invoices:");
+        node.getPendingInvoices().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending received HTLC:");
+        node.getReceivedHTLC().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending HTLC:");
+        node.getPendingHTLC().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending sent channel openings:");
+        node.getSentChannelOpenings().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Pending accepted channel peers:");
+        node.getPendingAcceptedChannelPeers().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Generated Invoices:");
         node.getGeneratedInvoices().values().forEach(System.out::println);
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Payed Invoices:");
+        node.getPayedInvoices().values().forEach(System.out::println);
     }
 
     private void showGraphCommand(String node_id) {
