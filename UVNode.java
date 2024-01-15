@@ -411,7 +411,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
         }
 
-        var report = new InvoiceReport(invoice.getHash(), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
+
+        var report = new InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
         //log("Adding report: "+report);
         invoiceReports.add(report);
     }

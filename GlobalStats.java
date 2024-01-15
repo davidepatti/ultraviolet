@@ -50,9 +50,9 @@ public class GlobalStats {
         var s = new StringBuilder("hash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, success_htlc");
 
             for (UVNode node: uvm.getUVNodeList().values()) {
-                if (node.getInvoiceReports().size()>0) {
+                if (!node.getInvoiceReports().isEmpty()) {
                     for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
-                        s.append("\n"+report);
+                        s.append("\n").append(report);
                     }
                 }
             }

@@ -284,6 +284,17 @@ public class UltraViolet {
             System.out.println("-----------------------------------");
         }));
         menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
+
+            if (!networkManager.isBootstrapCompleted()) {
+                System.out.println("Bootstrap not completed, cannot generate events!");
+                return;
+            }
+
+            if (!networkManager.isTimechainRunning()) {
+                System.out.println("Timechain not running, please start the timechain");
+                return;
+            }
+
             System.out.print("Injection Rate (per node events at each block):");
             double node_events_per_block = Double.parseDouble(scanner.nextLine());
             System.out.print("Timechain duration (blocks): ");
