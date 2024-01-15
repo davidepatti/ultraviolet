@@ -8,15 +8,15 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private UVConfig configuration;
-    private UVNetworkManager networkManager;
+    private final UVConfig configuration;
+    private final UVNetworkManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
 
 
     private void showNodeCommand(String pubkey) {
 
-        if (networkManager.getUVNodeList().size() == 0) {
+        if (networkManager.getUVNodeList().isEmpty()) {
             System.out.println("EMPTY NODE LIST");
             return;
         }
@@ -24,11 +24,6 @@ public class UltraViolet {
         if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
 
         node.getChannels().values().stream().sorted().forEach(System.out::println);
-
-        if (false) {
-            System.out.println("Peers:");
-            node.getPeers().values().stream().sorted().forEach(System.out::println);
-        }
 
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();
@@ -39,10 +34,6 @@ public class UltraViolet {
         else
             System.out.println("No p2p queued messages");
 
-        if (false) {
-            System.out.println("Channel Graph:");
-            System.out.println(node.getChannelGraph().toString());
-        }
     }
 
     private static class MenuItem {

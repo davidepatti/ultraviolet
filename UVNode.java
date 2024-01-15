@@ -368,7 +368,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         boolean success_htlc = false;
         int attempted_paths = 0;
 
-        if (candidatePaths.size() > 0) {
+        if (!candidatePaths.isEmpty()) {
             if (showui) System.out.println("Found " + candidatePaths.size() + " paths...");
             // routing stats
             // TODO: conservative large delay of one block, could be far less
@@ -406,7 +406,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         pendingInvoices.remove(invoice.getHash());
 
         if (!success_htlc) {
-            log("No viable candidate paths found for invoice " + invoice.getHash());
+            log("Removing from pending invoices: No viable candidate paths found for:" + invoice.getHash());
             if (showui)
                 System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
         }
@@ -563,15 +563,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
-                else {
-                    if (pendingInvoices.containsKey(hash)) {
-                        log("LN invoice for hash " + hash + " failed for current path!");
-                        // to be removed when failed on all paths
-                        //pendingInvoices.remove(hash);
-                    } else
-                        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending Invoice for hash " + hash);
 
-                }
                 return;
             }
         }
@@ -592,7 +584,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
             final var secret = payload.getPayment_secret().get();
-            var preimages = generatedInvoices.keySet();
+            Set<Long> preimages = null;
+            synchronized (generatedInvoices) {
+                preimages = new HashSet<>(generatedInvoices.keySet());
+            }
             for (long s: preimages) {
                 var preimage_bytes = BigInteger.valueOf(s).toByteArray();
                 var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
