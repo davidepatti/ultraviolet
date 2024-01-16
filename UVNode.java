@@ -585,7 +585,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
             final var secret = payload.getPayment_secret().get();
-            var preimages = new HashSet<>(generatedInvoices.keySet());
+            var preimages = ConcurrentHashMap.<Long>newKeySet();
+            preimages.addAll(generatedInvoices.keySet());
+
             for (long s: preimages) {
                 var preimage_bytes = BigInteger.valueOf(s).toByteArray();
                 var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
