@@ -498,7 +498,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      *
      * @param msg
      */
-    private void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
+    private synchronized void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
 
         var preimage = msg.getPayment_preimage();
         var channel_id = msg.getChannel_id();
@@ -511,7 +511,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             var htlc = pendingHTLC.get(computed_hash);
 
             channels.get(channel_id).removePending(this.getPubKey(),htlc.getAmount());
-            pendingHTLC.remove(computed_hash);
+            //pendingHTLC.remove(computed_hash);
 
             if (!pushSats(channel_id, htlc.getAmount())) {
                 throw new IllegalStateException("Cannot push "+htlc.getAmount()+ " from "+ this.getPubKey()+ " via "+channel_id);
@@ -532,6 +532,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 }
                 else throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
             }
+            pendingHTLC.remove(computed_hash);
         }
         else {
             log("*FATAL*: Missing HTLC for fulfilling hash "+computed_hash);
@@ -554,6 +555,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
                 // I offered a HTLC with the same hash
+                // So I shoould send back the same failure msg to the previous node
                 if (receivedHTLC.containsKey(hash)) {
                     var prev_htlc = receivedHTLC.get(hash);
                     var prev_ch_id = prev_htlc.getChannel_id();
@@ -563,7 +565,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     sendToPeer(prev_peer, fail_msg );
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
-
                 return;
             }
         }
@@ -584,10 +585,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
             final var secret = payload.getPayment_secret().get();
-            Set<Long> preimages = null;
-            synchronized (generatedInvoices) {
-                preimages = new HashSet<>(generatedInvoices.keySet());
-            }
+            var preimages = new HashSet<>(generatedInvoices.keySet());
             for (long s: preimages) {
                 var preimage_bytes = BigInteger.valueOf(s).toByteArray();
                 var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
