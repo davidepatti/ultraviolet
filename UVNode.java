@@ -1084,7 +1084,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             try {
                 processUpdateAddHTLC(msg);
             }
-            catch (Exception e) { e.printStackTrace(); };
+            catch (Exception e) { e.printStackTrace(); }
         }
 
         n = 0;
@@ -1092,14 +1092,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             var msg = updateFulFillHTLCQueue.poll();
             try {
                 processUpdateFulfillHTLC(msg);
-            } catch (Exception e) { e.printStackTrace(); };
+            } catch (Exception e) { e.printStackTrace(); }
         }
         n = 0;
         while (updateFailHTLCQueue.size()>0 && n++ < max ) {
             var msg = updateFailHTLCQueue.poll();
             try {
                 processUpdateFailHTLC(msg);
-            } catch (Exception e) { e.printStackTrace(); };
+            } catch (Exception e) { e.printStackTrace(); }
         }
         // check for expired htlc
     }

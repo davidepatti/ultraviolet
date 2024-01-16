@@ -16,10 +16,11 @@ public class UVTimechain implements Runnable, Serializable  {
         public String toString() {
             return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + "amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
         }
-    };
-    record Block(int height, List<Transaction> txs) implements Serializable {};
+    }
 
-    record ChainLocation(int height, int tx_index) {};
+    record Block(int height, List<Transaction> txs) implements Serializable {}
+
+    record ChainLocation(int height, int tx_index) {}
 
     @Serial
     private static final long serialVersionUID = 1207897L;

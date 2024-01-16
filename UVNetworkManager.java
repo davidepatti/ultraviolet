@@ -39,7 +39,7 @@ public class UVNetworkManager {
      */
     private void initLog() {
         try {
-            logfile = new FileWriter(""+ uvConfig.getStringProperty("logfile"));
+            logfile = new FileWriter(uvConfig.getStringProperty("logfile"));
         } catch (IOException e) {
             log("Cannot open logfile for writing:"+ uvConfig.getStringProperty("lofile"));
             throw new RuntimeException(e);
@@ -146,7 +146,7 @@ public class UVNetworkManager {
         var startTime = new Date();
         bootstrap_started = true;
 
-        log(startTime.toString()+": Bootstrapping network from scratch...");
+        log(startTime +": Bootstrapping network from scratch...");
         bootstrap_latch = new CountDownLatch(uvConfig.getIntProperty("bootstrap_nodes"));
 
         log("UVM: deploying nodes, configuration: "+ uvConfig);

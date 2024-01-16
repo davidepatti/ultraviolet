@@ -23,8 +23,8 @@ String getRandomMultivalProperty(String key)
 
 public class UVConfig implements Serializable {
 
-    private Map<String,Map<String,String>> profiles = new HashMap<>();
-    private Map<String,ArrayList<String>> multival_properties = new HashMap<>();
+    private final Map<String,Map<String,String>> profiles = new HashMap<>();
+    private final Map<String,ArrayList<String>> multival_properties = new HashMap<>();
     private Properties properties;
     private Random random;
 
@@ -204,7 +204,7 @@ public class UVConfig implements Serializable {
 
         String attribute = getStringProperty(parameter);
 
-        return Integer.parseInt(attribute.toString());
+        return Integer.parseInt(attribute);
     }
 
     @Override
