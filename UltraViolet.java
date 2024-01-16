@@ -1,5 +1,6 @@
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -128,7 +129,7 @@ public class UltraViolet {
         while (!f.isDone()) {
             i++;
             System.out.print(".");
-            if (i%20 ==0 ) System.out.println("");
+            if (i%20 ==0 ) System.out.println();
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
@@ -324,11 +325,11 @@ public class UltraViolet {
         menuItems.add(new MenuItem("wr", "Write Reports", x -> {
 
             if (networkManager.isBootstrapCompleted())  {
-                System.out.println("Enter description prefix:");
+                System.out.print("Enter description prefix:");
                 var prefix = new Scanner(System.in).nextLine();
-                var s = new StringBuilder(prefix);
-                s.append(new Date()).append(".csv");
-
+                var s = new StringBuilder(prefix).append(".");
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
+                s.append(sdf.format(new Date())).append(".csv");
                 var rep = networkManager.getStats().generateNetworkReport();
                 var rep2 = networkManager.getStats().generateInvoiceReport();
 
