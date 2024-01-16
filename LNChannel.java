@@ -1,7 +1,7 @@
 import java.io.Serializable;
 
 public interface LNChannel {
-    public static class Policy implements Serializable {
+    class Policy implements Serializable {
 
         final int cltv;
         final int base_fee;
