@@ -27,7 +27,7 @@ public class ChannelGraph implements Serializable  {
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
-            return "{ch:"+id+"("+source + "->"+ destination + ")["+capacity +"]"+policy+"}";
+            return "{ch:"+id+"("+source + "->"+ destination + ")["+capacity +"]("+policy+")}";
         }
     }
 
@@ -47,13 +47,14 @@ public class ChannelGraph implements Serializable  {
     public synchronized void addLNChannel(LNChannel channel) {
 
         final String id = channel.getId();
-        if (this.hasChannel(id)) {
-            throw new IllegalArgumentException(" WARNING: calling addChannel with already existing edge for channel "+channel.getId());
-        }
-
         var node1pub = channel.getNode1PubKey();
         var node2pub = channel.getNode2PubKey();
 
+        if (this.hasChannel(id)) {
+            //throw new IllegalArgumentException(" WARNING: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
+            System.out.println(" WARNING: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
+            return;
+        }
 
         adj_map.putIfAbsent(node1pub, new HashSet<>());
         adj_map.putIfAbsent(node2pub, new HashSet<>());
