@@ -34,6 +34,8 @@ public class UVNetworkManager {
         return uvConfig;
     }
 
+    private ExecutorService executorService;
+
     /**
      * Initialize the logging functionality
      */
@@ -198,6 +200,7 @@ public class UVNetworkManager {
             log(after+":Bootstrap Ended. Duration (ms):"+duration);
         }
 
+        System.gc();
     }
 
     /**
@@ -414,6 +417,7 @@ public class UVNetworkManager {
      */
     public void saveStatus(String file) {
 
+        log("Start saving status... ");
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
             log("Bootstrap incomplete, cannot save");
             System.out.println("Bootstrap incomplete, cannot save");
@@ -422,7 +426,7 @@ public class UVNetworkManager {
 
         System.out.println("Checking queues...");
         for (UVNode n: uvnodes.values()) {
-           if (!n.checkQueues())  {
+           if (!n.checkQueuesStatus())  {
                System.out.println("Cannot save, queues still not empty in "+n.getPubKey());
                return;
            }
@@ -603,13 +607,25 @@ public class UVNetworkManager {
         log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
         System.out.println("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
 
+
+        int nt = 2000;
+        if (executorService==null) {
+            System.out.println("Instatianting new executor with "+nt+ " threads...");
+            System.out.println("(please adjust according you machine limits if you get thread errors)");
+            executorService= Executors.newFixedThreadPool(2000);
+        }
+        else {
+            System.out.println("Reusing existing thread executor (size "+nt+")");
+        }
+
         for (int nb = 0; nb < blocks; nb++) {
             for (int eb = 0; eb<events_per_block; eb++ ) {
                 var sender = getRandomNode();
                 var dest = getRandomNode();
                 int amount = random.nextInt(max_amt-min_amt)+min_amt;
                 var invoice = dest.generateInvoice(amount);
-                new Thread(()->sender.processInvoice(invoice, max_fees,false)).start();
+                //new Thread(()->sender.processInvoice(invoice, max_fees,false)).start();
+                executorService.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
             waitForBlocks(1);
         }
