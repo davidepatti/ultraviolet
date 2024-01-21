@@ -35,6 +35,7 @@ public class UltraViolet {
         else
             System.out.println("No p2p queued messages");
 
+        node.checkQueuesStatus();
     }
 
     private static class MenuItem {
@@ -199,7 +200,7 @@ public class UltraViolet {
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
 
-        menuItems.add(new MenuItem("boot", "Bootstrap a Lightning Network from scratch", (x) -> {
+        menuItems.add(new MenuItem("boot", "Bootstrap Lightning Network from scratch", (x) -> {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
@@ -210,7 +211,7 @@ public class UltraViolet {
                 _waitForFuture(bootstrap);
             }
         }));
-        menuItems.add(new MenuItem("import", "Import a Network Topology", x -> {
+        menuItems.add(new MenuItem("import", "Import Network Topology", x -> {
             if (!networkManager.resetUVM()) {
                 System.out.println("Cannot reset UVM");
             }
@@ -222,7 +223,7 @@ public class UltraViolet {
             imported_graph_root = root;
             new Thread(()-> networkManager.importTopology(json,root)).start();
         }));
-        menuItems.add(new MenuItem("t", "Start/Stop Timechain and P2P", (x) -> {
+        menuItems.add(new MenuItem("t", "Start/Stop Timechain and P2P messages", (x) -> {
             if (!networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: must execute bootstrap or load/import a network!");
                 return;
@@ -250,25 +251,28 @@ public class UltraViolet {
             }
         }));
 
-        menuItems.add(new MenuItem("nodes", "Show Nodes ", x -> networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println)));
-        menuItems.add(new MenuItem("node", "Show a single Node ", x -> {
+        menuItems.add(new MenuItem("nodes", "Show All Nodes ", x -> networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println)));
+        menuItems.add(new MenuItem("node", "Show Node ", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showNodeCommand(node);
         }));
-        menuItems.add(new MenuItem("graph", "Show a Node Graph", x -> {
+        menuItems.add(new MenuItem("graph", "Show Node Graph", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showGraphCommand(node);
         }));
-        menuItems.add(new MenuItem("p2pq", "Show a Node Message Queue", x -> {
+        menuItems.add(new MenuItem("p2pq", "Show Node Message Queue", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
             showQueueCommand(node);
         }));
+        /*
         menuItems.add(new MenuItem("test", "TEST", x -> {
             System.out.println("HI!");
         }));
+
+         */
 
         menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
@@ -314,10 +318,16 @@ public class UltraViolet {
             }
         }));
 
-        menuItems.add(new MenuItem("rep", "Show Reports", x -> {
+        menuItems.add(new MenuItem("rep", "Invoice Reports", x -> {
+            if (networkManager.isBootstrapCompleted())  {
+                System.out.println(networkManager.getStats().generateInvoiceReport());
+            }
+            else System.out.println("Bootstrap not completed!");
+        } ));
+
+        menuItems.add(new MenuItem("nets", "Show Network Stats", x -> {
             if (networkManager.isBootstrapCompleted())  {
                 System.out.println(networkManager.getStats().generateNetworkReport());
-                System.out.println(networkManager.getStats().generateInvoiceReport());
             }
             else System.out.println("Bootstrap not completed!");
         } ));
