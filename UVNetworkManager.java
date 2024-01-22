@@ -425,11 +425,16 @@ public class UVNetworkManager {
         }
 
         System.out.println("Checking queues...");
+        boolean queue_empty = true;
         for (UVNode n: uvnodes.values()) {
            if (!n.checkQueuesStatus())  {
-               System.out.println("Cannot save, queues still not empty in "+n.getPubKey());
-               return;
+               System.out.println("WARNING queues not empty in "+n.getPubKey());
+               queue_empty = false;
            }
+        }
+        if (!queue_empty) {
+            System.out.println("Cannot save: queues still not empty.");
+            return;
         }
         System.out.println("Stopping the Timechain...");
         log("Stopping timechain");

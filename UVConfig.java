@@ -114,14 +114,14 @@ public class UVConfig implements Serializable {
                 if (value.contains(",")) {
                     var values = new ArrayList<>(Arrays.asList(value.split(",")));
                     multival_properties.put(propertyName,values);
-                    System.out.println("Detected multival: "+propertyName+ ": "+values);
+                    //System.out.println("Detected multival: "+propertyName+ ": "+values);
                 }
             }
 
             // put the name of each profile as attribute of the profile itself
             for (String name:profiles.keySet()) {
                 profiles.get(name).put("name",name);
-                System.out.println("Loaded profile: "+name);
+                //System.out.println("Loaded profile: "+name);
             }
 
         } catch (FileNotFoundException e) {
@@ -136,7 +136,7 @@ public class UVConfig implements Serializable {
         }
 
         random = new Random(getIntProperty("seed"));
-        System.out.println("Setting seed to "+getIntProperty("seed"));
+        //System.out.println("Setting seed to "+getIntProperty("seed"));
     }
 
 

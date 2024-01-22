@@ -100,8 +100,14 @@ public class UltraViolet {
             System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
             start = imported_graph_root;
         } else {
-            System.out.print("Starting node public key:");
-            start = scanner.nextLine();
+            if (networkManager.isBootstrapCompleted()) {
+                System.out.print("Starting node public key:");
+                start = scanner.nextLine();
+            }
+            else  {
+                System.out.println("Bootstrap Non completed!");
+                return;
+            }
         }
 
         System.out.print("Destination node public key:");
@@ -141,10 +147,7 @@ public class UltraViolet {
     }
 
 
-    private void showQueueCommand(String node_id) {
-        if (!networkManager.isBootstrapCompleted()) return;
-        var node = networkManager.getNode(node_id);
-        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+    private void showQueueCommand(UVNode node) {
         System.out.println("P2P message queue:");
         System.out.println("-------------------------------------------------------------");
         node.getGossipMessageQueue().forEach(System.out::println);
@@ -262,9 +265,12 @@ public class UltraViolet {
             String node = scanner.nextLine();
             showGraphCommand(node);
         }));
-        menuItems.add(new MenuItem("p2pq", "Show Node Message Queue", x -> {
-            System.out.print("insert node public key:");
-            String node = scanner.nextLine();
+        menuItems.add(new MenuItem("p2pq", "Show Node Queues", x -> {
+            if (!networkManager.isBootstrapCompleted()) return;
+            System.out.print("Insert node public key:");
+            String node_id = scanner.nextLine();
+            var node = networkManager.getNode(node_id);
+            if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
             showQueueCommand(node);
         }));
         /*
@@ -359,8 +365,8 @@ public class UltraViolet {
 
         menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> findPathsCmd()));
         menuItems.add(new MenuItem("route", "Route Payment", x -> testInvoiceRoutingCmd()));
-        menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
-        menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
+        //menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
+        //menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
         menuItems.add(new MenuItem("save", "Save UV Network Status", x -> {
             System.out.print("Save to:");
             String file_to_save = scanner.nextLine();
@@ -379,12 +385,13 @@ public class UltraViolet {
         while (!quit) {
             System.out.print("\033[H\033[2J");
             System.out.flush();
-            System.out.println(" Ultraviolet client ");
+            System.out.println("__________________________________________________");
+            System.out.println(" U l t r a v i o l e t ");
             System.out.println("__________________________________________________");
             menuItems.forEach(System.out::println);
             System.out.println("__________________________________________________");
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
-            if (!networkManager.getTimechain().isRunning()) System.out.println(" (Not running)");
+            if (!networkManager.getTimechain().isRunning()) System.out.println(" (NOT RUNNING)");
             else System.out.println(" Running...");
             System.out.println("__________________________________________________");
 
@@ -400,7 +407,7 @@ public class UltraViolet {
                     break;
                 }
             }
-            System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+            System.out.println("\n[ Press ENTER to continue... ]");
             scanner.nextLine();
         }
         System.out.println("Disconnecting client");
@@ -412,7 +419,6 @@ public class UltraViolet {
         var configuration = new UVConfig();
 
         if (args.length==1) {
-            System.out.println("Using configuration "+args[0]);
             configuration.loadConfig(args[0]);
         }
         else {
