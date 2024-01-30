@@ -41,7 +41,7 @@ public class LNInvoice implements Serializable {
 
     @Override
     public String toString() {
-        return "LNInvoice{" + "H='" + H + '\'' + ", amount=" + amount + ", recipient='" + destination + '\'' + ", message=" + message + '}';
+        return "LNInvoice{" + "H='" + H + '\'' + ", amt=" + amount + ", dst='" + destination + '\'' + ", msg=" + message + '}';
     }
 
     @Override
