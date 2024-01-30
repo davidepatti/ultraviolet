@@ -5,23 +5,6 @@ import java.util.concurrent.CountDownLatch;
 
 public class UVTimechain implements Runnable, Serializable  {
 
-
-    private void log(String s) {
-       UVNetworkManager.log("[TIMECHAIN]"+s);
-    }
-
-    enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
-    record Transaction(String txId, TxType type, int amount, String node1_pub, String node2_pub) implements Serializable{
-        @Override
-        public String toString() {
-            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + "amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
-        }
-    }
-
-    record Block(int height, List<Transaction> txs) implements Serializable {}
-
-    record ChainLocation(int height, int tx_index) {}
-
     @Serial
     private static final long serialVersionUID = 1207897L;
     private int current_block;
@@ -29,13 +12,41 @@ public class UVTimechain implements Runnable, Serializable  {
     private final Set<CountDownLatch> timers = new HashSet<>();
     private final Set<Transaction> mempool = new HashSet<>();
     private final List<Block>  blockChain = new LinkedList<>();
+    boolean running = false;
+
+    private final UVNetworkManager uvm;
+
+
+    enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
+    public record Transaction(String txId, TxType type, int amount, String node1_pub, String node2_pub) implements Serializable{
+        @Override
+        public String toString() {
+            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + "amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
+        }
+    }
+
+    record Block(int height, List<Transaction> txs) implements Serializable {}
+    public record ChainLocation(int height, int tx_index) {}
+
+
+    public UVTimechain(int blocktime, UVNetworkManager uvNetworkManager) {
+        current_block = 0;
+        this.blocktime = blocktime;
+        this.running = false;
+        this.uvm = uvNetworkManager;
+    }
+
+
+    private void log(String s) {
+        uvm.log("*TIMECHAIN*"+s);
+    }
 
     private synchronized void tictocNextBlock() {
        current_block++;
        var newBlock = new Block(current_block,new ArrayList<>(mempool));
        blockChain.add(newBlock);
 
-       if (newBlock.txs().size()>0) {
+       if (!newBlock.txs().isEmpty()) {
            log("New block "+newBlock.height()+" with txs: ");
            for (Transaction t: newBlock.txs()) {
                log(t.toString());
@@ -63,13 +74,7 @@ public class UVTimechain implements Runnable, Serializable  {
     }
 
 
-    boolean running = false;
 
-    public UVTimechain(int blocktime) {
-        current_block = 0;
-        this.blocktime = blocktime;
-        this.running = false;
-    }
 
     public synchronized int getCurrentLatches() {
         return timers.size();
