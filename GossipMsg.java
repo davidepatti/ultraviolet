@@ -29,11 +29,6 @@ public abstract class GossipMsg extends P2PMessage implements Serializable {
 
     @Override
     public String toString() {
-        return "P2PMessage{" +
-                "sender='" + senderID + '\'' +
-                ", forwardings=" + forwardings +
-                ", timestamp=" + timestamp +
-                ", msgType=" + msgType +
-                '}';
+        return "Gossip{" + "from='" + senderID + '\'' + ", fwds=" + forwardings + ", ts=" + timestamp + "," + msgType + '}';
     }
 }
