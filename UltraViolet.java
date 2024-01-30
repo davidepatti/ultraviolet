@@ -30,12 +30,7 @@ public class UltraViolet {
         int vertex = node.getChannelGraph().getNodeCount();
         System.out.println("Graph nodes:" + vertex);
         System.out.println("Graph channels:" + edges);
-        if (node.getGossipMsgQueue() != null)
-            System.out.println("Current p2p message queue:" + node.getGossipMsgQueue().size());
-        else
-            System.out.println("No p2p queued messages");
-
-        node.checkQueuesStatus();
+        node.showQueuesStatus();
     }
 
     private static class MenuItem {
@@ -242,7 +237,7 @@ public class UltraViolet {
         }));
 
         menuItems.add(new MenuItem("all", "Show Nodes and Channels", x -> {
-            if (networkManager.getUVNodeList().size()== 0) {
+            if (networkManager.getUVNodeList().isEmpty()) {
                 System.out.println("EMPTY NODE LIST");
                 return;
             }
@@ -261,7 +256,7 @@ public class UltraViolet {
             showNodeCommand(node);
         }));
         menuItems.add(new MenuItem("graph", "Show Node Graph", x -> {
-            System.out.print("insert node public key:");
+            System.out.print("Insert node public key:");
             String node = scanner.nextLine();
             showGraphCommand(node);
         }));
@@ -272,6 +267,14 @@ public class UltraViolet {
             var node = networkManager.getNode(node_id);
             if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
             showQueueCommand(node);
+        }));
+        menuItems.add(new MenuItem("qs", "Show Queues Status", x -> {
+            if (!networkManager.isBootstrapCompleted()) return;
+            System.out.println("Showing not empty queues...");
+
+            for (UVNode n: networkManager.getUVNodeList().values()) {
+                n.showQueuesStatus();
+            }
         }));
         /*
         menuItems.add(new MenuItem("test", "TEST", x -> {
@@ -297,7 +300,7 @@ public class UltraViolet {
                 return;
             }
 
-            System.out.print("Injection Rate (per node events at each block):");
+            System.out.print("Injection Rate (node events per block):");
             double node_events_per_block = Double.parseDouble(scanner.nextLine());
             System.out.print("Timechain duration (blocks): ");
             int n_blocks = Integer.parseInt(scanner.nextLine());
