@@ -137,12 +137,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private void log(String s) {
 
-        UVNetworkManager.log(this.getPubKey() + ':' + s);
+        uvManager.log(this.getPubKey() + ':' + s);
     }
 
     private void debug(String s) {
         if (uvManager.getConfig().getStringProperty("debug").equals("true")) {
-            UVNetworkManager.log("*DEBUG*:" + this.getPubKey() + ":" + s);
+            log("_DEBUG_" + s);
         }
     }
 
@@ -482,6 +482,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
+        debug("Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getId());
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
             // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
             log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getId());

@@ -31,9 +31,6 @@ public class ChannelGraph implements Serializable  {
         }
     }
 
-    private void log(String s) {
-        UVNetworkManager.log(s);
-    }
 
     // This function adds a new vertex to the graph
     private synchronized void addNode(String node_id) {
@@ -119,7 +116,7 @@ public class ChannelGraph implements Serializable  {
         visited_vertex.add(start);
         queue_vertex.add(start);
 
-        while (queue_vertex.size() != 0) {
+        while (!queue_vertex.isEmpty()) {
             var current_vertex = queue_vertex.poll();
 
             var list_edges =adj_map.get(current_vertex);
@@ -232,9 +229,7 @@ public class ChannelGraph implements Serializable  {
                 return;
             }
         }
-        log("YOU SHOULD NOT READ THIS, check updateChannel "+channel_id+" in "+this.root_node);
-        throw new IllegalStateException("Check LOG!");
-
+        throw new IllegalStateException("Cannot updateChannel "+channel_id+" in "+root_node+" updater:"+updater+" policy:"+new_policy);
     }
 
     public synchronized void updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {

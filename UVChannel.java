@@ -5,9 +5,6 @@ import java.util.Objects;
 @SuppressWarnings("CanBeFinal")
 public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel> {
 
-    private void log(String s) {
-        UVNetworkManager.log(this.getId()+":"+s);
-    }
     @Serial
     private static final long serialVersionUID = 120897L;
     private int htlc_id =0;
@@ -79,12 +76,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public synchronized boolean reservePending(String node, int amt) {
 
-        log("Trying to reserve pending for node "+node+ " , required: "+amt+ " in channel "+this);
         if (node.equals(node_id_1))  {
             if (amt>getNode1Liquidity()) {
                 return false;
             }
-            log("Increasing pending from "+node1Pending+" to "+(node1Pending+amt));
             node1Pending += amt;
             return true;
         }
@@ -93,7 +88,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             if (amt>getNode2Liquidity()) {
                return false;
             }
-            log("Increasing pending from "+node1Pending+" to "+(node1Pending+amt));
             node2Pending +=amt;
             return true;
         }
@@ -105,11 +99,9 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
 
         if (node.equals(this.getNode1PubKey())) {
-            log("Removing pending from "+node+" in channel "+this.channel_id+ " new pending "+node1Pending);
             node1Pending-=amt;
         }
         else if (node.equals(this.getNode2PubKey())) {
-            log("Removing pending from "+node+" in channel "+this.channel_id+ " new pending "+node2Pending);
             node2Pending-=amt;
         }
         else

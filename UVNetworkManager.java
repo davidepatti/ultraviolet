@@ -21,7 +21,6 @@ public class UVNetworkManager {
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
     private String imported_rootnode_graph;
-    private FileWriter logfile;
     public static Consumer<String> Log = System.out::println;
 
     private final GlobalStats stats;
@@ -35,27 +34,7 @@ public class UVNetworkManager {
     }
 
     private ExecutorService executorService;
-
-    /**
-     * Initialize the logging functionality
-     */
-    private void initLog() {
-        try {
-            logfile = new FileWriter(uvConfig.getStringProperty("logfile"));
-        } catch (IOException e) {
-            log("Cannot open logfile for writing:"+ uvConfig.getStringProperty("lofile"));
-            throw new RuntimeException(e);
-        }
-        Log = (s) ->  {
-            try {
-
-                logfile.write("\n[timechain "+ UVTimechain.getCurrentBlock()+"]:"+s);
-                logfile.flush();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        };
-    }
+    private static FileWriter logfile;
 
     private void loadAliasNames() {
         try {
@@ -83,10 +62,16 @@ public class UVNetworkManager {
         if (!uvConfig.isInitialized()) uvConfig.setDefaults();
         random = new Random();
         if (uvConfig.getIntProperty("seed") !=0) random.setSeed(uvConfig.getIntProperty("seed"));
-        initLog();
+
+        try {
+            logfile = new FileWriter(uvConfig.getStringProperty("logfile"));
+        } catch (IOException e) {
+            log("Cannot open logfile for writing:"+ uvConfig.getStringProperty("lofile"));
+            throw new RuntimeException(e);
+        }
 
         this.uvnodes = new HashMap<>();
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"));
+        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"),this);
 
         log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
@@ -111,7 +96,7 @@ public class UVNetworkManager {
 
         random = new Random();
         if (uvConfig.getIntProperty("seed") !=0) random.setSeed(uvConfig.getIntProperty("seed"));
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"));
+        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"),this);
         bootstrap_started = false;
         bootstrap_completed = false;
         this.uvnodes = new HashMap<>();
@@ -407,8 +392,14 @@ public class UVNetworkManager {
      *
      * @param s
      */
-    static void log(String s) {
-        Log.accept(s);
+    public void log(String s) {
+        try {
+
+            logfile.write("\n[block "+ UVTimechain.getCurrentBlock()+"]:"+s);
+            logfile.flush();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
