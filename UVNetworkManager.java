@@ -621,7 +621,6 @@ public class UVNetworkManager {
                 var dest = getRandomNode();
                 int amount = random.nextInt(max_amt-min_amt)+min_amt;
                 var invoice = dest.generateInvoice(amount);
-                //new Thread(()->sender.processInvoice(invoice, max_fees,false)).start();
                 executorService.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
             waitForBlocks(1);
