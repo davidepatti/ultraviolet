@@ -429,6 +429,7 @@ public class UVNetworkManager {
         for (UVNode n: uvnodes.values()) {
            if (!n.checkQueuesStatus())  {
                System.out.println("WARNING queues not empty in "+n.getPubKey());
+               n.showQueuesStatus();
                queue_empty = false;
            }
         }
@@ -532,7 +533,7 @@ public class UVNetworkManager {
     public void bootstrapNode(UVNode node) {
 
         // TODO: should be this an config value?
-        int max_discards = 500;
+        int max_discards = 200;
         ///----------------------------------------------------------
         var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
@@ -612,15 +613,15 @@ public class UVNetworkManager {
         log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
         System.out.println("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
 
+        int max_threads = getConfig().getIntProperty("max_threads");
 
-        int nt = 2000;
         if (executorService==null) {
-            System.out.println("Instatianting new executor with "+nt+ " threads...");
+            System.out.println("Instatianting new executor with "+max_threads+ " threads...");
             System.out.println("(please adjust according you machine limits if you get thread errors)");
-            executorService= Executors.newFixedThreadPool(2000);
+            executorService= Executors.newFixedThreadPool(max_threads);
         }
         else {
-            System.out.println("Reusing existing thread executor (size "+nt+")");
+            System.out.println("Reusing existing thread executor (size "+max_threads+")");
         }
 
         for (int nb = 0; nb < blocks; nb++) {
