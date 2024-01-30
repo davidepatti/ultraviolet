@@ -429,7 +429,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param path
      * @return
      */
-    private void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
+    private synchronized void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
         log("Routing on path:"+ChannelGraph.pathString(path));
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
@@ -570,7 +570,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
         }
 
-        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing HTLC for "+msg);
+        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending HTLC for "+msg);
     }
 
 
@@ -578,7 +578,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      *
      * @return
      */
-    private void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
+    private synchronized void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
 
         log("Processing: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
@@ -1183,6 +1183,42 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     @Override
     public int hashCode() {
         return pubkey.hashCode();
+    }
+
+    public void showQueuesStatus() {
+
+        if(!GossipMessageQueue.isEmpty() || !channelsAcceptedQueue.isEmpty() || !channelsToAcceptQueue.isEmpty() ||
+                !updateAddHTLCQueue.isEmpty() || !updateFulFillHTLCQueue.isEmpty() || !updateFailHTLCQueue.isEmpty() ||
+                !pendingInvoices.isEmpty() || !pendingHTLC.isEmpty() || !pendingAcceptedChannelPeers.isEmpty())
+            System.out.println("----- node " +this.getPubKey()+ "----------------------------------------------");
+
+        for(var element : GossipMessageQueue) {
+            System.out.println(element);
+        }
+        for(var element : channelsAcceptedQueue) {
+            System.out.println(element);
+        }
+        for(var element : channelsToAcceptQueue) {
+            System.out.println(element);
+        }
+        for(var element : updateAddHTLCQueue) {
+            System.out.println(element);
+        }
+        for(var element : updateFulFillHTLCQueue) {
+            System.out.println(element);
+        }
+        for(var element : updateFailHTLCQueue) {
+            System.out.println(element);
+        }
+        for(var value : pendingInvoices.values()) {
+            System.out.println(value);
+        }
+        for(var value : pendingHTLC.values()) {
+            System.out.println(value);
+        }
+        for(var element : pendingAcceptedChannelPeers) {
+            System.out.println(element);
+        }
     }
 
     public boolean checkQueuesStatus() {
