@@ -976,7 +976,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * A max number of messages is processed periodically to avoid execessive overloading
      * Messages older than a given number of blocks are discarded
      */
-    private void p2pProcessGossip() {
+    private void processGossip() {
 
         int max_msg = uvManager.getConfig().getIntProperty("gossip_flush_size");
 
@@ -1041,9 +1041,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public void runServices() {
 
         try {
-            checkChannelsMsgQueue();
-            checkHTLCMsgQueue();
-            p2pProcessGossip();
+            processChannelsMsgQueue();
+            processHTLCMsgQueue();
+            processGossip();
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1053,7 +1053,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      * Check for incoming openchannel request/acceptance
      */
-    private void checkChannelsMsgQueue() {
+    private void processChannelsMsgQueue() {
 
         final int max = 20;
         int n = 0;
@@ -1073,7 +1073,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      * Check for HTLC related messages
      */
-    private void checkHTLCMsgQueue() {
+    private void processHTLCMsgQueue() {
         final int max = 20;
         int n = 0;
 
