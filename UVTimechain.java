@@ -14,14 +14,14 @@ public class UVTimechain implements Runnable, Serializable  {
     private final List<Block>  blockChain = new LinkedList<>();
     boolean running = false;
 
-    private final UVNetworkManager uvm;
+    transient private UVNetworkManager uvm;
 
 
     enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
     public record Transaction(String txId, TxType type, int amount, String node1_pub, String node2_pub) implements Serializable{
         @Override
         public String toString() {
-            return "Tx{ 0x"+ Kit.shortString(txId) +","+ type + "amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
+            return "Tx{0x"+ Kit.shortString(txId) +","+ type + ", amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
         }
     }
 
@@ -34,6 +34,10 @@ public class UVTimechain implements Runnable, Serializable  {
         this.blocktime = blocktime;
         this.running = false;
         this.uvm = uvNetworkManager;
+    }
+
+    public void setUVM(UVNetworkManager uvm) {
+        this.uvm = uvm;
     }
 
 
