@@ -73,7 +73,7 @@ public class UVNetworkManager {
         this.uvnodes = new HashMap<>();
         UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"),this);
 
-        log(new Date() +":Initializing UVManager...");
+        print_log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
         loadAliasNames();
     }
@@ -83,9 +83,8 @@ public class UVNetworkManager {
      * @return
      */
     public synchronized boolean resetUVM() {
-        System.out.println("Resetting UVManager (experimental!)");
         if (isBootstrapStarted() && !isBootstrapCompleted()) {
-            log("Cannot reset, bootstrap in progress. Please quit UVM");
+            print_log("Cannot reset, bootstrap in progress. Please quit UVM");
             return false;
         }
 
@@ -114,12 +113,12 @@ public class UVNetworkManager {
         }
 
         if (!no_timeout) {
-            log("WARNING: timeout");
-            System.out.println("TIMEOUT!");
+            print_log("TIMEOUT!");
         }
         p2pExecutor = null;
 
         System.gc();
+        print_log("UVManager reset complete");
         return true;
     }
 
@@ -133,10 +132,10 @@ public class UVNetworkManager {
         var startTime = new Date();
         bootstrap_started = true;
 
-        log(startTime +": Bootstrapping network from scratch...");
+        print_log(startTime +": Bootstrapping network from scratch...");
         bootstrap_latch = new CountDownLatch(uvConfig.getIntProperty("bootstrap_nodes"));
 
-        log("UVM: deploying nodes, configuration: "+ uvConfig);
+        print_log("UVM: deploying nodes, configuration: "+ uvConfig);
 
         for (int i = 0; i< uvConfig.getIntProperty("bootstrap_nodes"); i++) {
             var random_profile = uvConfig.getRandomProfile();
@@ -153,9 +152,9 @@ public class UVNetworkManager {
 
         updatePubkeyList();
 
-        log("UVM: Starting timechain: "+ UVTimechain);
+        print_log("UVM: Starting timechain: "+ UVTimechain);
         setTimechainRunning(true);
-        log("Starting node threads...");
+        print_log("Starting node threads...");
         var bootexec = Executors.newFixedThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
         for (UVNode uvNode : uvnodes.values()) {
            bootexec.submit(()->bootstrapNode(uvNode));
@@ -176,13 +175,12 @@ public class UVNetworkManager {
             throw new RuntimeException(e);
         }
         if (!term)  {
-            log("Bootstrap timeout! terminating...") ;
-            System.out.println("Bootstrap timeout! terminating...");
+            print_log("Bootstrap timeout! terminating...");
         }
         else {
             var after = new Date();
             var duration = after.getTime()-startTime.getTime();
-            log(after+":Bootstrap Ended. Duration (ms):"+duration);
+            print_log(after+":Bootstrap Ended. Duration (ms):"+duration);
         }
 
         System.gc();
@@ -192,10 +190,10 @@ public class UVNetworkManager {
      * If not yet started, schedule the p2p threads to be executed periodically for each node
      */
     private void startP2PNetwork() {
-        log("Launching p2p nodes services...");
+        print_log("Launching p2p nodes services...");
         // start p2p actions around every block
         if (p2pExecutor==null) {
-            log("Initializing p2p scheduled executor...");
+            print_log("Initializing p2p scheduled executor...");
             p2pExecutor = Executors.newScheduledThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
         }
         int i = 0;
@@ -205,14 +203,14 @@ public class UVNetworkManager {
         }
     }
     public void stopP2PNetwork() {
-        log("Stopping p2p nodes services...");
+        print_log("Stopping p2p nodes services...");
 
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(false);
             n.p2pHandler.cancel(false);
         }
 
-        log("P2P Services stopped");
+        print_log("P2P Services stopped");
     }
 
     /**
@@ -259,10 +257,7 @@ public class UVNetworkManager {
      * @param n number of events to be generated
      */
     public void generateRandomEvents(int n) {
-        if (!this.isBootstrapCompleted()) {
-            log("Bootstrap non completed, Cannot generate random events!");
-            return;
-        }
+        if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
             var some_channel_id = some_node.getRandomChannel().getId();
@@ -271,7 +266,6 @@ public class UVNetworkManager {
             log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
             some_node.pushSats(some_channel_id,some_amount);
         }
-        log("Random events generation ended!");
     }
 
 
@@ -281,7 +275,7 @@ public class UVNetworkManager {
      */
     public void importTopology(String json_file, String root_node) {
         JSONParser parser = new JSONParser();
-        log("Beginning importing file "+json_file);
+        print_log("Beginning importing file "+json_file);
         try {
             Object obj = parser.parse(new FileReader(json_file));
             JSONObject jsonObject = (JSONObject) obj;
@@ -295,7 +289,7 @@ public class UVNetworkManager {
                 var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getProfiles().get("default"));
                 uvnodes.put(pub_key,uvNode);
             }
-            log("Node import ended, importing channels...");
+            print_log("Node import ended, importing channels...");
 
             var root= uvnodes.get(root_node);
 
@@ -319,7 +313,7 @@ public class UVNetworkManager {
 
                 root.getChannelGraph().addLNChannel(ch);
             }
-            log("Import completed");
+            print_log("Import completed");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -402,51 +396,53 @@ public class UVNetworkManager {
         }
     }
 
+    public void print_log(String s) {
+        System.out.println(s);
+        log(s);
+    }
+
     /**
      * Save the current network status to file
      * @param file destination file
      */
     public void saveStatus(String file) {
 
-        log("Start saving status... ");
+        print_log("Start saving status... ");
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
-            log("Bootstrap incomplete, cannot save");
-            System.out.println("Bootstrap incomplete, cannot save");
+            print_log("Bootstrap incomplete, cannot save");
             return;
         }
 
-        System.out.println("Checking queues...");
+        print_log("Checking queues...");
         boolean queue_empty = true;
         for (UVNode n: uvnodes.values()) {
            if (!n.checkQueuesStatus())  {
-               System.out.println("WARNING queues not empty in "+n.getPubKey());
+               print_log("WARNING queues not empty in "+n.getPubKey());
                n.showQueuesStatus();
                queue_empty = false;
            }
         }
         if (!queue_empty) {
-            System.out.println("Cannot save: queues still not empty.");
+            print_log("Cannot save: queues still not empty.");
             return;
         }
-        System.out.println("Stopping the Timechain...");
-        log("Stopping timechain");
+        print_log("Stopping timechain");
         setTimechainRunning(false);
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
-            System.out.println("Saving config...");
+            print_log("Saving config...");
             f.writeObject(uvConfig);
-            System.out.println("Saving timechain...");
+            print_log("Saving timechain...");
             f.writeObject(getTimechain());
-            System.out.println("Saving UVNodes...");
+            print_log("Saving UVNodes...");
             f.writeInt(uvnodes.size());
 
             for (UVNode n: uvnodes.values()) f.writeObject(n);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("Ok, saving complete!");
-        log("End saving ");
+        print_log("Saving complete!");
     }
 
     /**
@@ -460,12 +456,12 @@ public class UVNetworkManager {
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
 
-            System.out.println("Loading config...");
+            print_log("Loading config...");
             this.uvConfig = (UVConfig)s.readObject();
-            System.out.println("Loading timechain status...");
+            print_log("Loading timechain status...");
             this.UVTimechain = (UVTimechain)s.readObject();
 
-            System.out.println("Loading UVNodes...");
+            print_log("Loading UVNodes...");
             int num_nodes = s.readInt();
             for (int i=0;i<num_nodes;i++) {
                 UVNode n = (UVNode) s.readObject();
@@ -486,7 +482,7 @@ public class UVNetworkManager {
             throw new RuntimeException(e);
         }
 
-        System.out.println("Loading Ended (please notice: the timechain is currently stopped)");
+        print_log("Loading Ended (please notice: the timechain is currently stopped)");
         return true;
     }
 
@@ -592,7 +588,7 @@ public class UVNetworkManager {
 
     public void generateInvoiceEvents(double node_events_per_block, int blocks, int min_amt, int max_amt, int max_fees) {
         if (!isBootstrapCompleted()) {
-            System.out.println("ERROR: must execute bootstrap or load/import a network!");
+            print_log("ERROR: must execute bootstrap or load/import a network!");
             return;
         }
 
@@ -601,18 +597,17 @@ public class UVNetworkManager {
         int events_per_block = (int)(pubkeys_list.length*node_events_per_block);
         int total_events = events_per_block*blocks;
 
-        log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
-        System.out.println("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
+        print_log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
 
         int max_threads = getConfig().getIntProperty("max_threads");
 
         if (executorService==null) {
-            System.out.println("Instatianting new executor with "+max_threads+ " threads...");
-            System.out.println("(please adjust according you machine limits if you get thread errors)");
+            print_log("Instatianting new executor with "+max_threads+ " threads...");
+            print_log("(please adjust according you machine limits if you get thread errors)");
             executorService= Executors.newFixedThreadPool(max_threads);
         }
         else {
-            System.out.println("Reusing existing thread executor (size "+max_threads+")");
+            print_log("Reusing existing thread executor (size "+max_threads+")");
         }
 
         for (int nb = 0; nb < blocks; nb++) {
@@ -625,8 +620,7 @@ public class UVNetworkManager {
             }
             waitForBlocks(1);
         }
-        log("Completed events generation");
-        System.out.println("Completed events generation");
+        print_log("Completed events generation");
 
 
     }

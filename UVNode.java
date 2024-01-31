@@ -140,6 +140,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         uvManager.log(this.getPubKey() + ':' + s);
     }
 
+    private void print_log(String s) {
+        uvManager.print_log(s);
+    }
+
     private void debug(String s) {
         if (uvManager.getConfig().getStringProperty("debug").equals("true")) {
             log("_DEBUG_" + s);
@@ -550,7 +554,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
                 var hash = pending_msg.getPayment_hash();
-                log("Found pending HTLC to remove for channel:"+ch_id+ " id:"+msg.getId());
 
                 pendingHTLC.remove(hash);
                 debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
@@ -649,7 +652,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         else {
-            log("Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
+            debug("Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
         }
 
 

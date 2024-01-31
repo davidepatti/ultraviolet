@@ -47,10 +47,12 @@ public class UVTimechain implements Runnable, Serializable  {
        blockChain.add(newBlock);
 
        if (!newBlock.txs().isEmpty()) {
-           log("New block "+newBlock.height()+" with txs: ");
+           StringBuilder sb = new StringBuilder("New Block Found "+newBlock.height()+", Transactions >>> ");
            for (Transaction t: newBlock.txs()) {
-               log(t.toString());
+               sb.append(t.toString());
            }
+           sb.append(" <<<");
+           log(sb.toString());
        }
        mempool.clear();
     }
