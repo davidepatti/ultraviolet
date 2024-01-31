@@ -156,8 +156,14 @@ public class UVNetworkManager {
         setTimechainRunning(true);
         print_log("Starting node threads...");
         var bootexec = Executors.newFixedThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
-        for (UVNode uvNode : uvnodes.values()) {
-           bootexec.submit(()->bootstrapNode(uvNode));
+        try {
+            for (UVNode uvNode : uvnodes.values()) {
+                bootexec.submit(()->bootstrapNode(uvNode));
+            }
+
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
         }
 
         try {
@@ -406,14 +412,12 @@ public class UVNetworkManager {
      * @param file destination file
      */
     public void saveStatus(String file) {
-
-        print_log("Start saving status... ");
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
             print_log("Bootstrap incomplete, cannot save");
             return;
         }
 
-        print_log("Checking queues...");
+        print_log("Checking queues before saving...");
         boolean queue_empty = true;
         for (UVNode n: uvnodes.values()) {
            if (!n.checkQueuesStatus())  {
@@ -460,6 +464,7 @@ public class UVNetworkManager {
             this.uvConfig = (UVConfig)s.readObject();
             print_log("Loading timechain status...");
             this.UVTimechain = (UVTimechain)s.readObject();
+            this.UVTimechain.setUVM(this);
 
             print_log("Loading UVNodes...");
             int num_nodes = s.readInt();
@@ -526,7 +531,7 @@ public class UVNetworkManager {
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large durations with short p2p message deadline can cause some node no to consider earlier node messages
 
-        log("BOOTSTRAPPING "+node.getPubKey()+ " - waiting duration blocks: "+duration);
+        //log("BOOTSTRAPPING "+node.getPubKey()+ " - waiting duration blocks: "+duration);
 
         waitForBlocks(duration);
 
@@ -586,7 +591,7 @@ public class UVNetworkManager {
         uvnode.receiveMessage(message);
     }
 
-    public void generateInvoiceEvents(double node_events_per_block, int blocks, int min_amt, int max_amt, int max_fees) {
+    public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
         if (!isBootstrapCompleted()) {
             print_log("ERROR: must execute bootstrap or load/import a network!");
             return;
@@ -595,9 +600,13 @@ public class UVNetworkManager {
         // node_events_per_block = 0.01 -> each node has (on average) one event every 100 blocks
         // so, if there are 1000 nodes, 10 node events will happen globally at each block
         int events_per_block = (int)(pubkeys_list.length*node_events_per_block);
-        int total_events = events_per_block*blocks;
+        int total_events = events_per_block*blocks_duration;
 
         print_log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
+
+        int end = getTimechain().getCurrentBlock()+blocks_duration;
+
+        print_log("Expected end after block "+end);
 
         int max_threads = getConfig().getIntProperty("max_threads");
 
@@ -610,7 +619,9 @@ public class UVNetworkManager {
             print_log("Reusing existing thread executor (size "+max_threads+")");
         }
 
-        for (int nb = 0; nb < blocks; nb++) {
+        // so to be sure to align to a just found block timing
+        waitForBlocks(1);
+        for (int nb = 0; nb < blocks_duration; nb++) {
             for (int eb = 0; eb<events_per_block; eb++ ) {
                 var sender = getRandomNode();
                 var dest = getRandomNode();

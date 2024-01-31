@@ -804,6 +804,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var pseudo_hash = Kit.bytesToHexString(Kit.hash256(temp_channel_id));
 
         var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
+        // TODO: pubkeys should be lexically ordered, not based on initiator
         var funding_tx = new UVTimechain.Transaction(pseudo_hash, UVTimechain.TxType.FUNDING_TX,funding_amount,getPubKey(),peerPubKey);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
