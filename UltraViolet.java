@@ -373,6 +373,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("save", "Save UV Network Status", x -> {
             System.out.print("Save to:");
             String file_to_save = scanner.nextLine();
+            System.out.println("Start saving status, please wait... ");
             networkManager.saveStatus(file_to_save);
         }));
         menuItems.add(new MenuItem("load", "Load UV Network Status", x -> {
