@@ -251,10 +251,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @return
      */
     @Override
-    public LNInvoice generateInvoice(int amount) {
+    public LNInvoice generateInvoice(int amount,String msg) {
         long R = ThreadLocalRandom.current().nextInt();
         var H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(R).toByteArray()));
-        var invoice = new LNInvoice(H, amount, this.getPubKey(), "");
+        var invoice = new LNInvoice(H, amount, this.getPubKey(), msg);
         if (generatedInvoices == null) generatedInvoices = new ConcurrentHashMap<>();
         generatedInvoices.put(R, invoice);
         return invoice;
@@ -322,7 +322,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public void processInvoice(LNInvoice invoice, int max_fees, boolean showui) {
 
-        log("Processing " + invoice);
+        log("Processing Invoice " + invoice);
 
         // pathfinding stats
         var candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
@@ -536,7 +536,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     log("LN invoice for hash "+computed_hash+ " Completed!");
                     payedInvoices.put(computed_hash,pendingInvoices.get(computed_hash));
                 }
-                else throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
+                else {
+                    StringBuilder sb = new StringBuilder("Missing pending invoice for ");
+                    sb.append(computed_hash);
+                    sb.append("\nCurrent pending PendinInvoices: ");
+                    sb.append(this.pendingInvoices.toString());
+                    log(sb.toString());
+                    throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
+                }
             }
             pendingHTLC.remove(computed_hash);
         }
@@ -827,7 +834,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
         // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
 
-        Thread.currentThread().setName("WaitTx "+tx.txId().substring(0,4));
+        Thread.currentThread().setName("WaitTx Funding "+tx.txId().substring(0,4));
         log("Waiting for confirmation of funding "+tx);
 
         var wait_conf = uvManager.getTimechain().getTimechainLatch(min_depth);

@@ -79,7 +79,7 @@ public class UltraViolet {
         System.out.print("Max fees:");
         int fees = Integer.parseInt(scanner.nextLine());
 
-        var invoice = dest.generateInvoice(amount);
+        var invoice = dest.generateInvoice(amount,"test");
         System.out.println("Generated Invoice: "+invoice);
 
         new Thread(()->sender.processInvoice(invoice, fees,true)).start();

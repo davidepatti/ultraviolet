@@ -5,6 +5,7 @@ import org.json.simple.parser.JSONParser;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class UVNetworkManager {
@@ -155,7 +156,20 @@ public class UVNetworkManager {
         print_log("UVM: Starting timechain: "+ UVTimechain);
         setTimechainRunning(true);
         print_log("Starting node threads...");
-        var bootexec = Executors.newFixedThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
+        //var bootexec = Executors.newFixedThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
+
+        int n_nodes = uvConfig.getIntProperty("bootstrap_nodes");
+        int max_threads = uvConfig.getIntProperty("max_threads");
+        int bootstrap_pool_size = n_nodes;
+
+        var bootexec = Executors.newFixedThreadPool(bootstrap_pool_size, new ThreadFactory() {
+            private final AtomicInteger counter = new AtomicInteger(0);
+            @Override
+            public Thread newThread(Runnable r) {
+                return new Thread(r, "Bootstrap-" + counter.incrementAndGet());
+            }
+        });
+
         try {
             for (UVNode uvNode : uvnodes.values()) {
                 bootexec.submit(()->bootstrapNode(uvNode));
@@ -163,6 +177,7 @@ public class UVNetworkManager {
 
         }
         catch (Exception e) {
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
 
@@ -196,12 +211,18 @@ public class UVNetworkManager {
      * If not yet started, schedule the p2p threads to be executed periodically for each node
      */
     private void startP2PNetwork() {
-        print_log("Launching p2p nodes services...");
         // start p2p actions around every block
         if (p2pExecutor==null) {
             print_log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
+            p2pExecutor = Executors.newScheduledThreadPool(uvConfig.getIntProperty("bootstrap_nodes"), new ThreadFactory() {
+                private final AtomicInteger counter = new AtomicInteger(0);
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, "p2p_service-" + counter.incrementAndGet());
+                }
+            });
         }
+        print_log("Launching p2p node service threads ...");
         int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
@@ -455,7 +476,7 @@ public class UVNetworkManager {
      * @return False if is not possible to read the file
      */
     public boolean loadStatus(String file) {
-        setTimechainRunning(false);
+        if (isTimechainRunning()) setTimechainRunning(false);
         uvnodes.clear();
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
@@ -496,16 +517,21 @@ public class UVNetworkManager {
     }
 
     public synchronized void setTimechainRunning(boolean running) {
+        if (isTimechainRunning()==running) {
+            print_log("Warning: status of timechain is already "+running);
+            throw new RuntimeException("Error setting timechain satus...");
+        }
         getTimechain().setRunning(running);
         if (running) {
-            new Thread(getTimechain(),"Timechain").start();
-            new Thread(this::startP2PNetwork,"P2P").start();
             log("Starting timechain!");
+            new Thread(getTimechain(),"Timechain").start();
+            //new Thread(this::startP2PNetwork,"P2P").start();
+            this.startP2PNetwork();
         }
         else {
+            log("Stopping timechain!");
             getTimechain().setRunning(false);
             stopP2PNetwork();
-            log("Stopping timechain!");
         }
     }
 
@@ -613,7 +639,18 @@ public class UVNetworkManager {
         if (executorService==null) {
             print_log("Instatianting new executor with "+max_threads+ " threads...");
             print_log("(please adjust according you machine limits if you get thread errors)");
-            executorService= Executors.newFixedThreadPool(max_threads);
+            ThreadFactory namedThreadFactory = new ThreadFactory() {
+                private final AtomicInteger count = new AtomicInteger(0);
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    Thread thread = new Thread(r);
+                    thread.setName("InvoiceProcess-" + count.incrementAndGet());
+                    return thread;
+                }
+            };
+
+            executorService = Executors.newFixedThreadPool(max_threads, namedThreadFactory);
         }
         else {
             print_log("Reusing existing thread executor (size "+max_threads+")");
@@ -622,14 +659,25 @@ public class UVNetworkManager {
         // so to be sure to align to a just found block timing
         waitForBlocks(1);
         for (int nb = 0; nb < blocks_duration; nb++) {
+            int current_block = getTimechain().getCurrentBlock();
             for (int eb = 0; eb<events_per_block; eb++ ) {
                 var sender = getRandomNode();
-                var dest = getRandomNode();
+                UVNode dest;
+                do {
+                    dest = getRandomNode();
+                }
+                while (dest.equals(sender));
+
                 int amount = random.nextInt(max_amt-min_amt)+min_amt;
-                var invoice = dest.generateInvoice(amount);
+                var invoice = dest.generateInvoice(amount, "to "+dest.getPubKey());
                 executorService.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
-            waitForBlocks(1);
+            // we are still in the same block after all traffic has been generated
+            // not sure if this check is required, but doing it for sanity check
+            int current_block2 = getTimechain().getCurrentBlock();
+            if (current_block2==current_block)
+                waitForBlocks(1);
+            //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
         }
         print_log("Completed events generation");
 
