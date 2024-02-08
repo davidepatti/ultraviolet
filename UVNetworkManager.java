@@ -25,17 +25,48 @@ public class UVNetworkManager {
     public static Consumer<String> Log = System.out::println;
 
     private final GlobalStats stats;
-    private ScheduledExecutorService p2pExecutor;
-
 
     private final ArrayList<String> aliasNames = new ArrayList<>();
 
     public UVConfig getConfig() {
         return uvConfig;
     }
-
-    private ExecutorService executorService;
     private static FileWriter logfile;
+
+    private ExecutorService invoiceExecutor;
+    private ExecutorService bootstrapExecutor;
+    private ScheduledExecutorService p2pExecutor;
+
+    private int invoice_thread_pool_size;
+    private int bootstrap_thread_pool_size;
+    private int p2p_thread_pool_size;
+
+
+    private void adjustThreadPoolSizes() {
+        // get it from ulimit -a
+        int max_threads = uvConfig.getIntProperty("max_threads");
+
+        print_log("Determing appropriate pool sizes... (max threads " + max_threads + ")");
+
+        bootstrap_thread_pool_size = uvConfig.getIntProperty("bootstrap_nodes");
+        p2p_thread_pool_size = bootstrap_thread_pool_size;
+
+        // during the bootstrap, 2*nodes threads could be potentially executed
+        // due to bootstrap + p2p
+
+        int peek_bootstrap = bootstrap_thread_pool_size + p2p_thread_pool_size;
+        if (peek_bootstrap> max_threads) {
+            print_log("WARNING: bootstrap and p2p overall pool sizes "+peek_bootstrap+ " execeeds max threads...");
+            print_log("       > Reducing bootstrap and p2p threads pool sizes to "+max_threads/2);
+            bootstrap_thread_pool_size = max_threads/2;
+            p2p_thread_pool_size = max_threads/2;
+        }
+
+        // when processing invoices, only the p2p services are running
+        invoice_thread_pool_size = max_threads - p2p_thread_pool_size;
+        print_log("Setting invoice pool size to "+invoice_thread_pool_size);
+
+    }
 
     private void loadAliasNames() {
         try {
@@ -76,6 +107,7 @@ public class UVNetworkManager {
 
         print_log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
+        adjustThreadPoolSizes();
         loadAliasNames();
     }
 
@@ -155,14 +187,15 @@ public class UVNetworkManager {
 
         print_log("UVM: Starting timechain: "+ UVTimechain);
         setTimechainRunning(true);
-        print_log("Starting node threads...");
-        //var bootexec = Executors.newFixedThreadPool(uvConfig.getIntProperty("bootstrap_nodes"));
+        startP2PNetwork();
 
         int n_nodes = uvConfig.getIntProperty("bootstrap_nodes");
-        int max_threads = uvConfig.getIntProperty("max_threads");
-        int bootstrap_pool_size = n_nodes;
 
-        var bootexec = Executors.newFixedThreadPool(bootstrap_pool_size, new ThreadFactory() {
+        // given n node, we can expect a peak of 2*n threads during bootstrap, since each node with start its p2p services thread
+         // the code below just tries to force a limit for the bootstrapping threads to avoid going beyond the limit
+
+
+        bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
             private final AtomicInteger counter = new AtomicInteger(0);
             @Override
             public Thread newThread(Runnable r) {
@@ -172,7 +205,7 @@ public class UVNetworkManager {
 
         try {
             for (UVNode uvNode : uvnodes.values()) {
-                bootexec.submit(()->bootstrapNode(uvNode));
+                bootstrapExecutor.submit(()->bootstrapNode(uvNode));
             }
 
         }
@@ -187,11 +220,11 @@ public class UVNetworkManager {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        bootexec.shutdown();
+        bootstrapExecutor.shutdown();
         boolean term;
 
         try {
-            term = bootexec.awaitTermination(120, TimeUnit.SECONDS);
+            term = bootstrapExecutor.awaitTermination(120, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -210,11 +243,12 @@ public class UVNetworkManager {
     /**
      * If not yet started, schedule the p2p threads to be executed periodically for each node
      */
-    private void startP2PNetwork() {
+    public void startP2PNetwork() {
+        print_log("Launching p2p node service threads ...");
         // start p2p actions around every block
         if (p2pExecutor==null) {
             print_log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(uvConfig.getIntProperty("bootstrap_nodes"), new ThreadFactory() {
+            p2pExecutor = Executors.newScheduledThreadPool(p2p_thread_pool_size, new ThreadFactory() {
                 private final AtomicInteger counter = new AtomicInteger(0);
                 @Override
                 public Thread newThread(Runnable r) {
@@ -222,7 +256,6 @@ public class UVNetworkManager {
                 }
             });
         }
-        print_log("Launching p2p node service threads ...");
         int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
@@ -453,6 +486,7 @@ public class UVNetworkManager {
         }
         print_log("Stopping timechain");
         setTimechainRunning(false);
+        stopP2PNetwork();
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
@@ -476,7 +510,10 @@ public class UVNetworkManager {
      * @return False if is not possible to read the file
      */
     public boolean loadStatus(String file) {
-        if (isTimechainRunning()) setTimechainRunning(false);
+        if (isTimechainRunning()) {
+            setTimechainRunning(false);
+            stopP2PNetwork();
+        }
         uvnodes.clear();
 
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
@@ -525,13 +562,10 @@ public class UVNetworkManager {
         if (running) {
             log("Starting timechain!");
             new Thread(getTimechain(),"Timechain").start();
-            //new Thread(this::startP2PNetwork,"P2P").start();
-            this.startP2PNetwork();
         }
         else {
             log("Stopping timechain!");
             getTimechain().setRunning(false);
-            stopP2PNetwork();
         }
     }
 
@@ -634,11 +668,8 @@ public class UVNetworkManager {
 
         print_log("Expected end after block "+end);
 
-        int max_threads = getConfig().getIntProperty("max_threads");
-
-        if (executorService==null) {
-            print_log("Instatianting new executor with "+max_threads+ " threads...");
-            print_log("(please adjust according you machine limits if you get thread errors)");
+        if (invoiceExecutor ==null) {
+            print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
             ThreadFactory namedThreadFactory = new ThreadFactory() {
                 private final AtomicInteger count = new AtomicInteger(0);
 
@@ -650,10 +681,10 @@ public class UVNetworkManager {
                 }
             };
 
-            executorService = Executors.newFixedThreadPool(max_threads, namedThreadFactory);
+            invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
         }
         else {
-            print_log("Reusing existing thread executor (size "+max_threads+")");
+            print_log("Reusing existing thread executor (size "+invoice_thread_pool_size+")");
         }
 
         // so to be sure to align to a just found block timing
@@ -668,9 +699,10 @@ public class UVNetworkManager {
                 }
                 while (dest.equals(sender));
 
+                if (max_amt==min_amt) max_amt++;
                 int amount = random.nextInt(max_amt-min_amt)+min_amt;
                 var invoice = dest.generateInvoice(amount, "to "+dest.getPubKey());
-                executorService.submit(()->sender.processInvoice(invoice, max_fees,false));
+                invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
             // we are still in the same block after all traffic has been generated
             // not sure if this check is required, but doing it for sanity check

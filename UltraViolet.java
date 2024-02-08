@@ -229,10 +229,12 @@ public class UltraViolet {
             if (!networkManager.isTimechainRunning()) {
                 System.out.println("Starting Timechain, check " + configuration.getStringProperty("logfile"));
                 networkManager.setTimechainRunning(true);
+                networkManager.startP2PNetwork();
             }
             else {
                 System.out.print("Waiting for Timechain services to stop...");
                 networkManager.setTimechainRunning(false);
+                networkManager.stopP2PNetwork();
             }
         }));
 
@@ -383,7 +385,7 @@ public class UltraViolet {
                 System.out.println("UVM LOADED");
             else System.out.println("ERROR LOADING UVM from " + file_to_load);
         }));
-        menuItems.add(new MenuItem("q", "Disconnect Client ", x -> quit = true));
+        menuItems.add(new MenuItem("q", "Quit ", x -> quit = true));
 
 
         while (!quit) {
@@ -414,7 +416,7 @@ public class UltraViolet {
             System.out.println("\n[ Press ENTER to continue... ]");
             scanner.nextLine();
         }
-        System.out.println("Disconnecting client");
+        System.out.println("Exiting...");
         System.exit(0);
     }
 
