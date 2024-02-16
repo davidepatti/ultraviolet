@@ -291,6 +291,21 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         return this.getId().compareTo(channel.getId());
     }
 
+    public synchronized void setLiquidity(double n1_fraction, double n2_fraction)  {
+
+        int target_n1 = (int)(getCapacity()*n1_fraction);
+        int delta_n1 = getNode1Balance()-target_n1;
+
+
+        if (delta_n1>0)  {
+            
+        }
+
+
+
+
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
