@@ -28,10 +28,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     transient private int channel_openings = 0;
-
     transient private ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
-
-
     @Serial
     private static final long serialVersionUID = 120675L;
 
@@ -45,10 +42,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ChannelGraph channelGraph;
     transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
-
     transient private boolean p2pIsRunning = false;
     transient private ArrayList<String> saved_peers_id;
-
     transient public ScheduledFuture<?> p2pHandler;
     transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
@@ -64,9 +59,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
     transient private Set<String> pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
     public record fundingConfirmation(int target_block, String tx_id, String peer) { };
-
     transient private Queue<fundingConfirmation> waitingFundings = new ConcurrentLinkedQueue<>();
-
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -87,55 +80,42 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public Map<String, String> getProfile() {
         return profile;
     }
-
     public Queue<GossipMsg> getGossipMessageQueue() {
         return GossipMessageQueue;
     }
-
     public Queue<MsgOpenChannel> getChannelsToAcceptQueue() {
         return channelsToAcceptQueue;
     }
-
     public Queue<MsgAcceptChannel> getChannelsAcceptedQueue() {
         return channelsAcceptedQueue;
     }
-
     public Queue<MsgUpdateAddHTLC> getUpdateAddHTLCQueue() {
         return updateAddHTLCQueue;
     }
-
     public ConcurrentHashMap<Long, LNInvoice> getGeneratedInvoices() {
         return generatedInvoices;
     }
-
     public HashMap<String, MsgUpdateAddHTLC> getReceivedHTLC() {
         return receivedHTLC;
     }
-
     public HashMap<String, MsgOpenChannel> getSentChannelOpenings() {
         return sentChannelOpenings;
     }
-
     public Queue<MsgUpdateFulFillHTLC> getUpdateFulFillHTLCQueue() {
         return updateFulFillHTLCQueue;
     }
-
     public Queue<MsgUpdateFailHTLC> getUpdateFailHTLCQueue() {
         return updateFailHTLCQueue;
     }
-
     public HashMap<String, LNInvoice> getPendingInvoices() {
         return pendingInvoices;
     }
-
     public HashMap<String, LNInvoice> getPayedInvoices() {
         return payedInvoices;
     }
-
     public ConcurrentHashMap<String, MsgUpdateAddHTLC> getPendingHTLC() {
         return pendingHTLC;
     }
-
     public Set<String> getPendingAcceptedChannelPeers() {
         return pendingAcceptedChannelPeers;
     }
@@ -157,24 +137,18 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public ArrayList<LNChannel> getLNChannelList() {
         return new ArrayList<>(this.channels.values());
     }
-
     public ConcurrentHashMap<String, P2PNode> getPeers() {
         return peers;
     }
-
     public ChannelGraph getChannelGraph() {
         return this.channelGraph;
     }
-
     public String getPubKey() {
         return pubkey;
     }
-
-
     public ArrayList<InvoiceReport> getInvoiceReports() {
         return invoiceReports;
     }
-
     @Override
     public String getAlias() {
         return alias;
@@ -191,7 +165,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         else
             return uvManager.getP2PNode(channel.getNode1PubKey());
     }
-
     public synchronized int getLocalChannelBalance(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
@@ -203,23 +176,18 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public synchronized int getOnChainBalance() {
         return onchainBalance;
     }
-
     private synchronized void updateOnChainBalance(int new_balance) {
         this.onchainBalance = new_balance;
     }
-
     public synchronized int getOnchainPending() {
         return onchainPending;
     }
-
     private synchronized void updateOnchainPending(int pending) {
         this.onchainPending = pending;
     }
-
     public synchronized int getOnchainLiquidity() {
         return getOnChainBalance() - getOnchainPending();
     }
-
     public ConcurrentHashMap<String, UVChannel> getChannels() {
         return channels;
     }
@@ -228,7 +196,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var some_channel_id = (String) channels.keySet().toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
         return channels.get(some_channel_id);
     }
-
     /**
      * @return the sum of all balances on node side
      */
@@ -264,7 +231,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-
     public boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
         for (ChannelGraph.Edge e : path) {
@@ -274,7 +240,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     public boolean checkPathPolicies(ArrayList<ChannelGraph.Edge> path) {
-
         for (ChannelGraph.Edge e : path) {
             if (e.policy() == null) {
                 log("WARNING: Invalid path, missing policy on edge " + e);
@@ -418,23 +383,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
         }
 
-
         var report = new InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
         //log("Adding report: "+report);
         invoiceReports.add(report);
     }
 
-
     public ArrayList<ArrayList<ChannelGraph.Edge>> getPaths(String destination, boolean stopfirst) {
         return this.getChannelGraph().findPath(this.getPubKey(),destination,stopfirst);
     }
 
-    /**
-     *
-     * @param invoice
-     * @param path
-     * @return
-     */
     private synchronized void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
         log("Routing on path:"+ChannelGraph.pathString(path));
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
@@ -456,7 +413,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // Carol will take the forwarding fees specified in the payload for Bob
         // don't need to create the last path segment onion for local node htlc
         for (int n=0;n<path.size()-1;n++) {
-
             var source = path.get(n).source();
             var dest = path.get(n).destination();
 
@@ -479,7 +435,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
 
         var first_hop = path.get(path.size()-1).destination();
-
         var channel_id = path.get(path.size()-1).id();
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
@@ -493,14 +448,10 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
 
-
         sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
         pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
     }
-    /**
-     *
-     * @param msg
-     */
+
     private synchronized void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
 
         var preimage = msg.getPayment_preimage();
@@ -582,10 +533,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
 
-    /**
-     *
-     * @return
-     */
     private synchronized void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
 
         log("Processing: "+msg);
@@ -679,11 +626,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         sendToPeer(next_channel_peer,new_msg);
     }
 
-    /**
-     *
-     * @param node_id
-     * @return
-     */
     public String getMyChannelWith(String node_id) {
 
         for (UVChannel c:this.channels.values()) {
