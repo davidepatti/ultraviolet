@@ -622,6 +622,7 @@ public class UVNetworkManager {
                     log("WARNING: Exiting bootstrap due to max discards reached...");
                 continue;
             }
+
             var peerPubkey = getRandomNode().getPubKey();
             node.openChannel(peerPubkey,newChannelSize);
         } // while
