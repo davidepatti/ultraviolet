@@ -130,7 +130,7 @@ public class GlobalStats {
         DoubleStream graphNodeStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getNodeCount());
         DoubleStream graphChannelStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getChannelCount());
         DoubleStream channelNumberStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLNChannelList().size());
-        DoubleStream lightingBalanceStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLightningBalance());
+        DoubleStream lightingBalanceStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
         DoubleStream generatedInvoicesStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
 
         String s1 = generateStatsItem("Graph Nodes",graphNodeStream);

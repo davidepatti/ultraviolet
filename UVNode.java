@@ -199,13 +199,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      * @return the sum of all balances on node side
      */
-    public int getLightningBalance() {
+    public int getLocalBalance() {
         int balance = 0;
 
         for (UVChannel c : channels.values()) {
             if (c.getNode1PubKey().equals(getPubKey())) balance += c.getNode1Balance();
             else
                 balance += c.getNode2Balance();
+        }
+        return balance;
+    }
+    public int getRemoteBalance() {
+        int balance = 0;
+
+        for (UVChannel c : channels.values()) {
+            if (c.getNode1PubKey().equals(getPubKey())) balance += c.getNode2Balance();
+            else
+                balance += c.getNode1Balance();
         }
         return balance;
     }
@@ -683,18 +693,20 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param peerPubKey the target node partner to open the channel
      */
     public synchronized void openChannel(String peerPubKey, int channel_size) {
-        if (peerPubKey.equals(this.getPubKey()))
+        if (peerPubKey.equals(this.getPubKey())) {
+            log("WARNING:Cancelling openChannel, the peer selected is the node itself!");
             return;
+        }
         if (hasChannelWith(peerPubKey)) {
-            debug("Channel already present with peer "+peerPubKey);
+            log("WARNING:Cancelling openChannel, channel already present with peer "+peerPubKey);
             return;
         }
         if (hasOpeningRequestWith(peerPubKey)) {
-            debug("Opening request already present with peer "+peerPubKey);
+            log("WARNING:Cancelling openChannel, opening request already present with peer "+peerPubKey);
             return;
         }
         if (hasPendingAcceptedChannelWith(peerPubKey)) {
-            debug("Pending accepted channel already present with peer "+peerPubKey);
+            log("WARNING: Cancelling openChannel, pending accepted channel already present with peer "+peerPubKey);
             return;
         }
 
@@ -1173,7 +1185,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-
     public synchronized int getChannelOpenings() {
         return channel_openings;
     }
@@ -1182,15 +1193,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channel_openings++;
     }
 
+
     @Override
     public String toString() {
-
         int size;
         if (getGossipMsgQueue()!=null)
             size = getGossipMsgQueue().size();
         else size = 0;
 
-        return String.format("%-4s %-25s %-4s %-3d %-5s %-10d %-2s %-10d",pubkey,"("+alias+")", "#ch:", channels.size(),"onchain:", onchainBalance, "ln:", this.getLightningBalance());
+        return String.format("%-5s %-25s %-4s %-3d %-16s %-10d %-10d", pubkey, "("+alias+")", "#ch:", channels.size(), "(local/remote):", this.getLocalBalance(),this.getRemoteBalance());
     }
 
     /**

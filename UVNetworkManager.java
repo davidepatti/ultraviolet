@@ -623,7 +623,9 @@ public class UVNetworkManager {
                 continue;
             }
 
-            var peerPubkey = getRandomNode().getPubKey();
+            String peerPubkey;
+
+            while ((peerPubkey = getRandomNode().getPubKey()).equals(node.getPubKey()));
             node.openChannel(peerPubkey,newChannelSize);
         } // while
 
