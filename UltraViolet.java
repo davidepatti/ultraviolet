@@ -385,6 +385,12 @@ public class UltraViolet {
                 System.out.println("UVM LOADED");
             else System.out.println("ERROR LOADING UVM from " + file_to_load);
         }));
+        menuItems.add(new MenuItem("bal", "Set Channels balances", x -> {
+            System.out.println("This will set the local balance of channels initiators");
+            System.out.print("Enter a local level [0..1]:");
+            double level = new Scanner(System.in).nextDouble();
+            networkManager.setChannelsBalances(level,10000);
+        }));
         menuItems.add(new MenuItem("q", "Quit ", x -> quit = true));
 
 
