@@ -587,57 +587,42 @@ public class UVNetworkManager {
         // TODO: should be this an config value?
         int max_discards = 200;
         ///----------------------------------------------------------
-        var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
+        final var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large durations with short p2p message deadline can cause some node no to consider earlier node messages
 
-        //log("BOOTSTRAPPING "+node.getPubKey()+ " - waiting duration blocks: "+duration);
 
         waitForBlocks(duration);
 
-        var profile = node.getProfile();
-        int max_channels = Integer.parseInt(profile.get("max_channels"));
-        int min_channels = Integer.parseInt(profile.get("min_channels"));
-        final int target_channel_number = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
+        final var profile = node.getProfile();
+        final int max_channels = Integer.parseInt(profile.get("max_channels"));
+        final int min_channels = Integer.parseInt(profile.get("min_channels"));
+        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
 
-        int max_ch_size = Integer.parseInt(profile.get("max_channel_size"));
-        int min_ch_size = Integer.parseInt(profile.get("min_channel_size"));
+        final int max_ch_size = Integer.parseInt(profile.get("max_channel_size"));
+        final int min_ch_size = Integer.parseInt(profile.get("min_channel_size"));
 
-        while (max_discards>0 && node.getLNChannelList().size() < target_channel_number) {
+        log("BOOTSTRAPPING "+node.getPubKey()+", target channel openings: "+target_channel_openings);
+        while (max_discards>0 && node.getChannelOpenings() < target_channel_openings) {
             // not mandatory, just to have different block timings in openings
             waitForBlocks(1);
 
             if (node.getOnchainLiquidity() <= min_ch_size) {
-                log("Node "+node.getPubKey()+": No more onchain balance for opening channels of min size "+min_ch_size);
+                log("WARNING:Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain balance for channel min size "+min_ch_size);
                 break; // exit while loop
             }
 
-            var peerPubkey = getRandomNode().getPubKey();
-
-            // checking problems with peer
-            if (peerPubkey.equals(node.getPubKey()))
-                continue;
-            if (node.hasChannelWith(peerPubkey))
-                continue;
-            if (node.hasOpeningRequestWith(peerPubkey))
-                continue;
-            if (node.hasPendingAcceptedChannelWith(peerPubkey))
-                continue;
-
-
-            int max = Math.min(max_ch_size, node.getOnChainBalance());
-            int min = min_ch_size;
-            var newChannelSize = ((ThreadLocalRandom.current().nextInt(min,max+1))/1000)*1000;
-            log("Node "+node.getPubKey()+" Trying to open a channel (size:"+newChannelSize+") with "+peerPubkey);
-
+            int max_possible_size = Math.min(max_ch_size, node.getOnchainLiquidity());
+            var newChannelSize = ((ThreadLocalRandom.current().nextInt(min_ch_size,max_possible_size+1))/1000)*1000;
 
             if (node.getOnchainLiquidity()< newChannelSize) {
-                log("Discarding attempt: liquidity ("+node.getOnchainLiquidity()+") < channelsize");
+                log("Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
                 max_discards--;
                 if (max_discards==0)
-                    log("WARNING: Channel openings aborted due to max discards reached...");
+                    log("WARNING: Exiting bootstrap due to max discards reached...");
                 continue;
             }
+            var peerPubkey = getRandomNode().getPubKey();
             node.openChannel(peerPubkey,newChannelSize);
         } // while
 
@@ -712,7 +697,24 @@ public class UVNetworkManager {
             //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
         }
         print_log("Completed events generation");
+    }
 
 
+    /* set the channel balances of each node to the level
+     Notice: for each channel only the initiators modify the balance
+     */
+    public void setChannelsBalances(double local_level, int min_delta) {
+
+        for (UVNode node : this.getUVNodeList().values()) {
+            for (UVChannel channel: node.getChannels().values()) {
+                if (node.getPubKey().equals(channel.getInitiator())) {
+                    final int current_local_liquidity = channel.getLiquidity(node.getPubKey());
+                    int target_local = (int)(local_level* current_local_liquidity);
+                    int delta = current_local_liquidity-target_local;
+                    if (delta>min_delta)
+                        node.pushSats(channel.getChannel_id(), delta);
+                }
+            }
+        }
     }
 }
