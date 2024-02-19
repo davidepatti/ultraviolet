@@ -7,11 +7,13 @@ public class GlobalStats {
 
     private final UVNetworkManager uvm;
 
+    public GlobalStats(UVNetworkManager uv_manager) {
+        uvm = uv_manager;
+    }
 
     public static class StatFunctions {
 
         private final List<Double> sortedList;
-
 
         public StatFunctions(DoubleStream doubleStream) {
             this.sortedList = doubleStream.boxed().sorted().collect(Collectors.toList());
@@ -77,9 +79,6 @@ public class GlobalStats {
         }
     }
 
-    public GlobalStats(UVNetworkManager uv_manager) {
-        uvm = uv_manager;
-    }
 
     public UVNode getMaxGraphSizeNode() {
 
@@ -100,17 +99,6 @@ public class GlobalStats {
     private String generateStatsItem(String label, DoubleStream stream) {
 
         StatFunctions q = new StatFunctions(stream);
-        /*
-        return  "\n"+label+"\t"+
-                String.format("%.2f", q.calculateMin()) + "\t" +
-                String.format("%.2f", q.calculateMax()) + "\t" +
-                String.format("%.2f", q.calculateAverage()) + "\t" +
-                String.format("%.2f", q.calculateStandardDeviation()) + "\t" +
-                String.format("%.2f", q.calculateFirstQuartile()) + "\t" +
-                String.format("%.2f", q.calculateMedian()) + "\t" +
-                String.format("%.2f", q.calculateThirdQuartile());
-
-         */
         String result = String.format("\n%-15s%-15.0f%-15.0f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f",
                 label,
                 q.calculateMin(),
