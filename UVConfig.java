@@ -24,7 +24,6 @@ String getRandomMultivalProperty(String key)
 public class UVConfig implements Serializable {
 
     private final Map<String,Map<String,String>> profiles = new HashMap<>();
-    private final Map<String,ArrayList<String>> multival_properties = new HashMap<>();
     private Properties properties;
     private Random random;
 
@@ -110,12 +109,6 @@ public class UVConfig implements Serializable {
                     profiles.putIfAbsent(profileName,new HashMap<>());
                     profiles.get(profileName).put(attribute,value);
                 }
-
-                if (value.contains(",")) {
-                    var values = new ArrayList<>(Arrays.asList(value.split(",")));
-                    multival_properties.put(propertyName,values);
-                    //System.out.println("Detected multival: "+propertyName+ ": "+values);
-                }
             }
 
             // put the name of each profile as attribute of the profile itself
@@ -140,8 +133,15 @@ public class UVConfig implements Serializable {
     }
 
 
-    public ArrayList<String> getMultivalProperty(String key) {
-       return multival_properties.get(key);
+    private ArrayList<String> getMultivalProperty(String key) {
+
+        String value = getStringProperty(key);
+        if (value.contains(",")) {
+            return new ArrayList<>(Arrays.asList(value.split(",")));
+        }
+        else {
+            throw new RuntimeException("No multival key:"+key);
+        }
     }
 
     public ArrayList<Integer> getMultivalIntProperty(String key) {
