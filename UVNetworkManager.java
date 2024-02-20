@@ -79,7 +79,7 @@ public class UVNetworkManager {
     }
 
     public synchronized String createAlias() {
-        if (aliasNames.size()<1) return "_";
+        if (aliasNames.size()<1) return "no alias";
         var i = random.nextInt(0,aliasNames.size());
         String alias = aliasNames.get(i);
         aliasNames.remove(i);
