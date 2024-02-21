@@ -7,28 +7,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private final UVConfig.NodeProfile profile;
 
-    public record InvoiceReport(String hash,
-                                String sender,
-                                String dest,
-                                int amt,
-                                int total_paths,
-                                int candidate_paths,
-                                int miss_capacity,
-                                int miss_local_liquidity,
-                                int miss_fees,
-                                int attempted_paths,
-                                boolean htlc_routing_success) implements Serializable {
-
-        @Override
-        public String toString() {
-            return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
-                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + htlc_routing_success;
-        }
-
-    }
-
     transient private int channel_openings = 0;
-    transient private ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
+    transient private ArrayList<GlobalStats.InvoiceReport> invoiceReports = new ArrayList<>();
     @Serial
     private static final long serialVersionUID = 120675L;
 
@@ -146,7 +126,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public String getPubKey() {
         return pubkey;
     }
-    public ArrayList<InvoiceReport> getInvoiceReports() {
+    public ArrayList<GlobalStats.InvoiceReport> getInvoiceReports() {
         return invoiceReports;
     }
     @Override
@@ -393,7 +373,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
         }
 
-        var report = new InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
+        var report = new GlobalStats.InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, success_htlc);
         //log("Adding report: "+report);
         invoiceReports.add(report);
     }
@@ -1359,7 +1339,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             //noinspection unchecked
             generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
-            invoiceReports = (ArrayList<InvoiceReport>) s.readObject();
+            invoiceReports = (ArrayList<GlobalStats.InvoiceReport>) s.readObject();
             payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
             channelGraph = (ChannelGraph) s.readObject();
 

@@ -1,3 +1,4 @@
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
@@ -146,7 +147,7 @@ public class GlobalStats {
 
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (!node.getInvoiceReports().isEmpty()) {
-                    for (UVNode.InvoiceReport report: node.getInvoiceReports()) {
+                    for (InvoiceReport report: node.getInvoiceReports()) {
                         s.append("\n").append(report);
                     }
                 }
@@ -168,5 +169,25 @@ public class GlobalStats {
         Random rand = new Random();
         double u = rand.nextDouble(); // a uniform random number between 0 (inclusive) and 1 (exclusive)
         return -Math.log(1 - u) / lambda;
+    }
+
+    public record InvoiceReport(String hash,
+                                String sender,
+                                String dest,
+                                int amt,
+                                int total_paths,
+                                int candidate_paths,
+                                int miss_capacity,
+                                int miss_local_liquidity,
+                                int miss_fees,
+                                int attempted_paths,
+                                boolean htlc_routing_success) implements Serializable {
+
+        @Override
+        public String toString() {
+            return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
+                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + htlc_routing_success;
+        }
+
     }
 }
