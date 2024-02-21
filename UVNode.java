@@ -5,7 +5,7 @@ import java.util.concurrent.*;
 
 public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
-    private final Map<String, String> profile;
+    private final UVConfig.NodeProfile profile;
 
     public record InvoiceReport(String hash,
                                 String sender,
@@ -68,7 +68,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param alias   an alias
      * @param funding initial onchain balance
      */
-    public UVNode(UVNetworkManager manager, String pubkey, String alias, int funding, Map<String, String> profile) {
+    public UVNode(UVNetworkManager manager, String pubkey, String alias, int funding, UVConfig.NodeProfile profile) {
         this.uvManager = manager;
         this.pubkey = pubkey;
         this.alias = alias;
@@ -77,7 +77,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         this.profile = profile;
     }
 
-    public Map<String, String> getProfile() {
+    public UVConfig.NodeProfile getProfile() {
         return profile;
     }
     public Queue<GossipMsg> getGossipMessageQueue() {
@@ -714,7 +714,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         peers.putIfAbsent(peer.getPubKey(),peer);
         var tempChannelId = generateTempChannelId(peerPubKey);
 
-        log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+")");
+        log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+", size:"+channel_size+")");
         //TODO: the semantics of the related variable is tied to total openings, not the currently alive channels opened
         increaseChannelOpenings();
 
@@ -798,7 +798,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
         // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
 
-
         log("Confirmed funding tx "+tx_id);
 
         var timestamp = uvManager.getTimechain().getCurrentBlock();
@@ -815,7 +814,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph.addLNChannel(newChannel);
 
         int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
-        int fee_ppm = uvManager.getConfig().getMultivalPropertyRandomIntItem("ppm_fee_set");
+        int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
         String from = this.getPubKey();
@@ -872,7 +871,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph.addLNChannel(newChannel);
 
         int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
-        int fee_ppm = uvManager.getConfig().getMultivalPropertyRandomIntItem("ppm_fee_set");
+        int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
         String from = this.getPubKey();
@@ -904,7 +903,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         // setting a random policy
         int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
-        int fee_ppm = uvManager.getConfig().getMultivalPropertyRandomIntItem("ppm_fee_set");
+        int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
         channels.get(newChannel.getId()).setPolicy(getPubKey(),newPolicy);
 
