@@ -53,7 +53,6 @@ public class DistributionGenerator {
             }
         }
 
-        Arrays.sort(samples); // Re-sort samples to ensure order after adjustment
         return samples;
     }
 
