@@ -34,7 +34,6 @@ public class UVNetworkManager {
     private static FileWriter logfile;
 
     private ExecutorService invoiceExecutor;
-    private ExecutorService bootstrapExecutor;
     private ScheduledExecutorService p2pExecutor;
 
     private int invoice_thread_pool_size;
@@ -171,15 +170,16 @@ public class UVNetworkManager {
         print_log("UVM: deploying nodes, configuration: "+ uvConfig);
 
         for (int i = 0; i< uvConfig.getIntProperty("bootstrap_nodes"); i++) {
-            var random_profile = uvConfig.getRandomProfile();
-            int max_capacity = Integer.parseInt(random_profile.get("max_funding")) /(int)1e3;
-            int min_capacity = Integer.parseInt(random_profile.get("min_funding")) /(int)1e3;
+
+            var profile = uvConfig.getRandomProfile();
+            int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
+            int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
             int funding;
             if (max_capacity==min_capacity) funding = (int)1e3*min_capacity;
             else
                 funding = (int)1e3*(random.nextInt(max_capacity-min_capacity)+min_capacity);
 
-            var node = new UVNode(this,"pk"+i, createAlias(),funding,random_profile);
+            var node = new UVNode(this,"pk"+i, createAlias(),funding,profile);
             uvnodes.put(node.getPubKey(),node);
         }
 
@@ -195,8 +195,9 @@ public class UVNetworkManager {
          // the code below just tries to force a limit for the bootstrapping threads to avoid going beyond the limit
 
 
-        bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
+        ExecutorService bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
             private final AtomicInteger counter = new AtomicInteger(0);
+
             @Override
             public Thread newThread(Runnable r) {
                 return new Thread(r, "Bootstrap-" + counter.incrementAndGet());
@@ -204,10 +205,7 @@ public class UVNetworkManager {
         });
 
         try {
-            for (UVNode uvNode : uvnodes.values()) {
-                bootstrapExecutor.submit(()->bootstrapNode(uvNode));
-            }
-
+            for (UVNode uvNode : uvnodes.values())  bootstrapExecutor.submit(()->bootstrapNode(uvNode));
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -346,7 +344,7 @@ public class UVNetworkManager {
                 String pub_key = (String) nodeObject.get("pub_key");
                 String alias = (String) nodeObject.get("alias");
 
-                var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getProfiles().get("default"));
+                var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getNodeProfiles().get("default"));
                 uvnodes.put(pub_key,uvNode);
             }
             print_log("Node import ended, importing channels...");
@@ -585,40 +583,40 @@ public class UVNetworkManager {
     public void bootstrapNode(UVNode node) {
 
         // TODO: should be this an config value?
-        int max_discards = 200;
+        int max_attempts = 200;
         ///----------------------------------------------------------
         final var duration = ThreadLocalRandom.current().nextInt(0, uvConfig.getIntProperty("bootstrap_duration"));
         // Notice: no way of doing this deterministically, timing will be always in race condition with other threads
         // Also: large durations with short p2p message deadline can cause some node no to consider earlier node messages
 
-
         waitForBlocks(duration);
 
         final var profile = node.getProfile();
-        final int max_channels = Integer.parseInt(profile.get("max_channels"));
-        final int min_channels = Integer.parseInt(profile.get("min_channels"));
+        final int max_channels = profile.getIntAttribute("max_channels");
+        final int min_channels = profile.getIntAttribute("min_channels");
         final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
-
-        final int max_ch_size = Integer.parseInt(profile.get("max_channel_size"));
-        final int min_ch_size = Integer.parseInt(profile.get("min_channel_size"));
-
+        final int min_ch_size = profile.getIntAttribute("min_channel_size");
         log("BOOTSTRAPPING "+node.getPubKey()+", target channel openings: "+target_channel_openings);
-        while (max_discards>0 && node.getChannelOpenings() < target_channel_openings) {
+
+        // we don't want granularity in channel sizes to be less than 100k
+        // ...unless smaller channels are allowed
+        int step = Math.min(100000,min_ch_size);
+
+        while (max_attempts>0 && node.getChannelOpenings() < target_channel_openings) {
             // not mandatory, just to have different block timings in openings
             waitForBlocks(1);
 
             if (node.getOnchainLiquidity() <= min_ch_size) {
-                log("WARNING:Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain balance for channel min size "+min_ch_size);
+                log("WARNING:Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
                 break; // exit while loop
             }
 
-            int max_possible_size = Math.min(max_ch_size, node.getOnchainLiquidity());
-            var newChannelSize = ((ThreadLocalRandom.current().nextInt(min_ch_size,max_possible_size+1))/1000)*1000;
+            var newChannelSize = (profile.getRandomSample("channel_sizes")/step)*step;
 
             if (node.getOnchainLiquidity()< newChannelSize) {
-                log("Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
-                max_discards--;
-                if (max_discards==0)
+                log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
+                max_attempts--;
+                if (max_attempts==0)
                     log("WARNING: Exiting bootstrap due to max discards reached...");
                 continue;
             }
