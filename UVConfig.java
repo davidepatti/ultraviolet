@@ -23,7 +23,7 @@ public class UVConfig implements Serializable {
     private Random random;
 
 
-    public static class NodeProfile {
+    public static class NodeProfile implements Serializable {
 
         private final Map<String,String> attributes = new HashMap<>();
         private final Map<String,int[]> distributions = new HashMap<>();
