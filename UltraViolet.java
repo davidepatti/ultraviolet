@@ -126,20 +126,6 @@ public class UltraViolet {
      *
      * @param f
      */
-    private void _waitForFuture(Future f) {
-        int i =0;
-        while (!f.isDone()) {
-            i++;
-            System.out.print(".");
-            if (i%20 ==0 ) System.out.println();
-            try {
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        System.out.println("Done!");
-    }
 
 
     private void showQueueCommand(UVNode node) {
@@ -202,12 +188,25 @@ public class UltraViolet {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                System.out.println("Bootstrap Started, check " + configuration.getStringProperty("logfile"));
+                final double total_nodes = networkManager.getConfig().getIntProperty("bootstrap_nodes");
+                double progress = 0;
+                System.out.println("Bootstrap started, check " + configuration.getStringProperty("logfile")+ " for details...");
                 var bootstrap_exec= Executors.newSingleThreadExecutor();
-                Future bootstrap = bootstrap_exec.submit(networkManager::bootstrapNetwork);
+                Future bootstrap_outcome = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
-                _waitForFuture(bootstrap);
-            }
+                    int i =0;
+                    while (!bootstrap_outcome.isDone()) {
+                        i++;
+                        System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/total_nodes+"%)(Total/Running/Ended)("+(int)total_nodes+"/"+networkManager.getBootstrapsRunning()+"/"+networkManager.getBootstrapsEnded()+")");
+                        if (i%20 ==0 ) System.out.println();
+                        try {
+                            Thread.sleep(300);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    System.out.println("Done!");
+                }
         }));
         menuItems.add(new MenuItem("import", "Import Network Topology", x -> {
             if (!networkManager.resetUVM()) {
@@ -434,8 +433,8 @@ public class UltraViolet {
             configuration.loadConfig(args[0]);
         }
         else {
-            System.out.println("No config, using default...");
-            configuration.setDefaults();
+            System.out.println("No config file specified , exiting...");
+            System.exit(-1);
         }
 
         var uvm_client = new UltraViolet(configuration);
