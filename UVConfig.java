@@ -89,39 +89,6 @@ public class UVConfig implements Serializable {
         return profiles.get(profile_name);
     }
 
-    public void setDefaults() {
-
-        if (isInitialized()) {
-            System.out.println("WARNING: setting defaults to an already initialized configuration");
-            System.out.println("PRESS ENTER");
-            new Scanner(System.in).nextLine();
-        }
-
-        if (properties==null) properties = new Properties();
-
-        properties.setProperty("debug","true");
-        properties.setProperty("blocktime","1000");
-        properties.setProperty("logfile","default.log");
-        properties.setProperty("seed","1");
-        // bootstrap
-        properties.setProperty("bootstrap_duration","1");
-        properties.setProperty("bootstrap_nodes","10");
-        properties.setProperty("profile.default.min_funding","10000000");
-        properties.setProperty("profile.default.min_funding","100000000");
-        properties.setProperty("profile.default.min_channels","3");
-        properties.setProperty("profile.default.max_channels","5");
-        properties.setProperty("profile.default.min_channel_size","500000");
-        properties.setProperty("profile.default.max_channel_size","1000000");
-
-        // p2p
-        properties.setProperty("gossip_flush_size","500");
-        properties.setProperty("debug","true");
-        properties.setProperty("p2p_max_hops","2");
-        properties.setProperty("p2p_max_age","3");
-        properties.setProperty("p2p_period","100");
-        properties.setProperty("debug","false");
-        initialized = true;
-    }
 
     public void setConfig (Properties newconfig) {
 
@@ -140,8 +107,6 @@ public class UVConfig implements Serializable {
 
     public void loadConfig(String config_file) {
         properties = new Properties();
-        // this is needed so that parameters not set in config file can be assumed as default
-        setDefaults();
 
         try {
             properties.load(new FileReader(config_file));
@@ -176,29 +141,13 @@ public class UVConfig implements Serializable {
                 profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(100,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
                 profile.distributions.put("ppm_fees",DistributionGenerator.generateIntSamples(100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
 
-                Arrays.sort(profile.distributions.get("channel_sizes"));
-                Arrays.sort(profile.distributions.get("ppm_fees"));
-
-                System.out.println(profile.distributions.get("channel_sizes"));
-                System.out.println(profile.distributions.get("ppm_fees"));
-
-
-                int[] channelSizes = profile.distributions.get("channel_sizes");
-                int[] ppmFees = profile.distributions.get("ppm_fees");
-
-                double averageChannelSizes = Arrays.stream(channelSizes).average().getAsDouble();
-                double averagePpmFees = Arrays.stream(ppmFees).average().getAsDouble();
-
-                System.out.println("The average of channel_sizes is: " + averageChannelSizes);
-                System.out.println("The average of ppm_fees is: " + averagePpmFees);
             }
 
         } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
-            System.out.println("Trying to set defauls. Please notice this is not expected to always work.");
-            setDefaults();
-            System.out.println("\n[PRESS ENTER TO CONTINUE...]");
+            System.out.println("\n[PRESS ENTER TO EXIT...]");
             new Scanner(System.in).nextLine();
+            System.exit(-1);
         } catch (
                 IOException e) {
             throw new RuntimeException(e);
@@ -263,23 +212,20 @@ public class UVConfig implements Serializable {
     }
 
     public String getStringProperty(String parameter) {
-
-        if (!properties.containsKey(parameter)) {
-            System.out.println("Missing parameter "+parameter);
-            System.out.print("Please enter value or enter 'q' to exit:");
-            var input = new Scanner(System.in);
-            var val = input.nextLine();
-            if (val.equals("q")) System.exit(-1);
-            properties.setProperty(parameter,val);
+        try {
+            if (!properties.containsKey(parameter)) {
+                throw new RuntimeException("Parameter " + parameter + " not found!");
+            }
+            return properties.get(parameter).toString();
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            System.exit(1);
         }
-
-        return properties.get(parameter).toString();
+        return null;
     }
 
     public int getIntProperty(String parameter) {
-
         String attribute = getStringProperty(parameter);
-
         return Integer.parseInt(attribute);
     }
 
