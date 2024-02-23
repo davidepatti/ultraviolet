@@ -40,7 +40,6 @@ public class UVTimechain implements Runnable, Serializable  {
         this.uvm = uvm;
     }
 
-
     private void log(String s) {
         uvm.log("*TIMECHAIN*"+s);
     }
@@ -71,7 +70,7 @@ public class UVTimechain implements Runnable, Serializable  {
         return Optional.empty();
     }
 
-    public synchronized int getCurrentBlock() {
+    public int getCurrentBlock() {
         return current_block;
     }
 
