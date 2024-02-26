@@ -111,7 +111,7 @@ public class UVNetworkManager {
         }
 
         this.uvnodes = new HashMap<>();
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"),this);
+        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime_ms"),this);
 
         print_log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
@@ -136,7 +136,7 @@ public class UVNetworkManager {
 
         random = new Random();
         if (uvConfig.getIntProperty("seed") !=0) random.setSeed(uvConfig.getIntProperty("seed"));
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime"),this);
+        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime_ms"),this);
         bootstrap_started = false;
         bootstrap_completed = false;
         bootstraps_ended = 0;
@@ -192,11 +192,11 @@ public class UVNetworkManager {
         // given n node, we can expect a peak of 2*n threads during bootstrap, since each node with start its p2p services thread
          // the code below just tries to force a limit for the bootstrapping threads to avoid going beyond the limit
 
-        int duration = uvConfig.getIntProperty("bootstrap_period");
-        int median = uvConfig.getIntProperty("bootstrap_time_median");
-        int average = uvConfig.getIntProperty("bootstrap_time_average");
+        int duration = uvConfig.getIntProperty("bootstrap_blocks");
+        var median = uvConfig.getDoubleProperty("bootstrap_time_median");
+        var mean = uvConfig.getDoubleProperty("bootstrap_time_mean");
 
-        int[] boot_times = DistributionGenerator.generateIntSamples(n_nodes,1,duration,median,average);
+        int[] boot_times = DistributionGenerator.generateIntSamples(n_nodes,1,duration,median*duration,mean*duration);
         Arrays.sort(boot_times);
 
         ExecutorService bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
@@ -283,7 +283,7 @@ public class UVNetworkManager {
         int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.getIntProperty("p2p_period"),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.getIntProperty("p2p_period_ms"),TimeUnit.MILLISECONDS);
         }
     }
     public void stopP2PNetwork() {
@@ -606,7 +606,7 @@ public class UVNetworkManager {
     public void bootstrapNode(UVNode node) {
 
         node.setP2PServices(true);
-        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.getIntProperty("p2p_period"),TimeUnit.MILLISECONDS);
+        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.getIntProperty("p2p_period_ms"),TimeUnit.MILLISECONDS);
         // TODO: should be this an config value?
         int max_attempts = 200;
 
