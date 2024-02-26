@@ -454,7 +454,9 @@ public class UVNetworkManager {
      * Updates the list the currently known pubkeys, to be used for genel sim purposes
      */
     private void refreshPubkeyList() {
-        pubkeys_list.clear();
+        if (pubkeys_list==null) pubkeys_list = new ArrayList<>(getConfig().getIntProperty("bootstrap_nodes"));
+        else
+            pubkeys_list.clear();
         pubkeys_list.addAll(uvnodes.keySet());
     }
 
