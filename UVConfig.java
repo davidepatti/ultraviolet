@@ -91,7 +91,6 @@ public class UVConfig implements Serializable {
 
 
     public void setConfig (Properties newconfig) {
-
         for (String k: newconfig.stringPropertyNames()) {
            properties.setProperty(k,newconfig.getProperty(k));
         }
@@ -227,6 +226,10 @@ public class UVConfig implements Serializable {
     public int getIntProperty(String parameter) {
         String attribute = getStringProperty(parameter);
         return Integer.parseInt(attribute);
+    }
+    public double getDoubleProperty(String parameter) {
+        String attribute = getStringProperty(parameter);
+        return Double.parseDouble(attribute);
     }
 
     @Override
