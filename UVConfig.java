@@ -19,9 +19,28 @@ String getRandomMultivalProperty(String key)
 public class UVConfig implements Serializable {
 
     private final Map<String,NodeProfile> profiles = new HashMap<>();
-    private Properties properties;
-    private Random random;
+    private final Properties properties;
 
+    final public int bootstrap_nodes;
+    final public int bootstrap_blocks;
+    final public double bootstrap_time_median;
+    final public double bootstrap_time_mean;
+    final public int p2p_max_hops;
+    final public int p2p_max_age;
+    final public int gossip_flush_size;
+    final public int to_self_delay;
+    final public int minimum_depth;
+    final public int max_threads;
+    final public int seed;
+    final public int blocktime_ms;
+    final public int p2p_period_ms;
+    final public String logfile;
+    final public boolean debug;
+
+
+    private Random random;
+    @Serial
+    private static final long serialVersionUID = 120678L;
 
     public static class NodeProfile implements Serializable {
 
@@ -72,13 +91,11 @@ public class UVConfig implements Serializable {
         public String getName() {
             return name;
         }
-    }
 
-    @Serial
-    private static final long serialVersionUID = 120678L;
-    private boolean initialized = false;
-    public boolean isInitialized() {
-        return initialized;
+        @Override
+        public String toString() {
+            return name;
+        }
     }
 
     public Map<String, NodeProfile> getNodeProfiles() {
@@ -90,26 +107,12 @@ public class UVConfig implements Serializable {
     }
 
 
-    public void setConfig (Properties newconfig) {
-        for (String k: newconfig.stringPropertyNames()) {
-           properties.setProperty(k,newconfig.getProperty(k));
-        }
+    public UVConfig(String config_file) {
 
-        for (String k: properties.stringPropertyNames()) {
-            if (!newconfig.stringPropertyNames().contains(k)) {
-                System.out.println("Warning: config parameter '"+k+"' missing in new loaded config, leaving old value "+properties.getProperty(k));
-                System.out.println("\n[PRESS ENTER TO CONTINUE...]");
-                new Scanner(System.in).nextLine();
-            }
-        }
-    }
-
-    public void loadConfig(String config_file) {
         properties = new Properties();
 
         try {
             properties.load(new FileReader(config_file));
-            initialized = true;
 
             // Setting node profiles
             for (String propertyName : properties.stringPropertyNames()) {
@@ -126,6 +129,7 @@ public class UVConfig implements Serializable {
                 }
             }
 
+
             // parse profiles to create samples distributions
             for (var profile: profiles.values()) {
                 final int max_ch_size = profile.getIntAttribute("max_channel_size");
@@ -139,7 +143,6 @@ public class UVConfig implements Serializable {
 
                 profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(100,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
                 profile.distributions.put("ppm_fees",DistributionGenerator.generateIntSamples(100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
-
             }
 
         } catch (FileNotFoundException e) {
@@ -152,20 +155,44 @@ public class UVConfig implements Serializable {
             throw new RuntimeException(e);
         }
 
-        random = new Random(getIntProperty("seed"));
-        //System.out.println("Setting seed to "+getIntProperty("seed"));
+        p2p_max_age = Integer.parseInt(properties.getProperty("p2p_max_age"));
+        p2p_max_hops = Integer.parseInt(properties.getProperty("p2p_max_hops"));
+        gossip_flush_size = Integer.parseInt(properties.getProperty("gossip_flush_size"));
+        bootstrap_nodes = Integer.parseInt(properties.getProperty("bootstrap_nodes"));
+        max_threads = Integer.parseInt(properties.getProperty("max_threads"));
+        blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
+        p2p_period_ms = Integer.parseInt(properties.getProperty("p2p_period_ms"));
+        to_self_delay = Integer.parseInt(properties.getProperty("to_self_delay"));
+        minimum_depth = Integer.parseInt(properties.getProperty("minimum_depth"));
+        bootstrap_blocks = Integer.parseInt(properties.getProperty("bootstrap_blocks"));
+        bootstrap_time_median = Double.parseDouble(properties.getProperty("bootstrap_time_median"));
+        bootstrap_time_mean = Double.parseDouble(properties.getProperty("bootstrap_time_mean"));
+        logfile = properties.getProperty("logfile");
+        debug = properties.getProperty("debug").equals("true");
+        seed = Integer.parseInt(properties.getProperty("seed"));
+
+        random = new Random(seed);
     }
 
 
     private ArrayList<String> getMultivalProperty(String key) {
 
-        String value = getStringProperty(key);
-        if (value.contains(",")) {
-            return new ArrayList<>(Arrays.asList(value.split(",")));
+        String value = "";
+        try {
+            if (!properties.containsKey(key))
+                throw new RuntimeException("Parameter " + key + " not found!");
+
+            value =  properties.getProperty(key);
+            if (value.contains(","))
+                return new ArrayList<>(Arrays.asList(value.split(",")));
+            else
+                throw new RuntimeException("No multival key:"+key);
+
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            System.exit(1);
         }
-        else {
-            throw new RuntimeException("No multival key:"+key);
-        }
+        return null;
     }
 
     public ArrayList<Integer> getMultivalIntProperty(String key) {
@@ -210,31 +237,20 @@ public class UVConfig implements Serializable {
         return profiles.get(profile).getAttribute(attribute);
     }
 
-    public String getStringProperty(String parameter) {
-        try {
-            if (!properties.containsKey(parameter)) {
-                throw new RuntimeException("Parameter " + parameter + " not found!");
-            }
-            return properties.get(parameter).toString();
-        } catch (RuntimeException e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
-        return null;
-    }
-
-    public int getIntProperty(String parameter) {
-        String attribute = getStringProperty(parameter);
-        return Integer.parseInt(attribute);
-    }
-    public double getDoubleProperty(String parameter) {
-        String attribute = getStringProperty(parameter);
-        return Double.parseDouble(attribute);
-    }
-
     @Override
     public String toString() {
-        return properties.toString();
+        return "UVConfig{" +
+                "profiles=" + profiles +
+                ", properties=" + properties +
+                ", p2p_max_hops=" + p2p_max_hops +
+                ", p2p_max_age=" + p2p_max_age +
+                ", bootstrap_nodes=" + bootstrap_nodes +
+                ", max_threads=" + max_threads +
+                ", seed=" + seed +
+                ", blocktime_ms=" + blocktime_ms +
+                ", p2p_period_ms=" + p2p_period_ms +
+                ", logfile='" + logfile + '\'' +
+                ", random=" + random +
+                '}';
     }
-
 }
