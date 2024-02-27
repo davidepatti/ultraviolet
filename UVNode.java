@@ -39,7 +39,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
     transient private Set<String> pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
     public record fundingConfirmation(int target_block, String tx_id, String peer) { };
-    transient private Queue<fundingConfirmation> waitingFundings = new ConcurrentLinkedQueue<>();
+    transient private HashMap<String,fundingConfirmation > waitingFundings = new HashMap<>();
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -109,9 +109,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
     private void debug(String s) {
-        if (uvManager.getConfig().getStringProperty("debug").equals("true")) {
-            log("_DEBUG_" + s);
-        }
+        if (uvManager.getConfig().debug) log("_DEBUG_" + s);
     }
 
     public ArrayList<LNChannel> getLNChannelList() {
@@ -145,7 +143,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         else
             return uvManager.getP2PNode(channel.getNode1PubKey());
     }
-    public synchronized int getLocalChannelBalance(String channel_id) {
+    public int getLocalChannelBalance(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
             return channel.getNode1Balance();
@@ -701,7 +699,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
         updateOnchainPending(getOnchainPending()+channel_size);
 
-        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().getIntProperty("to_self_delay"), this.pubkey);
+        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().to_self_delay, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
     }
@@ -735,7 +733,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvManager.getP2PNode(initiator_id);
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
-        var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().getIntProperty("minimum_depth"), uvManager.getConfig().getIntProperty("to_self_delay"),this.getPubKey());
+        var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().minimum_depth, uvManager.getConfig().to_self_delay,this.getPubKey());
         sendToPeer(channel_peer,acceptance);
     }
 
@@ -763,7 +761,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         int taget_block = uvManager.getTimechain().getCurrentBlock()+acceptMessage.getMinimum_depth();
 
-        waitingFundings.add(new fundingConfirmation(taget_block, funding_tx.txId(),peerPubKey));
+        waitingFundings.put(funding_tx.txId(),new fundingConfirmation(taget_block, funding_tx.txId(),peerPubKey));
 
         /*
         var exec = Executors.newSingleThreadExecutor();
@@ -779,63 +777,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
 
         log("Confirmed funding tx "+tx_id);
-
-        var timestamp = uvManager.getTimechain().getCurrentBlock();
-        var request = sentChannelOpenings.get(peer_id);
-        sentChannelOpenings.remove(peer_id);
-        var newChannel = new UVChannel(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
-
-        updateOnChainBalance(getOnChainBalance()- request.getFunding());
-        updateOnchainPending(getOnchainPending()-request.getFunding());
-
-        var channel_id = newChannel.getChannel_id();
-
-        this.channels.put(channel_id,newChannel);
-        channelGraph.addLNChannel(newChannel);
-
-        int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
-        int fee_ppm = getProfile().getRandomSample("ppm_fees");
-        var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
-
-        String from = this.getPubKey();
-        String signer = this.getPubKey();
-        // when funding tx is confirmed after minimim depth
-        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
-        var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
-
-        // local update
-        channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
-        channelGraph.updateChannel(msg_update);
-
-        uvManager.getNode(peer_id).fundingLocked(newChannel);
-
-        broadcastToPeers(from,msg_announcement);
-        broadcastToPeers(from,msg_update);
-    }
-
-    /**
-     *
-     * @param peer_id
-     * @param tx
-     */
-    private void waitFundingConfirmation(String peer_id, UVTimechain.Transaction tx, int min_depth) {
-
-        // Abstractions:
-        // - No in-mempool waiting room after broadcasting (just wait the blocks...)
-        // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
-        // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
-
-        Thread.currentThread().setName("WaitTx Funding "+tx.txId().substring(0,4));
-        log("Waiting for confirmation of funding "+tx);
-
-        var wait_conf = uvManager.getTimechain().getTimechainLatch(min_depth);
-        try {
-            wait_conf.await();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        log("Confirmed funding tx "+tx);
 
         var timestamp = uvManager.getTimechain().getCurrentBlock();
         var request = sentChannelOpenings.get(peer_id);
@@ -905,11 +846,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * Not broadcasted if too old or too many forwardings
      * @param msg
      */
-   public void broadcastToPeers(String fromID, GossipMsg msg) {
+   private void broadcastToPeers(String fromID, GossipMsg msg) {
 
        var current_age = uvManager.getTimechain().getCurrentBlock() -msg.getTimeStamp();
-       if (current_age> uvManager.getConfig().getIntProperty("p2p_max_age")) return;
-       if (msg.getForwardings()>= uvManager.getConfig().getIntProperty("p2p_max_hops"))  return;
+       if (current_age> uvManager.getConfig().p2p_max_age) return;
+       if (msg.getForwardings()>= uvManager.getConfig().p2p_max_hops)  return;
 
        for (P2PNode peer: peers.values()) {
             if (peer.getPubKey().equals(fromID)) continue;
@@ -919,14 +860,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private void sendToPeer(P2PNode peer, P2PMessage msg) {
        //debug("Sending message "+msg+ " to "+peer.getPubKey());
-       uvManager.sendMessageToNode(peer.getPubKey(), msg);
+       peer.deliverMessage(msg);
     }
 
     /**
      *
      * @param msg
      */
-    public void receiveMessage(P2PMessage msg) {
+    public void deliverMessage(P2PMessage msg) {
         //debug("Received "+msg);
         switch (msg.getType()) {
             case OPEN_CHANNEL -> {
@@ -949,9 +890,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 var htlc = (MsgUpdateFailHTLC)msg;
                 updateFailHTLCQueue.add(htlc);
             }
-
             // assuming all the other message type are gossip
-
             default ->  {
                 var message = (GossipMsg) msg;
                 if (!GossipMessageQueue.contains(message)) {
@@ -980,7 +919,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     private void processGossip() {
 
-        int max_msg = uvManager.getConfig().getIntProperty("gossip_flush_size");
+        int max_msg = uvManager.getConfig().gossip_flush_size;
 
         while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
@@ -1043,7 +982,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public void runServices() {
 
         try {
-            processTimechainEvents();
+            checkTimechainTxConfirmations();
             processChannelsMsgQueue();
             processHTLCMsgQueue();
             processGossip();
@@ -1053,17 +992,23 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
     }
 
-    private void processTimechainEvents() {
+    private synchronized void checkTimechainTxConfirmations() {
 
-        while (waitingFundings.size()>0) {
-            var tx = waitingFundings.peek();
-            if (tx.target_block<=uvManager.getTimechain().getCurrentBlock()) {
+        final int current_block = uvManager.getTimechain().getCurrentBlock();
+        var to_be_removed = new ArrayList<String>();
+
+        for (var tx: waitingFundings.values()) {
+
+            if (tx.target_block<=current_block) {
                 fundingChannelConfirmed(tx.peer(),tx.tx_id());
-                waitingFundings.remove();
+                to_be_removed.add(tx.tx_id());
             }
         }
-
+        for (var tx: to_be_removed) {
+            waitingFundings.remove(tx);
+        }
     }
+
 
     /**
      * Check for incoming openchannel request/acceptance
@@ -1355,7 +1300,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
             this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
             this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
-            this.waitingFundings = new ConcurrentLinkedQueue<>();
+            this.waitingFundings = new HashMap<String, fundingConfirmation>();
         }
         catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
