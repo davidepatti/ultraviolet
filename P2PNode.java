@@ -1,8 +1,6 @@
 public interface P2PNode {
 
     String getPubKey();
-    void broadcastToPeers(String fromId, GossipMsg msg);
+    void deliverMessage(P2PMessage message);
     ChannelGraph getChannelGraph();
-
-
 }
