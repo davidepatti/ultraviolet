@@ -244,20 +244,6 @@ public class ChannelGraph implements Serializable  {
         return channelSet.contains(channelId);
     }
 
-    /*
-    public synchronized boolean hasChannel(String channel_id) {
-        for (List<Edge> list:adj_map.values() ) {
-           for (Edge e:list) {
-               if (e.id().equals(channel_id)) {
-                   return true;
-               }
-           }
-        }
-        return false;
-    }
-
-     */
-
     public ChannelGraph(String root_node){
         this.root_node = root_node;
         addNode(root_node);
