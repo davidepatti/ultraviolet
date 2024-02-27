@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private final UVConfig configuration;
+    private final UVConfig config;
     private final UVNetworkManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
@@ -178,7 +178,7 @@ public class UltraViolet {
     }
 
     public UltraViolet(UVConfig config) {
-        this.configuration = config;
+        this.config = config;
         this.networkManager = new UVNetworkManager(config);
 
         ArrayList<MenuItem> menuItems = new ArrayList<>();
@@ -188,16 +188,15 @@ public class UltraViolet {
             if (networkManager.isBootstrapStarted() || networkManager.isBootstrapCompleted()) {
                 System.out.println("ERROR: network already bootstrapped!");
             } else {
-                final double total_nodes = networkManager.getConfig().getIntProperty("bootstrap_nodes");
                 double progress = 0;
-                System.out.println("Bootstrap started, check " + configuration.getStringProperty("logfile")+ " for details...");
+                System.out.println("Bootstrap started, check " + config.logfile+ " for details...");
                 var bootstrap_exec= Executors.newSingleThreadExecutor();
                 Future bootstrap_outcome = bootstrap_exec.submit(networkManager::bootstrapNetwork);
                 System.out.println("waiting bootstrap to finish...");
                     int i =0;
                     while (!bootstrap_outcome.isDone()) {
                         i++;
-                        System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/total_nodes+"%)(Total/Running/Ended)("+(int)total_nodes+"/"+networkManager.getBootstrapsRunning()+"/"+networkManager.getBootstrapsEnded()+")");
+                        System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/(double)config.bootstrap_nodes+"%)(Total/Running/Ended)("+config.bootstrap_nodes+"/"+networkManager.getBootstrapsRunning()+"/"+networkManager.getBootstrapsEnded()+")");
                         if (i%20 ==0 ) System.out.println();
                         try {
                             Thread.sleep(300);
@@ -209,9 +208,6 @@ public class UltraViolet {
                 }
         }));
         menuItems.add(new MenuItem("import", "Import Network Topology", x -> {
-            if (!networkManager.resetUVM()) {
-                System.out.println("Cannot reset UVM");
-            }
             System.out.println("A graph topology will be imported using the json output of 'lncli describegraph' command on some root node");
             System.out.print("Enter a JSON file: ");
             String json = scanner.nextLine();
@@ -226,7 +222,7 @@ public class UltraViolet {
                 return;
             }
             if (!networkManager.isTimechainRunning()) {
-                System.out.println("Starting Timechain, check " + configuration.getStringProperty("logfile"));
+                System.out.println("Starting Timechain, check " + config.logfile);
                 networkManager.setTimechainRunning(true);
                 networkManager.startP2PNetwork();
             }
@@ -286,7 +282,7 @@ public class UltraViolet {
 
         menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
-            System.out.println(configuration);
+            System.out.println(this.config);
             System.out.println("-----------------------------------");
         }));
         menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
@@ -321,7 +317,7 @@ public class UltraViolet {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
-                System.out.println("Generating events, check " + configuration.getStringProperty("logfile"));
+                System.out.println("Generating events, check " + config.logfile);
                 networkManager.generateRandomEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");
@@ -427,17 +423,12 @@ public class UltraViolet {
 
     public static void main(String[] args) {
 
-        var configuration = new UVConfig();
-
-        if (args.length==1) {
-            configuration.loadConfig(args[0]);
-        }
-        else {
+        if (args.length!=1) {
             System.out.println("No config file specified , exiting...");
             System.exit(-1);
         }
 
-        var uvm_client = new UltraViolet(configuration);
+        var uvm_client = new UltraViolet(new UVConfig(args[0]));
     }
 
 }
