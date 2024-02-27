@@ -45,11 +45,11 @@ public class UVNetworkManager {
 
     private void adjustThreadPoolSizes() {
         // get it from ulimit -a
-        int max_threads = uvConfig.getIntProperty("max_threads");
+        int max_threads = uvConfig.max_threads;
 
         print_log("Determing appropriate pool sizes... (max threads " + max_threads + ")");
 
-        bootstrap_thread_pool_size = uvConfig.getIntProperty("bootstrap_nodes");
+        bootstrap_thread_pool_size = uvConfig.bootstrap_nodes;
         p2p_thread_pool_size = bootstrap_thread_pool_size;
 
         // during the bootstrap, 2*nodes threads could be potentially executed
@@ -101,17 +101,17 @@ public class UVNetworkManager {
     public UVNetworkManager(UVConfig config) {
         this.uvConfig = config;
         random = new Random();
-        if (uvConfig.getIntProperty("seed") !=0) random.setSeed(uvConfig.getIntProperty("seed"));
+        if (config.seed!=0) random.setSeed(config.seed);
 
         try {
-            logfile = new FileWriter(uvConfig.getStringProperty("logfile"));
+            logfile = new FileWriter(uvConfig.logfile);
         } catch (IOException e) {
-            log("Cannot open logfile for writing:"+ uvConfig.getStringProperty("lofile"));
+            log("Cannot open logfile for writing:"+ uvConfig.logfile);
             throw new RuntimeException(e);
         }
 
         this.uvnodes = new HashMap<>();
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime_ms"),this);
+        UVTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
         print_log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
@@ -119,50 +119,6 @@ public class UVNetworkManager {
         loadAliasNames();
     }
 
-    /**
-     * Reset the UV Network Manager
-     * @return
-     */
-    public synchronized boolean resetUVM() {
-        if (isBootstrapStarted() && !isBootstrapCompleted()) {
-            print_log("Cannot reset, bootstrap in progress. Please quit UVM");
-            return false;
-        }
-
-        if (UVTimechain !=null && isTimechainRunning())  {
-            setTimechainRunning(false);
-            stopP2PNetwork();
-        }
-
-        random = new Random();
-        if (uvConfig.getIntProperty("seed") !=0) random.setSeed(uvConfig.getIntProperty("seed"));
-        UVTimechain = new UVTimechain(uvConfig.getIntProperty("blocktime_ms"),this);
-        bootstrap_started = false;
-        bootstrap_completed = false;
-        bootstraps_ended = 0;
-        bootstraps_running = 0;
-        this.uvnodes = new HashMap<>();
-
-        boolean no_timeout = true;
-
-        if (p2pExecutor!=null) {
-            p2pExecutor.shutdown();
-            try {
-                no_timeout = p2pExecutor.awaitTermination(600,TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        if (!no_timeout) {
-            print_log("TIMEOUT!");
-        }
-        p2pExecutor = null;
-
-        System.gc();
-        print_log("UVManager reset complete");
-        return true;
-    }
 
     /**
      * Bootstrapping is a process that lets an LN network emerge from the definition of each node’s behavioral policies,
@@ -176,11 +132,10 @@ public class UVNetworkManager {
         var startTime = new Date();
         print_log(startTime +": Bootstrapping network from scratch...");
 
-        final int n_nodes = uvConfig.getIntProperty("bootstrap_nodes");
-        if (pubkeys_list==null) pubkeys_list = new ArrayList<>(n_nodes);
+        if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
 
         bootstrap_started = true;
-        bootstrap_latch = new CountDownLatch(n_nodes);
+        bootstrap_latch = new CountDownLatch(uvConfig.bootstrap_nodes);
         bootstraps_running = 0;
         bootstraps_ended = 0;
 
@@ -192,11 +147,14 @@ public class UVNetworkManager {
         // given n node, we can expect a peak of 2*n threads during bootstrap, since each node with start its p2p services thread
          // the code below just tries to force a limit for the bootstrapping threads to avoid going beyond the limit
 
-        int duration = uvConfig.getIntProperty("bootstrap_blocks");
-        var median = uvConfig.getDoubleProperty("bootstrap_time_median");
-        var mean = uvConfig.getDoubleProperty("bootstrap_time_mean");
+        double median_start_time = uvConfig.bootstrap_time_median*uvConfig.bootstrap_blocks;
+        double mean_start_time = uvConfig.bootstrap_time_mean*uvConfig.bootstrap_blocks;
+        int n_samples = uvConfig.bootstrap_nodes;
+        int min_val = 1;
+        int max_val = uvConfig.bootstrap_blocks;
 
-        int[] boot_times = DistributionGenerator.generateIntSamples(n_nodes,1,duration,median*duration,mean*duration);
+        int[] boot_times = DistributionGenerator.generateIntSamples(n_samples,min_val,max_val,median_start_time,mean_start_time);
+
         Arrays.sort(boot_times);
 
         ExecutorService bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
@@ -208,8 +166,8 @@ public class UVNetworkManager {
         });
 
 
-        print_log("Creating "+n_nodes+" node instancies...");
-        for (int n=0;n<n_nodes;n++) {
+        print_log("Creating "+uvConfig.bootstrap_nodes+" node instancies...");
+        for (int n=0;n<uvConfig.bootstrap_nodes;n++) {
             var profile = uvConfig.getRandomProfile();
             int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
             int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
@@ -283,7 +241,7 @@ public class UVNetworkManager {
         int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.getIntProperty("p2p_period_ms"),TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.p2p_period_ms,TimeUnit.MILLISECONDS);
         }
     }
     public void stopP2PNetwork() {
@@ -298,7 +256,7 @@ public class UVNetworkManager {
     }
 
     /**
-     * Select a random node in the network using the list of the currently know pubkeys
+     * Select a random node in the network using the list of the currently known pubkeys
      * @return a UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
@@ -454,7 +412,7 @@ public class UVNetworkManager {
      * Updates the list the currently known pubkeys, to be used for genel sim purposes
      */
     private void refreshPubkeyList() {
-        if (pubkeys_list==null) pubkeys_list = new ArrayList<>(getConfig().getIntProperty("bootstrap_nodes"));
+        if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
         else
             pubkeys_list.clear();
         pubkeys_list.addAll(uvnodes.keySet());
@@ -608,7 +566,7 @@ public class UVNetworkManager {
     public void bootstrapNode(UVNode node) {
 
         node.setP2PServices(true);
-        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.getIntProperty("p2p_period_ms"),TimeUnit.MILLISECONDS);
+        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.p2p_period_ms,TimeUnit.MILLISECONDS);
         // TODO: should be this an config value?
         int max_attempts = 200;
 
@@ -653,12 +611,6 @@ public class UVNetworkManager {
         bootstraps_ended++;
         log(node.getPubKey()+":Bootstrap Completed");
         getBootstrapLatch().countDown();
-    }
-
-
-    public void sendMessageToNode(String pubkey, P2PMessage message) {
-        var uvnode = getNode(pubkey);
-        uvnode.receiveMessage(message);
     }
 
     public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
