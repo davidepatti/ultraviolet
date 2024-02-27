@@ -48,14 +48,12 @@ public class ChannelGraph implements Serializable  {
         var node2pub = channel.getNode2PubKey();
 
         if (this.hasChannel(id)) {
-            //throw new IllegalArgumentException(" WARNING: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
-            System.out.println(" WARNING: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
-            return;
+            System.out.println(" FATAL: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
+            System.exit(-1);
         }
 
         adj_map.putIfAbsent(node1pub, new HashSet<>());
         adj_map.putIfAbsent(node2pub, new HashSet<>());
-
 
         var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
         var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
@@ -69,13 +67,17 @@ public class ChannelGraph implements Serializable  {
     public synchronized void addAnnouncedChannel(GossipMsgChannelAnnouncement msg) {
 
         var channel_id = msg.getChannelId();
+        if (this.hasChannel(channel_id)) {
+            System.out.println(" FATAL: calling addAnnouncedChannel with existing edge for msg: "+msg);
+            System.exit(-1);
+        }
+        channelSet.add(channel_id);
         var node1 = msg.getNodeId1();
         var node2 = msg.getNodeId2();
         adj_map.putIfAbsent(node1, new HashSet<>());
         adj_map.putIfAbsent(node2, new HashSet<>());
         adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
         adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
-        channelSet.add(channel_id);
     }
 
     /**
