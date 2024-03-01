@@ -116,17 +116,27 @@ public class GlobalStats {
     public String generateNetworkReport() {
 
 // DoubleStream Variables
+        System.out.println("Calculating node count...");
         DoubleStream graphNodeStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getNodeCount());
+        System.out.println("Calculating channel graph sizes... ");
         DoubleStream graphChannelStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getChannelCount());
+        System.out.println("Calculating node channels count... ");
         DoubleStream channelNumberStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLNChannelList().size());
+        System.out.println("Calculating node capacities... ");
+        DoubleStream nodeCapacityStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getNodeCapacity());
+        System.out.println("Calculating local balances... ");
         DoubleStream lightingBalanceStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
+        System.out.println("Calculating node node invoice count... ");
         DoubleStream generatedInvoicesStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
 
+        System.out.println("Generating stats...");
         String s1 = generateStatsItem("Graph Nodes",graphNodeStream);
         String s2 = generateStatsItem("Graph Channels",graphChannelStream);
         String s3 = generateStatsItem("Node Channels",channelNumberStream);
-        String s4 = generateStatsItem("LN balance",lightingBalanceStream);
-        String s5 = generateStatsItem("Invoices",generatedInvoicesStream);
+        String s4 = generateStatsItem("Node Capacity",nodeCapacityStream);
+        String s5 = generateStatsItem("LN balance",lightingBalanceStream);
+        String s6 = generateStatsItem("Invoices",generatedInvoicesStream);
+        System.out.println("End generating stats.");
 
         String s = String.format("\n%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s",
                 "Value",
@@ -138,7 +148,7 @@ public class GlobalStats {
                 "median",
                 "3rd quartile"
         );
-        return s+s1+s2+s3+s4+s5;
+        return s+s1+s2+s3+s4+s5+s6;
     }
 
     public String generateInvoiceReport() {
