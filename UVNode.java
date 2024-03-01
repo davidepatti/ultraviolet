@@ -143,6 +143,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         else
             return uvManager.getP2PNode(channel.getNode1PubKey());
     }
+
     public int getLocalChannelBalance(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
@@ -196,6 +197,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 balance += c.getNode1Balance();
         }
         return balance;
+    }
+
+    @Override
+    public int getNodeCapacity() {
+        int capacity  =0;
+        for (var ch: this.channels.values()) capacity+=ch.getCapacity();
+        return capacity;
     }
 
     /**
@@ -658,13 +666,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return s.toString();
     }
 
-    private String generateChannelIdFromTimechain(UVTimechain.Transaction tx) {
-        var searchPos = uvManager.getTimechain().getTxLocation(tx);
-        var position = searchPos.get();
-
-        return position.height() + "x" + position.tx_index();
-
-    }
     /**
      * Mapped to LN protocol message: open_channel
      *
@@ -1088,22 +1089,24 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         int new_node1_balance;
         int new_node2_balance;
+        String peer_id;
 
         if (this.getPubKey().equals(target_channel.getNode1PubKey())) {
             new_node1_balance =target_channel.getNode1Balance()-amount;
             new_node2_balance =target_channel.getNode2Balance()+amount;
+            peer_id = target_channel.getNode2PubKey();
         }
         else {
             new_node1_balance =target_channel.getNode1Balance()+amount;
             new_node2_balance =target_channel.getNode2Balance()-amount;
+            peer_id = target_channel.getNode1PubKey();
         }
 
         if (new_node1_balance >= 0 && new_node2_balance >= 0) {
-            this.advanceChannelStatus(channel_id,new_node1_balance,new_node2_balance);
+            target_channel.newCommitment(new_node1_balance,new_node2_balance);
         }
         else {
-            final var peer_id = getChannelPeer(target_channel.getId()).getPubKey();
-            log("pushSats: Insufficient funds in channel "+target_channel.getId()+" cannot push  "+amount+ " sats to "+peer_id);
+            log("pushSats: Insufficient funds in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
             return false;
         }
         return true;
