@@ -52,13 +52,16 @@ public class UVNetworkManager {
         bootstrap_thread_pool_size = uvConfig.bootstrap_nodes;
         p2p_thread_pool_size = bootstrap_thread_pool_size;
 
+        int peek_bootstrap = bootstrap_thread_pool_size + p2p_thread_pool_size;
         // during the bootstrap, 2*nodes threads could be potentially executed
         // due to bootstrap + p2p
+        print_log(" > Threads required for bootstrap nodes: "+uvConfig.bootstrap_nodes);
+        print_log(" > Threads required for p2p: "+p2p_thread_pool_size);
+        print_log(" ---> estimated peek of threads during bootstrap: "+peek_bootstrap);
 
-        int peek_bootstrap = bootstrap_thread_pool_size + p2p_thread_pool_size;
         if (peek_bootstrap> max_threads) {
-            print_log("WARNING: bootstrap and p2p overall pool sizes "+peek_bootstrap+ " execeeds max threads...");
-            print_log("       > Reducing bootstrap and p2p threads pool sizes to "+max_threads/2);
+            print_log("WARNING: bootstrap peek threads "+peek_bootstrap+ " execeeds max threads...");
+            print_log(" ---> Reducing both bootstrap and p2p threads pool sizes to "+max_threads/2);
             bootstrap_thread_pool_size = max_threads/2;
             p2p_thread_pool_size = max_threads/2;
         }
@@ -88,7 +91,7 @@ public class UVNetworkManager {
     }
 
     public synchronized String createAlias() {
-        if (aliasNames.size()<1) return "no alias";
+        if (aliasNames.isEmpty()) return "no alias";
         var i = random.nextInt(0,aliasNames.size());
         String alias = aliasNames.get(i);
         aliasNames.remove(i);
@@ -166,7 +169,7 @@ public class UVNetworkManager {
         });
 
 
-        print_log("Creating "+uvConfig.bootstrap_nodes+" node instancies...");
+        print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
         for (int n=0;n<uvConfig.bootstrap_nodes;n++) {
             var profile = uvConfig.getRandomProfile();
             int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
@@ -190,36 +193,30 @@ public class UVNetworkManager {
                 current_index++;
                 pubkeys_list.add(node.getPubKey());
             }
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
 
-        try {
-            System.gc();
+            print_log("BOOTSTRAP: Launch complete, waiting for "+bootstrap_latch.getCount()+" threads to finish...");
             bootstrap_latch.await();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        bootstrapExecutor.shutdown();
-        boolean term;
 
-        try {
-            term = bootstrapExecutor.awaitTermination(120, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt(); // handle interruption
+            //throw new RuntimeException(e);
         }
-        if (!term)  {
-            print_log("Bootstrap timeout! terminating...");
-        }
-        else {
+        finally {
+            print_log("BOOTSTRAP: shutting down threads...");
+            bootstrapExecutor.shutdown();
+            try {
+                var timeout = bootstrapExecutor.awaitTermination(60, TimeUnit.SECONDS);
+                if (!timeout)
+                    print_log("BOOTSTRAP: timeout! terminating threads...");
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
-            print_log(after+":Bootstrap Ended. Duration (ms):"+d);
+            print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
         }
-
-        System.gc();
     }
 
     /**
@@ -449,7 +446,7 @@ public class UVNetworkManager {
      * Save the current network status to file
      * @param file destination file
      */
-    public void saveStatus(String file) {
+    public void saveStatus(String filename) {
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
             print_log("Bootstrap incomplete, cannot save");
             return;
@@ -471,6 +468,9 @@ public class UVNetworkManager {
         print_log("Stopping timechain");
         setTimechainRunning(false);
         stopP2PNetwork();
+
+        var file = new File(filename);
+        print_log("Saving status to "+file.getAbsolutePath());
 
         try (var f = new ObjectOutputStream(new FileOutputStream(file))){
 
@@ -564,20 +564,18 @@ public class UVNetworkManager {
     }
 
     public void bootstrapNode(UVNode node) {
+        final var profile = node.getProfile();
+        final int max_channels = profile.getIntAttribute("max_channels");
+        final int min_channels = profile.getIntAttribute("min_channels");
+        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
+        log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
         node.setP2PServices(true);
         node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.p2p_period_ms,TimeUnit.MILLISECONDS);
         // TODO: should be this an config value?
         int max_attempts = 200;
 
-        final var profile = node.getProfile();
-        final int max_channels = profile.getIntAttribute("max_channels");
-        final int min_channels = profile.getIntAttribute("min_channels");
-        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
         final int min_ch_size = profile.getIntAttribute("min_channel_size");
-
-        log("BOOTSTRAPPING "+node.getPubKey()+", target channel openings: "+target_channel_openings);
-
         // we don't want granularity in channel sizes to be less than 100k
         // ...unless smaller channels are allowed
         int step = Math.min(100000,min_ch_size);
@@ -609,8 +607,8 @@ public class UVNetworkManager {
 
         bootstraps_running--;
         bootstraps_ended++;
-        log(node.getPubKey()+":Bootstrap Completed");
         getBootstrapLatch().countDown();
+        log("BOOTSTRAP: Completed on "+node.getPubKey());
     }
 
     public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
@@ -693,5 +691,13 @@ public class UVNetworkManager {
                 }
             }
         }
+    }
+
+    public String generateChannelIdFromTimechain(UVTimechain.Transaction tx, UVNode uvNode) {
+        var searchPos = getTimechain().getTxLocation(tx);
+        var position = searchPos.get();
+
+        return position.height() + "x" + position.tx_index();
+
     }
 }
