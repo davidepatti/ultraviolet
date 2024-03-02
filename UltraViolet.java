@@ -21,8 +21,7 @@ public class UltraViolet {
             System.out.println("EMPTY NODE LIST");
             return;
         }
-        var node = networkManager.getNode(pubkey);
-        if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+        var node = networkManager.findLNNode(pubkey);
 
         node.getChannels().values().stream().sorted().forEach(System.out::println);
 
@@ -70,10 +69,10 @@ public class UltraViolet {
         Scanner scanner = new Scanner(System.in);
         System.out.print("Starting node public key:");
         String start_id = scanner.nextLine();
-        var sender = networkManager.getNode(start_id);
+        var sender = networkManager.findLNNode(start_id);
         System.out.print("Destination node public key:");
         String end_id = scanner.nextLine();
-        var dest = networkManager.getNode(end_id);
+        var dest = networkManager.findLNNode(end_id);
         System.out.print("Invoice amount:");
         int amount = Integer.parseInt(scanner.nextLine());
         System.out.print("Max fees:");
@@ -111,7 +110,7 @@ public class UltraViolet {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.getNode(start).getPaths(destination,stopfirst);
+        var paths = networkManager.findLNNode(start).getPaths(destination,stopfirst);
 
         if (paths.size()>0) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {
@@ -173,7 +172,7 @@ public class UltraViolet {
     private void showGraphCommand(String node_id) {
 
         if (!networkManager.isBootstrapCompleted()) return;
-        var g = networkManager.getNode(node_id).getChannelGraph();
+        var g = networkManager.findLNNode(node_id).getChannelGraph();
         System.out.println(g);
     }
 
@@ -261,8 +260,7 @@ public class UltraViolet {
             if (!networkManager.isBootstrapCompleted()) return;
             System.out.print("Insert node public key:");
             String node_id = scanner.nextLine();
-            var node = networkManager.getNode(node_id);
-            if (node == null) { System.out.println("ERROR: NODE NOT FOUND"); return; }
+            var node = networkManager.findLNNode(node_id);
             showQueueCommand(node);
         }));
         menuItems.add(new MenuItem("qs", "Show Queues Status", x -> {

@@ -806,7 +806,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
         channelGraph.updateChannel(msg_update);
 
-        uvManager.getNode(peer_id).fundingLocked(newChannel);
+        uvManager.getUVNode(peer_id).fundingLocked(newChannel);
 
         broadcastToPeers(from,msg_announcement);
         broadcastToPeers(from,msg_update);
@@ -931,7 +931,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     var announce_msg = (GossipMsgChannelAnnouncement) msg.nextMsgToForward(this.getPubKey());
                     var new_channel_id = announce_msg.getChannelId();
                     if (!channelGraph.hasChannel(new_channel_id)) {
-                        //debug("GOSSIP: Adding to graph new channel "+new_channel_id);
+                        // synchronized
                         this.channelGraph.addAnnouncedChannel(announce_msg);
                         broadcastToPeers(msg.getSender(),announce_msg);
                     }
@@ -946,7 +946,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
                     // sent from my channel partners, update related data
                     if (channels.containsKey(channel_id)) {
-                        //debug("GOSSIP: Updating local channel "+channel_id);
                         channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
                         getChannelGraph().updateChannel(message);
                         var next = message.nextMsgToForward(this.getPubKey());

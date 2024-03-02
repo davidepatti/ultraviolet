@@ -271,8 +271,10 @@ public class UVNetworkManager {
         // is present between nodes. It should never be used when multiple channels
         // are present between two nodes, so this incoherent condition should be checked
 
-        var n1 = getNode(pub1);
-        var n2 = getNode(pub2);
+        var n1 = getUVNode(pub1);
+        var n2 = getUVNode(pub2);
+
+        if (n1==null || n2==null ) throw new IllegalArgumentException("Non existing nodes "+pub1+" or "+pub2);
 
         Optional<LNChannel> channel = Optional.empty();
         int found_channels = 0;
@@ -382,21 +384,22 @@ public class UVNetworkManager {
         return this.uvnodes;
     }
 
-    public UVNode getNode(String pubkey) {
-        UVNode node = uvnodes.get(pubkey);
+    public UVNode findLNNode(String pubkey) {
+
+        var node = getUVNode(pubkey);
         while (node==null) {
-            var e = new RuntimeException("Cannot find node "+pubkey);
-            e.printStackTrace();
-            System.out.print("Enter valide node pubkey:");
-            var p = new Scanner(System.in).nextLine();
-            node = uvnodes.get(p);
+            System.out.println("Node "+pubkey+" not found! ");
+            System.out.print("Please enter a valid pubkey:");
+            pubkey = new Scanner(System.in).nextLine();
+            node = getUVNode(pubkey);
         }
         return node;
     }
 
-    public LNode getLNode(String pubkey) {
+    public UVNode getUVNode(String pubkey) {
         return uvnodes.get(pubkey);
     }
+
     public P2PNode getP2PNode(String pubkey) {
         return uvnodes.get(pubkey);
     }
