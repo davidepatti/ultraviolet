@@ -12,7 +12,6 @@ public class ChannelGraph implements Serializable  {
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
     transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
-
     public static String pathString(ArrayList<Edge> path) {
         StringBuilder s = new StringBuilder("(");
 
@@ -27,8 +26,9 @@ public class ChannelGraph implements Serializable  {
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
-            return "{ch:"+id+"("+source + "->"+ destination + ")["+capacity +"]("+policy+")}";
+            return "("+source + "->"+ destination + ")["+capacity +"]("+policy+")";
         }
+
     }
 
 
@@ -251,6 +251,33 @@ public class ChannelGraph implements Serializable  {
         addNode(root_node);
     }
 
+    public void purgeNullPolicyChannels() {
+        Iterator<String> nodeIterator = adj_map.keySet().iterator();
+        while (nodeIterator.hasNext()) {
+            var node = nodeIterator.next();
+            Collection<Edge> edges = adj_map.get(node);
+            //System.out.println("Removing " + edge);
+            edges.removeIf(edge -> edge.policy == null);
+            // Removing node if no edges remain
+            if (edges.isEmpty()) {
+                System.out.println("Removing node " + node + " as no edges remain.");
+                nodeIterator.remove();
+            }
+        }
+    }
+
+    public synchronized int countNullPolicies() {
+        int empty = 0;
+        for (var node: adj_map.keySet()) {
+            var edges = adj_map.get(node);
+            for (var e: edges) {
+                if (e.policy == null) empty++;
+            }
+        }
+        return empty;
+    }
+
+
     public int getNodeCount() {
        return getVertexCount();
     }
@@ -262,7 +289,6 @@ public class ChannelGraph implements Serializable  {
     public String toString()
     {
         StringBuilder builder = new StringBuilder();
-
         ArrayList<String> list = new ArrayList<>();
 
         adj_map.keySet().stream().sorted().forEach(list::add);
@@ -270,7 +296,7 @@ public class ChannelGraph implements Serializable  {
         for (String v : list) {
             builder.append(v).append(": ");
             for (Edge w : adj_map.get(v)) {
-                builder.append(w).append(" ");
+                builder.append("\n").append(w);
             }
             builder.append("\n");
         }
