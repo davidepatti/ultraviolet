@@ -27,7 +27,7 @@ public interface LNChannel {
 
         @Override
         public String toString() {
-            return " (cltv:"+cltv + " fees: " + base_fee + "/" + fee_ppm+")";
+            return " cltv:"+cltv+" fees: " + base_fee + "/" + fee_ppm;
         }
     }
 

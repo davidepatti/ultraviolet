@@ -7,6 +7,8 @@ public class GossipMsgChannelAnnouncement extends GossipMsg {
     private final String node_id_2;
     private final int funding;
 
+
+
     public GossipMsgChannelAnnouncement(String sender, String channel_id, String pubkey1, String pubkey2, int funding, int timestamp, int forwardings) {
         super(sender,forwardings,timestamp, Type.CHANNEL_ANNOUNCE);
         this.short_channel_id = channel_id;

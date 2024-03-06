@@ -799,15 +799,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         String from = this.getPubKey();
         String signer = this.getPubKey();
         // when funding tx is confirmed after minimim depth
-        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
         var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
+        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
 
         // local update
         channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
         channelGraph.updateChannel(msg_update);
 
         uvManager.getUVNode(peer_id).fundingLocked(newChannel);
-
         broadcastToPeers(from,msg_announcement);
         broadcastToPeers(from,msg_update);
     }
@@ -832,14 +831,14 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph.addLNChannel(newChannel);
         channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
 
-        // sender is set as the channel initiator, so that it's excluded from broadcasting
         var timestamp = uvManager.getTimechain().getCurrentBlock();
-        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
-        broadcastToPeers(newChannel.getInitiator(), message_ann);
-
         // here sender is set as current node, all the other peers should receive the update
         String sender = this.getPubKey();
         var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
+
+        // sender is set as the channel initiator, so that it's excluded from broadcasting
+        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        broadcastToPeers(newChannel.getInitiator(), message_ann);
         broadcastToPeers(sender,msg_update);
     }
 
@@ -1320,4 +1319,5 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         for (String p: saved_peers_id)
             peers.put(p, uvManager.getP2PNode(p));
     }
+
 }

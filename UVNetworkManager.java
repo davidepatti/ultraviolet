@@ -297,7 +297,7 @@ public class UVNetworkManager {
      * Generate some random channel transfers
      * @param n number of events to be generated
      */
-    public void generateRandomEvents(int n) {
+    public void generateRandomPushEvents(int n) {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
