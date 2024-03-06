@@ -29,6 +29,7 @@ public class UltraViolet {
         int vertex = node.getChannelGraph().getNodeCount();
         System.out.println("Graph nodes:" + vertex);
         System.out.println("Graph channels:" + edges);
+        System.out.println("Graph null policies: "+node.getChannelGraph().countNullPolicies());
         node.showQueuesStatus();
     }
 
@@ -172,8 +173,9 @@ public class UltraViolet {
     private void showGraphCommand(String node_id) {
 
         if (!networkManager.isBootstrapCompleted()) return;
-        var g = networkManager.findLNNode(node_id).getChannelGraph();
-        System.out.println(g);
+        var n = networkManager.findLNNode(node_id);
+        System.out.println(n.getChannelGraph());
+        System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
     }
 
     public UltraViolet(UVConfig config) {
@@ -251,6 +253,10 @@ public class UltraViolet {
             String node = scanner.nextLine();
             showNodeCommand(node);
         }));
+        menuItems.add(new MenuItem("purge", "Purge graph null channels", x -> {
+            for (UVNode node : networkManager.getUVNodeList().values())
+                node.getChannelGraph().purgeNullPolicyChannels();
+        }));
         menuItems.add(new MenuItem("graph", "Show Node Graph", x -> {
             System.out.print("Insert node public key:");
             String node = scanner.nextLine();
@@ -278,11 +284,14 @@ public class UltraViolet {
 
          */
 
+        /*
         menuItems.add(new MenuItem("conf", "Show Configuration ", x -> {
             System.out.println("-----------------------------------");
             System.out.println(this.config);
             System.out.println("-----------------------------------");
         }));
+
+         */
         menuItems.add(new MenuItem("inv", "Generate Invoice Events ", x -> {
 
             if (!networkManager.isBootstrapCompleted()) {
@@ -311,16 +320,19 @@ public class UltraViolet {
         }));
 
 
+        /*
         menuItems.add(new MenuItem("rand", "Generate Random Events ", x -> {
             System.out.print("Number of events:");
             String n = scanner.nextLine();
             if (networkManager.isBootstrapCompleted()) {
                 System.out.println("Generating events, check " + config.logfile);
-                networkManager.generateRandomEvents(Integer.parseInt(n));
+                networkManager.generateRandomPushEvents(Integer.parseInt(n));
             } else {
                 System.out.println("Bootstrap not completed, cannot generate events!");
             }
         }));
+
+         */
 
         menuItems.add(new MenuItem("rep", "Invoice Reports", x -> {
             if (networkManager.isBootstrapCompleted())  {
@@ -356,7 +368,6 @@ public class UltraViolet {
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-
             }
             else System.out.println("Bootstrap not completed!");
         } ));
