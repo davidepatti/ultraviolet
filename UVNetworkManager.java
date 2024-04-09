@@ -33,7 +33,6 @@ public class UVNetworkManager {
     }
     private static FileWriter logfile;
 
-    private ExecutorService invoiceExecutor;
     private ScheduledExecutorService p2pExecutor;
 
     private int invoice_thread_pool_size;
@@ -631,24 +630,19 @@ public class UVNetworkManager {
 
         print_log("Expected end after block "+end);
 
-        if (invoiceExecutor ==null) {
-            print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
-            ThreadFactory namedThreadFactory = new ThreadFactory() {
-                private final AtomicInteger count = new AtomicInteger(0);
 
-                @Override
-                public Thread newThread(Runnable r) {
-                    Thread thread = new Thread(r);
-                    thread.setName("InvoiceProcess-" + count.incrementAndGet());
-                    return thread;
-                }
-            };
+        print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
+        ThreadFactory namedThreadFactory = new ThreadFactory() {
+            private final AtomicInteger count = new AtomicInteger(0);
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread thread = new Thread(r);
+                thread.setName("InvoiceProcess-" + count.incrementAndGet());
+                return thread;
+            }
+        };
 
-            invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
-        }
-        else {
-            print_log("Reusing existing thread executor (size "+invoice_thread_pool_size+")");
-        }
+        var invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
 
         // so to be sure to align to a just found block timing
         waitForBlocks(1);
@@ -675,6 +669,7 @@ public class UVNetworkManager {
             //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
         }
         print_log("Completed events generation");
+        invoiceExecutor.shutdown();
     }
 
 
