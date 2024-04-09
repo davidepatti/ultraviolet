@@ -1155,9 +1155,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public void showQueuesStatus() {
 
-        if(!GossipMessageQueue.isEmpty() || !channelsAcceptedQueue.isEmpty() || !channelsToAcceptQueue.isEmpty() ||
-                !updateAddHTLCQueue.isEmpty() || !updateFulFillHTLCQueue.isEmpty() || !updateFailHTLCQueue.isEmpty() ||
-                !pendingInvoices.isEmpty() || !pendingHTLC.isEmpty() || !pendingAcceptedChannelPeers.isEmpty())
+        if (!checkQueuesStatus())
             System.out.println("----- node " +this.getPubKey()+ "----------------------------------------------");
 
         for(var element : GossipMessageQueue) {
