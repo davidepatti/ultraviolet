@@ -256,11 +256,10 @@ public class ChannelGraph implements Serializable  {
         while (nodeIterator.hasNext()) {
             var node = nodeIterator.next();
             Collection<Edge> edges = adj_map.get(node);
-            //System.out.println("Removing " + edge);
             edges.removeIf(edge -> edge.policy == null);
             // Removing node if no edges remain
             if (edges.isEmpty()) {
-                System.out.println("Removing node " + node + " as no edges remain.");
+                System.out.println(this.root_node+": Removing graph node for " + node + " as no edges remain.");
                 nodeIterator.remove();
             }
         }
