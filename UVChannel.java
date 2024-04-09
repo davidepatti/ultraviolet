@@ -64,7 +64,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             init_direction = false;
         }
 
-        this.channel_id = "_"+node_id_1+"="+node_id_2+"_";
+        this.channel_id = "ch_"+node_id_1+"-"+node_id_2;
         this.node1Pending = 0;
         this.node2Pending = 0;
         this.reserve = channelReserveSatoshis;
