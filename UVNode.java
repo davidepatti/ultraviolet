@@ -993,19 +993,21 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private synchronized void checkTimechainTxConfirmations() {
 
-        final int current_block = uvManager.getTimechain().getCurrentBlock();
-        var to_be_removed = new ArrayList<String>();
+        if (!waitingFundings.isEmpty()) {
+            final int current_block = uvManager.getTimechain().getCurrentBlock();
+            var to_be_removed = new ArrayList<String>();
 
-        for (var tx: waitingFundings.values()) {
-
-            if (tx.target_block<=current_block) {
-                fundingChannelConfirmed(tx.peer(),tx.tx_id());
-                to_be_removed.add(tx.tx_id());
+            for (var tx: waitingFundings.values()) {
+                if (tx.target_block<=current_block) {
+                    fundingChannelConfirmed(tx.peer(),tx.tx_id());
+                    to_be_removed.add(tx.tx_id());
+                }
+            }
+            for (var tx: to_be_removed) {
+                waitingFundings.remove(tx);
             }
         }
-        for (var tx: to_be_removed) {
-            waitingFundings.remove(tx);
-        }
+
     }
 
 
