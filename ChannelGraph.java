@@ -251,18 +251,20 @@ public class ChannelGraph implements Serializable  {
         addNode(root_node);
     }
 
-    public void purgeNullPolicyChannels() {
+    public int purgeNullPolicyChannels() {
         Iterator<String> nodeIterator = adj_map.keySet().iterator();
+        int purged = 0;
         while (nodeIterator.hasNext()) {
             var node = nodeIterator.next();
             Collection<Edge> edges = adj_map.get(node);
             edges.removeIf(edge -> edge.policy == null);
             // Removing node if no edges remain
             if (edges.isEmpty()) {
-                System.out.println(this.root_node+": Removing graph node for " + node + " as no edges remain.");
+                purged++;
                 nodeIterator.remove();
             }
         }
+        return purged;
     }
 
     public synchronized int countNullPolicies() {
