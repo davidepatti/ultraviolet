@@ -197,7 +197,7 @@ public class UltraViolet {
                     int i =0;
                     while (!bootstrap_outcome.isDone()) {
                         i++;
-                        System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/(double)config.bootstrap_nodes+"%)(Total/Running/Ended)("+config.bootstrap_nodes+"/"+networkManager.getBootstrapsRunning()+"/"+networkManager.getBootstrapsEnded()+")");
+                        System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/(double)config.bootstrap_nodes+"%)(Completeted "+networkManager.getBootstrapsEnded()+" of "+config.bootstrap_nodes+", running:"+networkManager.getBootstrapsRunning()+")");
                         if (i%20 ==0 ) System.out.println();
                         try {
                             Thread.sleep(300);
@@ -254,8 +254,11 @@ public class UltraViolet {
             showNodeCommand(node);
         }));
         menuItems.add(new MenuItem("purge", "Purge graph null channels", x -> {
-            for (UVNode node : networkManager.getUVNodeList().values())
-                node.getChannelGraph().purgeNullPolicyChannels();
+            int purged;
+            for (UVNode node : networkManager.getUVNodeList().values()) {
+                purged = node.getChannelGraph().purgeNullPolicyChannels();
+                if (purged>0) System.out.println("Pruned "+purged+ " null policy nodes on "+node.getPubKey());
+            }
         }));
         menuItems.add(new MenuItem("graph", "Show Node Graph", x -> {
             System.out.print("Insert node public key:");
@@ -376,6 +379,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("route", "Route Payment", x -> testInvoiceRoutingCmd()));
         //menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
         //menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
+
         menuItems.add(new MenuItem("save", "Save UV Network Status", x -> {
             System.out.print("Save to:");
             String file_to_save = scanner.nextLine();
