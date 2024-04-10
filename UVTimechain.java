@@ -11,7 +11,7 @@ public class UVTimechain implements Runnable, Serializable  {
     private final int blocktime;
     private final Set<CountDownLatch> timers = new HashSet<>();
     private final Set<Transaction> mempool = new HashSet<>();
-    private final List<Block>  blockChain = new LinkedList<>();
+    private final List<Block>  blockChain = new ArrayList<>();
     boolean running = false;
 
     transient private UVNetworkManager uvm;
@@ -97,8 +97,15 @@ public class UVTimechain implements Runnable, Serializable  {
         return new_latch;
     }
 
-    public synchronized void setRunning(boolean running) {
-        this.running = running;
+    public synchronized void setRunning(boolean running_status) {
+        // not running --> running, must start the thread
+        if (running_status && !isRunning()) {
+                Thread timechainThread = new Thread(this, "Timechain");
+                this.running = true;
+                timechainThread.start();
+        }
+        else  // just update the status if required
+            this.running = running_status;
     }
 
     public synchronized boolean isRunning() {
@@ -107,7 +114,6 @@ public class UVTimechain implements Runnable, Serializable  {
 
     @Override
     public void run(){
-        setRunning(true);
         while (isRunning()) {
             try {
                 Thread.sleep(blocktime);
