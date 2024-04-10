@@ -212,9 +212,21 @@ public class UVNetworkManager {
                 Thread.currentThread().interrupt();
             }
 
+            System.out.println("Waiting "+uvConfig.p2p_max_age+" blocks as p2p messages expire time... ");
+            waitForBlocks(uvConfig.p2p_max_age+1);
+            System.out.println("Done!");
+
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
+            print_log("Pruning empty policies from graphs...");
+            int pruned = 0;
+            for (UVNode node : getUVNodeList().values()) {
+                pruned += node.getChannelGraph().purgeNullPolicyChannels();
+            }
+            print_log("(Removed total: "+pruned+") DONE!");
+
             print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
+
         }
     }
 
@@ -457,8 +469,9 @@ public class UVNetworkManager {
         print_log("Checking queues before saving...");
         boolean queue_empty = true;
         for (UVNode n: uvnodes.values()) {
-           if (!n.checkQueuesStatus())  {
-               print_log("WARNING queues not empty in "+n.getPubKey());
+            int pending = n.checkQueuesStatus();
+           if (pending>0)  {
+               print_log("WARNING queues not empty in "+n.getPubKey()+" ("+pending+" elements)");
                n.showQueuesStatus();
                queue_empty = false;
            }
@@ -479,7 +492,7 @@ public class UVNetworkManager {
             print_log("Saving config...");
             f.writeObject(uvConfig);
             print_log("Saving timechain...");
-            f.writeObject(getTimechain());
+            f.writeObject(UVTimechain);
             print_log("Saving UVNodes...");
             f.writeInt(uvnodes.size());
 
@@ -542,17 +555,17 @@ public class UVNetworkManager {
     public synchronized void setTimechainRunning(boolean running) {
         if (isTimechainRunning()==running) {
             print_log("Warning: status of timechain is already "+running);
-            throw new RuntimeException("Error setting timechain satus...");
         }
-        getTimechain().setRunning(running);
-        if (running) {
-            log("Starting timechain!");
-            new Thread(getTimechain(),"Timechain").start();
+        else
+            getTimechain().setRunning(running);
+
+        while (isTimechainRunning()!=running) {
+            print_log("Waiting UVTimechain to update status to "+running);
         }
-        else {
-            log("Stopping timechain!");
-            getTimechain().setRunning(false);
-        }
+
+        if (running) print_log("Starting timechain!");
+        else
+            print_log("Stopping timechain!");
     }
 
     private void waitForBlocks(int blocks) {
