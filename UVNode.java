@@ -1038,12 +1038,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         final int max = 20;
         int n = 0;
 
-        /*
-        if (updateFulFillHTLCQueue.size()>10) System.out.println(updateFulFillHTLCQueue.size()+" fulfill "+this.getPubKey());
-        if (updateAddHTLCQueue.size()>10) System.out.println(updateAddHTLCQueue.size()+" add "+this.getPubKey());
-        if (updateFailHTLCQueue.size()>10) System.out.println(updateFailHTLCQueue.size()+" fail "+this.getPubKey());
-         */
-
         while (!updateAddHTLCQueue.isEmpty() && n++ < max ) {
             var msg = updateAddHTLCQueue.poll();
             try {
@@ -1068,6 +1062,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         }
         // check for expired htlc
     }
+
 
     private boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance ) {
 
@@ -1157,7 +1152,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public void showQueuesStatus() {
 
-        if (!checkQueuesStatus())
+        if (checkQueuesStatus()!=0)
             System.out.println("----- node " +this.getPubKey()+ "----------------------------------------------");
 
         for(var element : GossipMessageQueue) {
@@ -1188,47 +1183,20 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             System.out.println(element);
         }
     }
+    public int checkQueuesStatus() {
+        int queueSizeSum = 0;
 
-    public boolean checkQueuesStatus() {
-        boolean queue_empty = true;
-        if (!GossipMessageQueue.isEmpty()) {
-            System.out.println("Warning: GossipMessageQueue not empty");
-            queue_empty = false;
-        }
-        //if (!sentChannelOpenings.isEmpty())  return false;
-        if (!channelsAcceptedQueue.isEmpty()) {
-            System.out.println("Warning: channelsAcceptedQueue not empty");
-            queue_empty = false;
-        }
-        if (!channelsToAcceptQueue.isEmpty()) {
-            System.out.println("Warning: channelsToAcceptQueue not empty");
-            queue_empty = false;
-        }
-        if (!updateAddHTLCQueue.isEmpty()) {
-            System.out.println("Warning: updateAddHTLCQueue not empty");
-            queue_empty = false;
-        }
-        if (!updateFulFillHTLCQueue.isEmpty()) {
-            System.out.println("Warning: updateFulFillHTLCQueue not empty");
-            queue_empty = false;
-        }
-        if (!updateFailHTLCQueue.isEmpty()) {
-            System.out.println("Warning: updateFailHTLCQueue not empty");
-            queue_empty = false;
-        }
-        if (!pendingInvoices.isEmpty()) {
-            System.out.println("Warning: pendingInvoices not empty");
-            queue_empty = false;
-        }
-        if (!pendingHTLC.isEmpty()) {
-            System.out.println("Warning: pendingHTLC not empty");
-            queue_empty = false;
-        }
-        if (!pendingAcceptedChannelPeers.isEmpty()) {
-            System.out.println("Warning: pendingAcceptedChannelPeers not empty");
-            queue_empty = false;
-        }
-        return queue_empty;
+        queueSizeSum += GossipMessageQueue.size();
+        queueSizeSum += channelsAcceptedQueue.size();
+        queueSizeSum += channelsToAcceptQueue.size();
+        queueSizeSum += updateAddHTLCQueue.size();
+        queueSizeSum += updateFulFillHTLCQueue.size();
+        queueSizeSum += updateFailHTLCQueue.size();
+        queueSizeSum += pendingInvoices.size();
+        queueSizeSum += pendingHTLC.size();
+        queueSizeSum += pendingAcceptedChannelPeers.size();
+
+        return queueSizeSum;
     }
 
     /**
