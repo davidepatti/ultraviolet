@@ -242,7 +242,7 @@ public class UVNetworkManager {
             queues_empty = true;
             for (UVNode node : getUVNodeList().values()) {
                 if (!node.areQueuesEmpty())  {
-                    System.out.println("Waiting for empty queue on node "+node.getPubKey()+"...");
+                    System.out.print("#");
                     try {
                         Thread.sleep(check_period);
                     } catch (InterruptedException e) {
@@ -698,7 +698,8 @@ public class UVNetworkManager {
         print_log("Completed events generation");
 
         print_log("Waiting for queues to flush...");
-        waitForEmptyQueues(1000);
+        // the wait interval is just a reasonable value of ms between checks
+        waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
         print_log("DONE !!");
         invoiceExecutor.shutdown();
     }
