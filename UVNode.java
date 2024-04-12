@@ -1197,6 +1197,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return (double)local_balance/channel_size;
     }
 
+    public double getOverallOutboundFraction() {
+        return (double)getLocalBalance()/getNodeCapacity();
+    }
+
+
+
     /**
      * Custom Serialized format: number of element / objects
      * @param s The outputstream, as specified when choosing saving file

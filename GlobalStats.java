@@ -126,6 +126,8 @@ public class GlobalStats {
         DoubleStream nodeCapacityStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getNodeCapacity());
         System.out.println("Calculating local balances... ");
         DoubleStream lightingBalanceStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
+        System.out.println("Calculating outbound fraction... ");
+        DoubleStream outboundFractionStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getOverallOutboundFraction());
         System.out.println("Calculating node node invoice count... ");
         DoubleStream generatedInvoicesStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
 
@@ -136,6 +138,7 @@ public class GlobalStats {
         String s4 = generateStatsItem("Node Capacity",nodeCapacityStream);
         String s5 = generateStatsItem("LN balance",lightingBalanceStream);
         String s6 = generateStatsItem("Invoices",generatedInvoicesStream);
+        String s7 = generateStatsItem("Outbound %",outboundFractionStream);
         System.out.println("End generating stats.");
 
         String s = String.format("\n%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s",
@@ -148,7 +151,7 @@ public class GlobalStats {
                 "median",
                 "3rd quartile"
         );
-        return s+s1+s2+s3+s4+s5+s6;
+        return s+s1+s2+s3+s4+s5+s6+s7;
     }
 
     public String generateInvoiceReport() {

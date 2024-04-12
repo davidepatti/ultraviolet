@@ -13,7 +13,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     private int commitNumber = 0;
     private final String channel_id;
 
-    private class NodeData implements Serializable{
+    public static class NodeData implements Serializable{
         final private String pubkey;
         private Policy policy;
         private int balance;
@@ -48,25 +48,25 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         this.reserve = channelReserveSatoshis;
 
         if (init_direction) {
-            node1 = new NodeData(pub1,null,fundingSatoshis,0);
-            node2 = new NodeData(pub2,null,pushMsat,0);
+            node1 = new NodeData(pub1, null, fundingSatoshis, 0);
+            node2 = new NodeData(pub2, null, pushMsat, 0);
         }
         else {
-            node1 = new NodeData(pub1,null,pushMsat,0);
-            node2 = new NodeData(pub2,null,fundingSatoshis,0);
+            node1 = new NodeData(pub1, null, pushMsat, 0);
+            node2 = new NodeData(pub2, null, fundingSatoshis, 0);
         }
 
     }
     // constructor only fill the "proposal" for the channel
     public UVChannel(String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
         if (initiator.compareTo(peer)<0) {
-            node1 = new NodeData(initiator,null,fundingSatoshis,0);
-            node2 = new NodeData(peer,null,pushMsat,0);
+            node1 = new NodeData(initiator, null, fundingSatoshis, 0);
+            node2 = new NodeData(peer, null, pushMsat, 0);
             init_direction = true;
         }
         else {
-            node2 = new NodeData(initiator,null,fundingSatoshis,0);
-            node1 = new NodeData(peer,null,pushMsat,0);
+            node2 = new NodeData(initiator, null, fundingSatoshis, 0);
+            node1 = new NodeData(peer, null, pushMsat, 0);
             init_direction = false;
         }
         this.channel_id = "ch_"+node1.pubkey +"-"+node2.pubkey;
@@ -77,7 +77,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         return channel_id;
     }
 
-    private NodeData resolveNode(String pubkey) {
+    public NodeData resolveNode(String pubkey) {
         if (node1.pubkey.equals(pubkey)) return node1;
         if (node2.pubkey.equals(pubkey)) return node2;
 
@@ -120,6 +120,11 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         if (init_direction)
             return node1.pubkey;
         else return node2.pubkey;
+    }
+    public String getNonInitiator(){
+        if (init_direction)
+            return node2.pubkey;
+        else return node1.pubkey;
     }
 
 

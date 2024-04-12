@@ -708,13 +708,39 @@ public class UVNetworkManager {
     /* set the channel balances of each node to the level
      Notice: for each channel only the initiators modify the balance
      */
-    public void setChannelsBalances(double local_level, int min_delta) {
+
+    public void setLocalBalances(double local_level, int min_delta) {
+
+        for (UVNode node : this.getUVNodeList().values()) {
+            for (UVChannel channel: node.getChannels().values()) {
+                // rebalancing action is started from initiator's side
+                if (node.getPubKey().equals(channel.getInitiator())) {
+                    final int current_local_liquidity = channel.getLiquidity(node.getPubKey());
+
+                    int target_local = (int)(local_level* channel.getCapacity());
+
+                    int delta = current_local_liquidity-target_local;
+                    if (delta> 0) {
+                        if (delta>min_delta)
+                            node.pushSats(channel.getChannel_id(), delta);
+                    }
+                    else {
+                        UVNode peer = getUVNode(channel.getNonInitiator());
+                        peer.pushSats(channel.getChannel_id(), -delta);
+                    }
+                }
+            }
+        }
+    }
+
+    // resize th current local balance by some factor
+    public void adjustLocalBalances(double factor, int min_delta) {
 
         for (UVNode node : this.getUVNodeList().values()) {
             for (UVChannel channel: node.getChannels().values()) {
                 if (node.getPubKey().equals(channel.getInitiator())) {
                     final int current_local_liquidity = channel.getLiquidity(node.getPubKey());
-                    int target_local = (int)(local_level* current_local_liquidity);
+                    int target_local = (int)(factor* current_local_liquidity);
                     int delta = current_local_liquidity-target_local;
                     if (delta>min_delta)
                         node.pushSats(channel.getChannel_id(), delta);
