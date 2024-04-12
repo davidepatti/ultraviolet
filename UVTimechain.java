@@ -11,7 +11,7 @@ public class UVTimechain implements Runnable, Serializable  {
     private final int blocktime;
     private final Set<CountDownLatch> timers = new HashSet<>();
     private final Set<Transaction> mempool = new HashSet<>();
-    private final List<Block>  blockChain = new ArrayList<>();
+    private final List<Block>  blockChain = new LinkedList<>();
     boolean running = false;
 
     transient private UVNetworkManager uvm;
@@ -26,7 +26,7 @@ public class UVTimechain implements Runnable, Serializable  {
     }
 
     record Block(int height, List<Transaction> txs) implements Serializable {}
-    public record ChainLocation(int height, int tx_index) {}
+    record ChainLocation(int height, int tx_index) {}
 
 
     public UVTimechain(int blocktime, UVNetworkManager uvNetworkManager) {
@@ -114,6 +114,7 @@ public class UVTimechain implements Runnable, Serializable  {
 
     @Override
     public void run(){
+        log("Starting timechain thread...");
         while (isRunning()) {
             try {
                 Thread.sleep(blocktime);
@@ -128,6 +129,7 @@ public class UVTimechain implements Runnable, Serializable  {
             }
             tictocNextBlock();
         }
+        log("Exiting timechain thread...");
     }
 
     @Override
