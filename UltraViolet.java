@@ -200,7 +200,7 @@ public class UltraViolet {
                         System.out.println("Bootstrapping ("+100*networkManager.getBootstrapsEnded()/(double)config.bootstrap_nodes+"%)(Completeted "+networkManager.getBootstrapsEnded()+" of "+config.bootstrap_nodes+", running:"+networkManager.getBootstrapsRunning()+")");
                         if (i%20 ==0 ) System.out.println();
                         try {
-                            Thread.sleep(300);
+                            Thread.sleep(500);
                         } catch (InterruptedException e) {
                             throw new RuntimeException(e);
                         }
