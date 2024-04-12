@@ -216,17 +216,42 @@ public class UVNetworkManager {
             waitForBlocks(uvConfig.p2p_max_age+1);
             System.out.println("Done!");
 
-            var after = new Date();
-            var d = after.getTime()-startTime.getTime();
+
+            System.out.println("Waiting for message queue to empty....");
+            waitForEmptyQueues(100);
+            System.out.println("DONE!");
+
             print_log("Pruning empty policies from graphs...");
             int pruned = 0;
             for (UVNode node : getUVNodeList().values()) {
                 pruned += node.getChannelGraph().purgeNullPolicyChannels();
             }
-            print_log("(Removed total: "+pruned+") DONE!");
+            print_log("(Pruned null entries: "+pruned+") DONE!");
 
+            var after = new Date();
+            var d = after.getTime()-startTime.getTime();
             print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
 
+        }
+    }
+
+
+    public void waitForEmptyQueues(int check_period) {
+        boolean queues_empty = false;
+        while (!queues_empty) {
+            queues_empty = true;
+            for (UVNode node : getUVNodeList().values()) {
+                if (!node.areQueuesEmpty())  {
+                    System.out.println("Waiting for empty queue on node "+node.getPubKey()+"...");
+                    try {
+                        Thread.sleep(check_period);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    queues_empty = false;
+                    break;
+                }
+            }
         }
     }
 
@@ -467,19 +492,8 @@ public class UVNetworkManager {
         }
 
         print_log("Checking queues before saving...");
-        boolean queue_empty = true;
-        for (UVNode n: uvnodes.values()) {
-            int pending = n.checkQueuesStatus();
-           if (pending>0)  {
-               print_log("WARNING queues not empty in "+n.getPubKey()+" ("+pending+" elements)");
-               n.showQueuesStatus();
-               queue_empty = false;
-           }
-        }
-        if (!queue_empty) {
-            print_log("Cannot save: queues still not empty.");
-            return;
-        }
+        waitForEmptyQueues(1000);
+        print_log("Done");
         print_log("Stopping timechain");
         setTimechainRunning(false);
         stopP2PNetwork();
@@ -682,6 +696,10 @@ public class UVNetworkManager {
             //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
         }
         print_log("Completed events generation");
+
+        print_log("Waiting for queues to flush...");
+        waitForEmptyQueues(1000);
+        print_log("DONE !!");
         invoiceExecutor.shutdown();
     }
 
