@@ -36,8 +36,6 @@ public interface LNChannel {
     String getNode2PubKey();
     int getCapacity();
 
-    Policy getNode1Policy();
-    Policy getNode2Policy();
     Policy getPolicy(String pubkey);
 
 }
