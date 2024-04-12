@@ -55,11 +55,11 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new HashSet<>());
         adj_map.putIfAbsent(node2pub, new HashSet<>());
 
-        var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getNode1Policy());
-        var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getNode2Policy());
+        var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getPolicy(node1pub));
+        var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getPolicy(node2pub));
 
-        adj_map.get(channel.getNode1PubKey()).add(edge1);
-        adj_map.get(channel.getNode2PubKey()).add(edge2);
+        adj_map.get(node1pub).add(edge1);
+        adj_map.get(node2pub).add(edge2);
 
         channelSet.add(id);
     }
@@ -141,9 +141,12 @@ public class ChannelGraph implements Serializable  {
                     continue;
                 }
                 if (!visited_vertex.contains(e.destination())) {
-                    last_parent.put(e.destination(),e);
-                    visited_vertex.add(e.destination());
-                    queue_vertex.add(e.destination());
+                    // check whether destination has been pruned, being empty
+                    if (adj_map.get(e.destination)!=null) {
+                        last_parent.put(e.destination(),e);
+                        visited_vertex.add(e.destination());
+                        queue_vertex.add(e.destination());
+                    }
                 }
             }
         }
