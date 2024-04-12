@@ -144,14 +144,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             return uvManager.getP2PNode(channel.getNode1PubKey());
     }
 
-    public int getLocalChannelBalance(String channel_id) {
-        var channel = channels.get(channel_id);
-        if (this.getPubKey().equals(channel.getNode1PubKey()))
-            return channel.getNode1Balance();
-        else
-            return channel.getNode2Balance();
-    }
-
     public synchronized int getOnChainBalance() {
         return onchainBalance;
     }
@@ -182,9 +174,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int balance = 0;
 
         for (UVChannel c : channels.values()) {
-            if (c.getNode1PubKey().equals(getPubKey())) balance += c.getNode1Balance();
-            else
-                balance += c.getNode2Balance();
+            balance += c.getBalance(this.getPubKey());
         }
         return balance;
     }
@@ -192,9 +182,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int balance = 0;
 
         for (UVChannel c : channels.values()) {
-            if (c.getNode1PubKey().equals(getPubKey())) balance += c.getNode2Balance();
-            else
-                balance += c.getNode1Balance();
+            var peer_id = getChannelPeer(c.getChannel_id()).getPubKey();
+            balance += c.getBalance(peer_id);
         }
         return balance;
     }
@@ -763,11 +752,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int taget_block = uvManager.getTimechain().getCurrentBlock()+acceptMessage.getMinimum_depth();
 
         waitingFundings.put(funding_tx.txId(),new fundingConfirmation(taget_block, funding_tx.txId(),peerPubKey));
-
-        /*
-        var exec = Executors.newSingleThreadExecutor();
-        exec.submit(()-> waitFundingConfirmation(peerPubKey,funding_tx,acceptMessage.getMinimum_depth()));
-         */
     }
 
     private void fundingChannelConfirmed(String peer_id, String tx_id) {
@@ -788,23 +772,24 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         updateOnchainPending(getOnchainPending()-request.getFunding());
 
         var channel_id = newChannel.getChannel_id();
-
-        this.channels.put(channel_id,newChannel);
-        channelGraph.addLNChannel(newChannel);
+        channels.put(channel_id,newChannel);
 
         int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
         int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
+
+        // local update
+        channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
+        // why?
+        //channelGraph.updateChannel(msg_update);
+
+        channelGraph.addLNChannel(newChannel);
 
         String from = this.getPubKey();
         String signer = this.getPubKey();
         // when funding tx is confirmed after minimim depth
         var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
         var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
-
-        // local update
-        channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
-        channelGraph.updateChannel(msg_update);
 
         uvManager.getUVNode(peer_id).fundingLocked(newChannel);
         broadcastToPeers(from,msg_announcement);
@@ -819,14 +804,15 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Received funding_locked for "+newChannel.getId());
 
-        channels.put(newChannel.getId(), newChannel);
         pendingAcceptedChannelPeers.remove(newChannel.getInitiator());
 
         // setting a random policy
         int base_fee = uvManager.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
         int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
-        channels.get(newChannel.getId()).setPolicy(getPubKey(),newPolicy);
+
+        newChannel.setPolicy(getPubKey(),newPolicy);
+        channels.put(newChannel.getId(), newChannel);
 
         channelGraph.addLNChannel(newChannel);
         channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
@@ -1080,25 +1066,17 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
     protected synchronized boolean pushSats(String channel_id, int amount) {
 
-        var target_channel = this.channels.get(channel_id);
+        var channel = this.channels.get(channel_id);
+        String peer_id = getChannelPeer(channel_id).getPubKey();
 
-        int new_node1_balance;
-        int new_node2_balance;
-        String peer_id;
+        var local_balance = channel.getBalance(this.getPubKey());
+        var remote_balance = channel.getBalance(peer_id);
 
-        if (this.getPubKey().equals(target_channel.getNode1PubKey())) {
-            new_node1_balance =target_channel.getNode1Balance()-amount;
-            new_node2_balance =target_channel.getNode2Balance()+amount;
-            peer_id = target_channel.getNode2PubKey();
-        }
-        else {
-            new_node1_balance =target_channel.getNode1Balance()+amount;
-            new_node2_balance =target_channel.getNode2Balance()-amount;
-            peer_id = target_channel.getNode1PubKey();
-        }
-
-        if (new_node1_balance >= 0 && new_node2_balance >= 0) {
-            target_channel.newCommitment(new_node1_balance,new_node2_balance);
+        if (local_balance-amount>=0) {
+            if (channel.getNode1PubKey().equals(this.getPubKey()))
+                channel.newCommitment(local_balance-amount,remote_balance+amount);
+            else
+                channel.newCommitment(remote_balance+amount,local_balance-amount);
         }
         else {
             log("pushSats: Insufficient funds in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
@@ -1152,7 +1130,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     public void showQueuesStatus() {
 
-        if (checkQueuesStatus()!=0)
+        if (countNonEmptyQueues()!=0)
             System.out.println("----- node " +this.getPubKey()+ "----------------------------------------------");
 
         for(var element : GossipMessageQueue) {
@@ -1183,7 +1161,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             System.out.println(element);
         }
     }
-    public int checkQueuesStatus() {
+    public int countNonEmptyQueues() {
         int queueSizeSum = 0;
 
         queueSizeSum += GossipMessageQueue.size();
@@ -1197,6 +1175,26 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         queueSizeSum += pendingAcceptedChannelPeers.size();
 
         return queueSizeSum;
+    }
+
+    public boolean areQueuesEmpty() {
+        return pendingInvoices.isEmpty()
+                && channelsAcceptedQueue.isEmpty()
+                && channelsToAcceptQueue.isEmpty()
+                && updateAddHTLCQueue.isEmpty()
+                && updateFulFillHTLCQueue.isEmpty()
+                && updateFailHTLCQueue.isEmpty()
+                && GossipMessageQueue.isEmpty()
+                && pendingHTLC.isEmpty()
+                && pendingAcceptedChannelPeers.isEmpty();
+    }
+
+
+    private double getOutboundFraction(String channel_id) {
+        var channel = channels.get(channel_id);
+        var channel_size = channel.getCapacity();
+        var local_balance = channel.getBalance(getPubKey());
+        return (double)local_balance/channel_size;
     }
 
     /**
@@ -1269,7 +1267,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
             this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
             this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
-            this.waitingFundings = new HashMap<String, fundingConfirmation>();
+            this.waitingFundings = new HashMap<>();
         }
         catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
