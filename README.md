@@ -31,7 +31,7 @@ By customizing the properties file you can experiment different aspects of the d
 fee/routing policies, p2p/gossip etc...
 
 Just give at look at the comments in the properties file here to get an idea:
-https://github.com/davidepatti/ultraviolet/blob/main/template.properties
+https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.properties
 
 Also, you can easily define new properties and refer to them in code!
 
