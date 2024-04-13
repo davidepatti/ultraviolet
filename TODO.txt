@@ -1,5 +1,6 @@
 TODO
 
+- External Logger object
 - parallel invoice events generation (events/block + timechain duration)
 - check channel balances locking, check liquidity
 - check fee management
