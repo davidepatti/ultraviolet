@@ -24,8 +24,8 @@ its own "behavioral space".
 
 ## Quick Start
 
-* compile source: `javac *.java`
-* the just execute:  _`java UltraViolet template.properties`_
+* compile from src dir: `./compile.sh`
+* the just execute:  _`java UltraViolet ../uv_configs/template.properties`_
 
 By customizing the properties file you can experiment different aspects of the deployed network, including nodes behavior, channels,
 fee/routing policies, p2p/gossip etc...

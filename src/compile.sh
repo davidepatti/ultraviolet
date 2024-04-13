@@ -9,5 +9,5 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Compilation successful."
-java -cp "$CLASSPATH" UltraViolet
+##java -cp "$CLASSPATH" UltraViolet
 
