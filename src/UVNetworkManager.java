@@ -81,7 +81,7 @@ public class UVNetworkManager {
 
     private void loadAliasNames() {
         try {
-            Scanner s = new Scanner(new FileReader("aliases.txt"));
+            Scanner s = new Scanner(new FileReader("src/aliases.txt"));
             while (s.hasNextLine()) aliasNames.add(s.nextLine());
 
         } catch (FileNotFoundException e) {
