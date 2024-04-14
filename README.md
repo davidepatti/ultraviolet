@@ -103,8 +103,12 @@ For example, we recently added a "bal" command to simulate a given umbalancing s
 We started this project as part of our academic work at University of Catania, as a concrete way to contribute to the
 Bitcoin/LN community that could create the basis for a future research activity and collaborations.
 Use this software and have fun, every suggestion/help is welcome.
-
 PS. We have a few scientific publication coming in the next months to be used as reference (shared here soon).
+
+Feel free to join our LN node *lynchlight*,  pubkey:
+
+03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
+
 
 
 
