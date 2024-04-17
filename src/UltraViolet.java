@@ -23,13 +23,20 @@ public class UltraViolet {
         }
         var node = networkManager.findLNNode(pubkey);
 
-        node.getChannels().values().stream().sorted().forEach(System.out::println);
+        System.out.println("Channel ID      n1     n2     balances              base/ppm fees             outbound/inbound");
 
+        for (var channel: node.getChannels().values()) {
+            int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
+            System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
+        }
+
+        System.out.println("--------------");
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();
         System.out.println("Graph nodes:" + vertex);
         System.out.println("Graph channels:" + edges);
         System.out.println("Graph null policies: "+node.getChannelGraph().countNullPolicies());
+        System.out.println("--------------");
         node.showQueuesStatus();
     }
 
@@ -247,7 +254,15 @@ public class UltraViolet {
             }
         }));
 
-        menuItems.add(new MenuItem("nodes", "Show All Nodes ", x -> networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println)));
+        menuItems.add(new MenuItem("nodes", "Show All Nodes ", x -> {
+            System.out.println("Pubkey   Alias                # channels  Local/Remote balances");
+            System.out.println("---------------------------------------------------------------------");
+            for (var n: networkManager.getUVNodeList().values()) {
+                System.out.println(n);
+            }
+            return;
+        }
+        ));
         menuItems.add(new MenuItem("node", "Show Node ", x -> {
             System.out.print("insert node public key:");
             String node = scanner.nextLine();
