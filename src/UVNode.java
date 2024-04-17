@@ -689,7 +689,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         debug("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
         updateOnchainPending(getOnchainPending()+channel_size);
 
-        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, 0, 0, uvManager.getConfig().to_self_delay, this.pubkey);
+        //Both sides of the channel are forced by the other side to keep 1% of funds in the channel on their side. This is in order to ensure cheating always costs something (at least 1% of the channel balance).
+        int reserve = (int)(0.01*channel_size);
+        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, reserve, 0, uvManager.getConfig().to_self_delay, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request);
     }
@@ -1049,15 +1051,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // check for expired htlc
     }
 
-
-    private boolean advanceChannelStatus(String channel_id, int node1_balance, int node2_balance ) {
-
-        var channel = channels.get(channel_id);
-        channel.newCommitment(node1_balance,node2_balance);
-        return true;
-    }
-
-
     /**
      * Move sat from local side to the other side of the channel, update balance accordingly
      * @param channel_id
@@ -1069,17 +1062,19 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var channel = this.channels.get(channel_id);
         String peer_id = getChannelPeer(channel_id).getPubKey();
 
+        var outbound_liquidity = channel.getLiquidity(this.getPubKey());
         var local_balance = channel.getBalance(this.getPubKey());
         var remote_balance = channel.getBalance(peer_id);
 
-        if (local_balance-amount>=0) {
+        // actually available outbound liquidity = local_balance - 1% channel_reserve - pending
+        if (outbound_liquidity>=amount) {
             if (channel.getNode1PubKey().equals(this.getPubKey()))
                 channel.newCommitment(local_balance-amount,remote_balance+amount);
             else
                 channel.newCommitment(remote_balance+amount,local_balance-amount);
         }
         else {
-            log("pushSats: Insufficient funds in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
+            log("pushSats: Insufficient outbound liquidity in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
             return false;
         }
         return true;
@@ -1101,7 +1096,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             size = getGossipMsgQueue().size();
         else size = 0;
 
-        return String.format("%-5s %-25s %-4s %-3d %-16s %-10d %-10d", pubkey, "("+alias+")", "#ch:", channels.size(), "(local/remote):", this.getLocalBalance(),this.getRemoteBalance());
+        return String.format("%-6s %-30s %-4d %-12d %-12d", pubkey, alias,  channels.size(),  this.getLocalBalance(),this.getRemoteBalance());
     }
 
     /**
@@ -1190,7 +1185,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     }
 
 
-    private double getOutboundFraction(String channel_id) {
+    public double getOutboundFraction(String channel_id) {
         var channel = channels.get(channel_id);
         var channel_size = channel.getCapacity();
         var local_balance = channel.getBalance(getPubKey());
