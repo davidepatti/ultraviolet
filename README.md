@@ -30,8 +30,8 @@ The design principles of UV can be summarized in the following:
 
 ## Quick Start
 
-* compile from src dir: `./compile.sh`
-* the just execute:  _`java UltraViolet ../uv_configs/template.properties`_
+* compile using the script from src dir: `./compile.sh`
+* return to the main directory and execute:  _`java -jar UltraViolet.jar ./uv_configs/template.properties`_
 
 The basic template file just considers 100 nodes for a quick test, but by customizing the properties file you can
 experiment play with larger networks and other aspects of the deployed LN, including nodes behavior, channels,
