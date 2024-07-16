@@ -12,11 +12,11 @@ public class UVNetworkManager {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
-    private HashMap<String, UVNode> uvnodes;
+    private final HashMap<String, UVNode> uvnodes;
 
     private ArrayList<String> pubkeys_list;
 
-    private Random random;
+    private final Random random;
     private UVTimechain UVTimechain;
 
     private boolean bootstrap_started = false;
