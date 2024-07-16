@@ -3,18 +3,18 @@ import java.io.Serializable;
 public interface LNChannel {
     class Policy implements Serializable {
 
-        final int cltv;
+        final int cltv_delta;
         final int base_fee;
         final int fee_ppm;
 
-        public Policy(int cltv, int base_fee, int fee_ppm) {
-            this.cltv = cltv;
+        public Policy(int cltv_delta, int base_fee, int fee_ppm) {
+            this.cltv_delta = cltv_delta;
             this.base_fee = base_fee;
             this.fee_ppm = fee_ppm;
         }
 
-        public int getCLTV() {
-            return cltv;
+        public int getCLTVDelta() {
+            return cltv_delta;
         }
 
         public int getBaseFee() {

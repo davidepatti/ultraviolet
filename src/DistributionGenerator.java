@@ -3,7 +3,7 @@ import java.util.Random;
 
 public class DistributionGenerator {
 
-    private static Random random = new Random();
+    private static final Random random = new Random();
 
     // Generates initial samples within specified bounds and median
     private static double[] generateUniformSamplesWithMedian(int size, double lowerLimit, double upperLimit, double median) {
