@@ -38,7 +38,7 @@ public class UVConfig implements Serializable {
     final public boolean debug;
 
 
-    private Random random;
+    private final Random random;
     @Serial
     private static final long serialVersionUID = 120678L;
 
