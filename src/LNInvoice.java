@@ -9,6 +9,10 @@ public class LNInvoice implements Serializable {
     private final String destination;
     private final String message;
     @SuppressWarnings("FieldCanBeLocal")
+    //	The min_final_cltv_expiry_delta is set by the final recipient of the payment
+    //  and communicated via invoice to each node in the path
+    //  The sender constructs the payment route, they use the min_final_cltv_expiry_delta
+    //  to calculate the CLTV expiry for the final hop.
     private final int min_cltv_expiry = 9; // antonop 339
 
     public LNInvoice(String paymentHash, int amount, String recipient, String message) {
