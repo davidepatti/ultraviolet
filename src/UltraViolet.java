@@ -9,7 +9,6 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private final UVConfig config;
     private final UVNetworkManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
@@ -186,7 +185,6 @@ public class UltraViolet {
     }
 
     public UltraViolet(UVConfig config) {
-        this.config = config;
         this.networkManager = new UVNetworkManager(config);
 
         ArrayList<MenuItem> menuItems = new ArrayList<>();
@@ -257,10 +255,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("nodes", "Show All Nodes ", x -> {
             System.out.println("Pubkey   Alias                # channels  Local/Remote balances");
             System.out.println("---------------------------------------------------------------------");
-            for (var n: networkManager.getUVNodeList().values()) {
-                System.out.println(n);
-            }
-            return;
+            networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println);
         }
         ));
         menuItems.add(new MenuItem("node", "Show Node ", x -> {
