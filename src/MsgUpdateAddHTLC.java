@@ -7,14 +7,14 @@ public class MsgUpdateAddHTLC extends P2PMessage {
     private final OnionLayer onionPacket;
 
 
-    public MsgUpdateAddHTLC(String channel_id, int id, int amount, String hash, int cltv, OnionLayer onion_packet) {
+    public MsgUpdateAddHTLC(String channel_id, int id, int amount, String hash, int cltv_expiry, OnionLayer onion_packet) {
 
         super(Type.UPDATE_ADD_HTLC);
         this.channel_id = channel_id;
         this.id = id;
         this.amount = amount;
         this.payment_hash = hash;
-        this.cltv_expiry = cltv;
+        this.cltv_expiry = cltv_expiry;
         this.onionPacket = onion_packet;
     }
 
@@ -52,7 +52,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
                 ", id:" + id +
                 ", amt:" + amount +
                 ", hash:'" + Kit.shortString(payment_hash) + '\'' +
-                ", cltv:" + cltv_expiry +
+                ", cltv_expiry:" + cltv_expiry +
                 '}';
     }
 }
