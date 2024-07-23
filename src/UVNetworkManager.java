@@ -237,12 +237,25 @@ public class UVNetworkManager {
 
 
     public void waitForEmptyQueues(int check_period) {
+
+        int warning_timeout = 10000; // 10 sec
+
         boolean queues_empty = false;
+
         while (!queues_empty) {
             queues_empty = true;
             for (UVNode node : getUVNodeList().values()) {
                 if (!node.areQueuesEmpty())  {
                     System.out.print("#");
+
+                    if (warning_timeout>0) {
+                        warning_timeout -= check_period;
+                    }
+                    else {
+                        check_period = 1000;
+                        node.showQueuesStatus();
+                    }
+
                     try {
                         Thread.sleep(check_period);
                     } catch (InterruptedException e) {
@@ -481,10 +494,6 @@ public class UVNetworkManager {
         log(s);
     }
 
-    /**
-     * Save the current network status to file
-     * @param file destination file
-     */
     public void saveStatus(String filename) {
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
             print_log("Bootstrap incomplete, cannot save");
