@@ -23,19 +23,25 @@ public class UltraViolet {
         var node = networkManager.findLNNode(pubkey);
 
         System.out.println("Channel ID      n1     n2     balances              base/ppm fees             outbound/inbound");
+        System.out.println("--------------------------------------------");
 
         for (var channel: node.getChannels().values()) {
             int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
             System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
         }
 
-        System.out.println("--------------");
+        System.out.println("--------------------------------------------");
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();
         System.out.println("Graph nodes:" + vertex);
         System.out.println("Graph channels:" + edges);
         System.out.println("Graph null policies: "+node.getChannelGraph().countNullPolicies());
-        System.out.println("--------------");
+        System.out.println("--------------------------------------------");
+
+        System.out.println("*** NODE STATS ");
+        System.out.println("--------------------------------------------");
+        System.out.println(node.getNodeStats());
+        System.out.println("--------------------------------------------");
         node.showQueuesStatus();
     }
 
@@ -117,7 +123,7 @@ public class UltraViolet {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.findLNNode(start).getPaths(destination,stopfirst);
+        var paths = networkManager.findLNNode(start).getChannelGraph().findPath(start,destination,stopfirst);
 
         if (paths.size()>0) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {
@@ -126,12 +132,6 @@ public class UltraViolet {
         }
         else System.out.println("NO PATH FOUND");
     }
-
-
-    /**
-     *
-     * @param f
-     */
 
 
     private void showQueueCommand(UVNode node) {
