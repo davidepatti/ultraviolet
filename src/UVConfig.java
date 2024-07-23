@@ -147,7 +147,9 @@ public class UVConfig implements Serializable {
 
         } catch (FileNotFoundException e) {
             System.out.println("Config file not found:"+config_file);
+            System.out.println("Current directory:" + System.getProperty("user.dir"));
             System.out.println("\n[PRESS ENTER TO EXIT...]");
+
             new Scanner(System.in).nextLine();
             System.exit(-1);
         } catch (
