@@ -156,7 +156,7 @@ public class GlobalStats {
 
     public String generateInvoiceReport() {
 
-        var s = new StringBuilder("\nhash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, success_htlc");
+        var s = new StringBuilder("\nhash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, temporary failures, expiry_too_soon, success_htlc");
 
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (!node.getInvoiceReports().isEmpty()) {
@@ -194,12 +194,15 @@ public class GlobalStats {
                                 int miss_local_liquidity,
                                 int miss_fees,
                                 int attempted_paths,
+                                int temporary_channel_failures,
+                                int expiry_too_soon,
                                 boolean htlc_routing_success) implements Serializable {
 
         @Override
         public String toString() {
             return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," + miss_capacity +
-                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + htlc_routing_success;
+                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + temporary_channel_failures +
+                    "," + expiry_too_soon + "," + htlc_routing_success;
         }
 
     }
