@@ -329,6 +329,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         int miss_local_liquidity = 0;
         int miss_max_fees = 0;
         int miss_policy = 0;
+        int unknonw_reason = 0;
 
         var totalPaths = this.getChannelGraph().findPath(this.getPubKey(),invoice.getDestination(),false);
         var candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
@@ -425,9 +426,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 } else {
                     var reason = failure_reason.get(invoice.getHash());
 
+                    if (reason==null) reason = "unknown";
+
                     log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
 
                     //  PROBLEM WHEN null !!
+                    log("Evaluating failure reason...");
                     switch (reason) {
                         case "expiry_too_soon":
                             expiry_too_soon++;
@@ -440,6 +444,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                             break;
                         default:
                             debug("No reason for failure of "+invoice.getHash());
+                            unknonw_reason++;
                             break;
                     }
                     if (showui) System.out.println("Could not route invoice: " + invoice.getHash());
@@ -1307,10 +1312,18 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             System.out.println(element);
         }
 
+        int i=0;
         System.out.println("pendingInvoices.values()");
         for(var value : pendingInvoices.values()) {
             System.out.println(value);
+            i++;
         }
+        if (i != pendingInvoices.size()) {
+            var s = this.getPubKey() + ": WARNING : For pendingInvoices .values() are " + i + " while .size() returns " + pendingInvoices.size();
+            log(s);
+            System.out.println(s);
+        }
+
 
         System.out.println("pendingHTLC.values()");
         for(var value : pendingHTLC.values()) {
