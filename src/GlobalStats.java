@@ -156,7 +156,7 @@ public class GlobalStats {
 
     public String generateInvoiceReport() {
 
-        var s = new StringBuilder("\nhash,sender,dest,amount,total_paths,candidate_paths,fail_capacity, miss_out_liquidity, exceed_fees, attempted, temporary failures, expiry_too_soon, success_htlc");
+        var s = new StringBuilder("\nhash,sender,dest,amount,total_paths,candidate_paths,fail_capacity,miss_out_liquidity,exceed_fees,attempted,temporary_failures,expiry_too_soon,success_htlc");
 
             for (UVNode node: uvm.getUVNodeList().values()) {
                 if (!node.getInvoiceReports().isEmpty()) {
