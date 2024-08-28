@@ -22,7 +22,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
     private static class NodeStats implements Serializable{
         // this refers to the invoices processed
-        public ArrayList<GlobalStats.InvoiceReport> invoiceReports = new ArrayList<>();
+        public final ArrayList<GlobalStats.InvoiceReport> invoiceReports = new ArrayList<>();
         // these refer to partecipation in HTLC routings
         private int HTLC_success = 0;
         private int HTLC_failure = 0;
@@ -392,8 +392,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             // routing stats
             // TODO: conservative large delay of one 1/10 of block, i.e., 1 virtual minute for each attempt, could be far less
-            final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
-            //final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1)/10;
+            //final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
+            final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1)/10;
 
             pendingInvoices.put(invoice.getHash(), invoice);
 
@@ -404,6 +404,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 log("Trying path "+attempted_paths+ " of "+candidatePaths.size()+" for invoice "+invoice.getHash());
 
                 routeInvoiceOnPath(invoice, path);
+                log("Waiting for pending HTLC "+invoice.getHash());
+
                 while (pendingHTLC.containsKey(invoice.getHash())) {
                     try {
                         //System.out.println("WAITING...");
@@ -412,6 +414,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                         throw new RuntimeException(e);
                     }
                 }
+                log("Cleared pending HTLC "+invoice.getHash());
+
 
                 if (payedInvoices.containsKey(invoice.getHash())) {
                     if (showui) System.out.println(" Successfully routed invoice " + invoice.getHash());
@@ -421,6 +425,9 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                 } else {
                     var reason = failure_reason.get(invoice.getHash());
 
+                    log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
+
+                    //  PROBLEM WHEN null !!
                     switch (reason) {
                         case "expiry_too_soon":
                             expiry_too_soon++;
@@ -435,7 +442,6 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                             debug("No reason for failure of "+invoice.getHash());
                             break;
                     }
-                    log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
                     if (showui) System.out.println("Could not route invoice: " + invoice.getHash());
                 }
             }
@@ -636,7 +642,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                     // this set the reason of current HTLC routing attempt failure, so that we can make some invoice specific stats
                     failure_reason.put(hash,msg.getReason());
                     nodeStats.HTLC_failure++;
-                    debug("Original sender of "+msg+ " recognize failure due to "+msg.getReason());
+                    log("Original sender of "+msg+ " recognize failure due to "+msg.getReason());
                 }
                 return;
             }
@@ -1157,13 +1163,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         final int max = 20;
         int n = 0;
 
-        while (channelsAcceptedQueue.size()>0 && n++ < max) {
+        while (!channelsAcceptedQueue.isEmpty() && n++ < max) {
             var msg = channelsAcceptedQueue.poll();
             channelAccepted(msg);
         }
         n = 0;
 
-        while (channelsToAcceptQueue.size()>0 && n++ < max ) {
+        while (!channelsToAcceptQueue.isEmpty() && n++ < max ) {
             var msg = channelsToAcceptQueue.poll();
             acceptChannel(msg);
         }

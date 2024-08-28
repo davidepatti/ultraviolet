@@ -125,7 +125,7 @@ public class UltraViolet {
 
         var paths = networkManager.findLNNode(start).getChannelGraph().findPath(start,destination,stopfirst);
 
-        if (paths.size()>0) {
+        if (!paths.isEmpty()) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {
                 System.out.println(ChannelGraph.pathString(path));
             }
