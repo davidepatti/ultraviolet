@@ -365,7 +365,7 @@ public class UltraViolet {
 
             if (networkManager.isBootstrapCompleted())  {
                 System.out.print("Enter description prefix:");
-                var prefix = new Scanner(System.in).nextLine();
+                var prefix = scanner.nextLine();
                 var s = new StringBuilder(prefix).append(".");
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
                 s.append(sdf.format(new Date())).append(".csv");
@@ -406,13 +406,13 @@ public class UltraViolet {
         menuItems.add(new MenuItem("bal", "Set Local Channels balances", x -> {
             System.out.println("This will set the local balance of channels initiators");
             System.out.print("Enter a local level [0..1]:");
-            double level = new Scanner(System.in).nextDouble();
+            double level = scanner.nextDouble();
             networkManager.setLocalBalances(level,10000);
         }));
         menuItems.add(new MenuItem("adj", "Adjust Local Channels balances", x -> {
             System.out.println("This will set the local balance of channels initiators");
             System.out.print("Enter an adjustment factor:");
-            double level = new Scanner(System.in).nextDouble();
+            double level = scanner.nextDouble();
             networkManager.adjustLocalBalances(level,10000);
         }));
         menuItems.add(new MenuItem("q", "Quit ", x -> quit = true));
