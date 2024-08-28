@@ -74,7 +74,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private ConcurrentHashMap<Long, LNInvoice> generatedInvoices = new ConcurrentHashMap<>();
-    transient private HashMap<String, LNInvoice> pendingInvoices = new HashMap<>();
+    transient private ConcurrentHashMap<String, LNInvoice> pendingInvoices = new ConcurrentHashMap<>();
     transient private HashMap<String, LNInvoice> payedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
     transient private ConcurrentHashMap<String, MsgUpdateAddHTLC> pendingHTLC = new ConcurrentHashMap<>();
@@ -129,7 +129,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public Queue<MsgUpdateFailHTLC> getUpdateFailHTLCQueue() {
         return updateFailHTLCQueue;
     }
-    public HashMap<String, LNInvoice> getPendingInvoices() {
+    public ConcurrentHashMap<String, LNInvoice> getPendingInvoices() {
         return pendingInvoices;
     }
     public HashMap<String, LNInvoice> getPayedInvoices() {
@@ -1446,7 +1446,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             this.pendingHTLC = new ConcurrentHashMap<>();
             this.sentChannelOpenings = new HashMap<>();
             this.updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
-            this.pendingInvoices = new HashMap<>();
+            this.pendingInvoices = new ConcurrentHashMap<>();
             this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
             this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
             this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
