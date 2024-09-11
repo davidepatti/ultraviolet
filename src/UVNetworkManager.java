@@ -657,10 +657,10 @@ public class UVNetworkManager {
 
         // node_events_per_block = 0.01 -> each node has (on average) one event every 100 blocks
         // so, if there are 1000 nodes, 10 node events will happen globally at each block
-        int events_per_block = (int)(pubkeys_list.size()*node_events_per_block);
-        int total_events = events_per_block*blocks_duration;
+        double events_per_block = pubkeys_list.size()*node_events_per_block;
+        int expected_total_events = (int)(events_per_block*blocks_duration);
 
-        print_log("Generating " +total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
+        print_log("Generating " +expected_total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
 
         int end = getTimechain().getCurrentBlock()+blocks_duration;
 
@@ -684,6 +684,13 @@ public class UVNetworkManager {
         waitForBlocks(1);
         for (int nb = 0; nb < blocks_duration; nb++) {
             int current_block = getTimechain().getCurrentBlock();
+
+            // when events per block are < 1, use a probabilistic approach to determine if the are 0 or one event
+            if (events_per_block < 1) {
+                double r = random.nextDouble(1);
+                if (r<=events_per_block) events_per_block =1;
+            }
+
             for (int eb = 0; eb<events_per_block; eb++ ) {
                 var sender = getRandomNode();
                 UVNode dest;
