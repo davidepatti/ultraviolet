@@ -428,9 +428,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
                     if (reason==null) reason = "unknown";
 
-                    log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
-
-                    //  PROBLEM WHEN null !!
+                    // TOFIX: reason should not be null
                     log("Evaluating failure reason...");
                     switch (reason) {
                         case "expiry_too_soon":
@@ -447,6 +445,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
                             unknonw_reason++;
                             break;
                     }
+                    log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
+
                     if (showui) System.out.println("Could not route invoice: " + invoice.getHash());
                 }
             }
@@ -1319,7 +1319,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             i++;
         }
         if (i != pendingInvoices.size()) {
-            var s = this.getPubKey() + ": WARNING : For pendingInvoices .values() are " + i + " while .size() returns " + pendingInvoices.size();
+            var s = "WARNING: For pendingInvoices .values() are " + i + " while .size() returns " + pendingInvoices.size();
             log(s);
             System.out.println(s);
         }
