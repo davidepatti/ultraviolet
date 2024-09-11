@@ -465,7 +465,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         failure_reason.remove(invoice.getHash());
 
 
-        var report = new GlobalStats.InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, temporary_channel_failure, expiry_too_soon, success_htlc);
+        var report = new GlobalStats.InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_policy, miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, temporary_channel_failure, expiry_too_soon, success_htlc);
         //log("Adding report: "+report);
         nodeStats.invoiceReports.add(report);
     }
