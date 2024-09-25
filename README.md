@@ -1,6 +1,12 @@
 # UltraViolet
-
 _**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
+
+
+## Paper
+D. Patti, S. Monteleone, E. Russo, M. Palesi and V. Catania, "A Novel Timechain-Level Approach to the Modeling of the Bitcoin Lightning Network," in 2024 IEEE International Conference on Blockchain (Blockchain), Copenhagen, Denmark, 2024 pp. 11-18.
+
+
+## Description
 
 UltraViolet (UV) is an open-source extensible high-level simulation platform for the Bitcoin
 Lightning Network, abstracting some of the major complexities of the underlying elements, while still providing a
