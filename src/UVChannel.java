@@ -43,6 +43,12 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public UVChannel(String channel_id, String pub1, String pub2, int fundingSatoshis, int channelReserveSatoshis, int pushMsat, boolean init_direction) {
 
+        // node1 and node2 field are assumed according lexographical order
+        if (pub1.compareTo(pub2)>=0) {
+            System.out.println("FATAL: wrong lexographical order node1, node2 = "+pub1+","+pub2);
+            System.exit(-1);
+        }
+
         this.channel_id = channel_id;
         this.init_direction = init_direction;
         this.reserve = channelReserveSatoshis;
@@ -58,19 +64,23 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     }
     // constructor only fill the "proposal" for the channel
-    public UVChannel(String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
+    // node1 and node2 field are arranged according lexographical order
+    public static UVChannel buildFromProposal(String initiator, String peer, int fundingSatoshis, int channelReserveSatoshis, int pushMsat) {
+        String node1,node2;
+        boolean init_direction;
+
         if (initiator.compareTo(peer)<0) {
-            node1 = new NodeData(initiator, null, fundingSatoshis-pushMsat, 0);
-            node2 = new NodeData(peer, null, pushMsat, 0);
+            node1 = initiator;
+            node2 = peer;
             init_direction = true;
         }
         else {
-            node2 = new NodeData(initiator, null, fundingSatoshis-pushMsat, 0);
-            node1 = new NodeData(peer, null, pushMsat, 0);
+            node1 = peer;
+            node2 = initiator;
             init_direction = false;
         }
-        this.channel_id = "id_"+node1.pubkey +"_"+node2.pubkey;
-        this.reserve = channelReserveSatoshis;
+        String channel_id = "id_"+node1 +"_"+node2;
+        return new UVChannel(channel_id,node1,node2,fundingSatoshis,channelReserveSatoshis,pushMsat,init_direction);
     }
 
     public String getChannel_id() {

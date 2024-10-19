@@ -929,7 +929,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var timestamp = uvManager.getTimechain().getCurrentBlock();
         var request = sentChannelOpenings.get(peer_id);
         sentChannelOpenings.remove(peer_id);
-        var newChannel = new UVChannel(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
+        var newChannel = UVChannel.buildFromProposal(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
 
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
         updateOnchainPending(getOnchainPending()-request.getFunding());
