@@ -48,8 +48,9 @@ public class ChannelGraph implements Serializable  {
         var node2pub = channel.getNode2PubKey();
 
         if (this.hasChannel(id)) {
-            System.out.println(" FATAL: calling addChannel with existing edge for channel "+channel.getId()+" node1:"+node1pub+" node2:"+node2pub);
-            System.exit(-1);
+            System.out.println(" WARNING: skipping addChannel on "+root_node+ ", existing edge for channel "+channel.getId());
+            return;
+            //System.exit(-1);
         }
 
         adj_map.putIfAbsent(node1pub, new HashSet<>());
