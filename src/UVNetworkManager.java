@@ -392,7 +392,8 @@ public class UVNetworkManager {
                 int capacity = Integer.parseInt((String) edgeObject.get("capacity"));
 
                 // TODO: get real init direction
-                UVChannel ch = new UVChannel(channel_id,node1_pub,node2_pub,capacity,0,0,true);
+                boolean direction = random.nextBoolean();
+                UVChannel ch = new UVChannel(channel_id,node1_pub,node2_pub,capacity,0,0,direction);
 
                 var uvnode1 = uvnodes.get(node1_pub);
                 var uvnode2 = uvnodes.get(node2_pub);
