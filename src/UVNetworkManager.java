@@ -750,17 +750,29 @@ public class UVNetworkManager {
         }
     }
 
-    // resize th current local balance by some factor
-    public void adjustLocalBalances(double factor, int min_delta) {
+    public void setRandomLiquidity(int min_delta) {
+
+        // for each node, scan each channel
+        // if the node is the initiator of the channel, compute a random local balance
+        // ensure don't falling below reserve balance
 
         for (UVNode node : this.getUVNodeList().values()) {
             for (UVChannel channel: node.getChannels().values()) {
                 if (node.getPubKey().equals(channel.getInitiator())) {
                     final int current_local_liquidity = channel.getLiquidity(node.getPubKey());
-                    int target_local = (int)(factor* current_local_liquidity);
+                    double rand = random.nextDouble(0,1);
+                    int target_local = (int)(rand* channel.getCapacity());
                     int delta = current_local_liquidity-target_local;
-                    if (delta>min_delta)
-                        node.pushSats(channel.getChannel_id(), delta);
+                    if (target_local>channel.getReserve()) {
+                        if (delta> 0) {
+                            if (delta>min_delta)
+                                node.pushSats(channel.getChannel_id(), delta);
+                        }
+                        else {
+                            UVNode peer = getUVNode(channel.getNonInitiator());
+                            peer.pushSats(channel.getChannel_id(), -delta);
+                        }
+                    }
                 }
             }
         }

@@ -409,11 +409,8 @@ public class UltraViolet {
             double level = scanner.nextDouble();
             networkManager.setLocalBalances(level,10000);
         }));
-        menuItems.add(new MenuItem("adj", "Adjust Local Channels balances", x -> {
-            System.out.println("This will set the local balance of channels initiators");
-            System.out.print("Enter an adjustment factor:");
-            double level = scanner.nextDouble();
-            networkManager.adjustLocalBalances(level,10000);
+        menuItems.add(new MenuItem("rndbal", "Set Random Channels balances", x -> {
+            networkManager.setRandomLiquidity(10000);
         }));
         menuItems.add(new MenuItem("q", "Quit ", x -> quit = true));
 
