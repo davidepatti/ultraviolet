@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private final UVNetworkManager networkManager;
+    private final UVManager networkManager;
     boolean quit = false;
     private String imported_graph_root;
 
@@ -185,7 +185,7 @@ public class UltraViolet {
     }
 
     public UltraViolet(UVConfig config) {
-        this.networkManager = new UVNetworkManager(config);
+        this.networkManager = new UVManager(config);
 
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);
@@ -423,7 +423,7 @@ public class UltraViolet {
             System.out.println("__________________________________________________");
             menuItems.forEach(System.out::println);
             System.out.println("__________________________________________________");
-            System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlock());
+            System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
             if (!networkManager.getTimechain().isRunning()) System.out.println(" (NOT RUNNING)");
             else System.out.println(" Running...");
             System.out.println("__________________________________________________");

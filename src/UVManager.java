@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class UVNetworkManager {
+public class UVManager {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
@@ -100,7 +100,7 @@ public class UVNetworkManager {
     /**
      * Constructor
      */
-    public UVNetworkManager(UVConfig config) {
+    public UVManager(UVConfig config) {
         this.uvConfig = config;
         random = new Random();
         if (config.seed!=0) random.setSeed(config.seed);
@@ -188,7 +188,7 @@ public class UVNetworkManager {
                 }
                 bootstraps_running++;
                 bootstrapExecutor.submit(()->bootstrapNode(node));
-                last_issue_block = getTimechain().getCurrentBlock();
+                last_issue_block = getTimechain().getCurrentBlockHeight();
                 current_index++;
                 pubkeys_list.add(node.getPubKey());
             }
@@ -483,7 +483,7 @@ public class UVNetworkManager {
     public void log(String s) {
         try {
 
-            logfile.write("\n[block "+ UVTimechain.getCurrentBlock()+"]:"+s);
+            logfile.write("\n[block "+ UVTimechain.getCurrentBlockHeight()+"]:"+s);
             logfile.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -594,7 +594,7 @@ public class UVNetworkManager {
 
     private void waitForBlocks(int blocks) {
         if (blocks==0) return;
-        var ready_to_go = getTimechain().getTimechainLatch(blocks);
+        var ready_to_go = getTimechain().getWaitBlocksLatch(blocks);
         try {
             ready_to_go.await();
         } catch (InterruptedException e) {
@@ -663,7 +663,7 @@ public class UVNetworkManager {
 
         print_log("Generating " +expected_total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
 
-        int end = getTimechain().getCurrentBlock()+blocks_duration;
+        int end = getTimechain().getCurrentBlockHeight()+blocks_duration;
 
         print_log("Expected end after block "+end);
 
@@ -684,7 +684,7 @@ public class UVNetworkManager {
         // so to be sure to align to a just found block timing
         waitForBlocks(1);
         for (int nb = 0; nb < blocks_duration; nb++) {
-            int current_block = getTimechain().getCurrentBlock();
+            int current_block = getTimechain().getCurrentBlockHeight();
 
             // when events per block are < 1, use a probabilistic approach to determine if the are 0 or one event
             if (events_per_block < 1) {
@@ -707,7 +707,7 @@ public class UVNetworkManager {
             }
             // we are still in the same block after all traffic has been generated
             // not sure if this check is required, but doing it for sanity check
-            int current_block2 = getTimechain().getCurrentBlock();
+            int current_block2 = getTimechain().getCurrentBlockHeight();
             if (current_block2==current_block)
                 waitForBlocks(1);
             //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);

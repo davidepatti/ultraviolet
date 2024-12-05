@@ -60,7 +60,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private int onchainPending = 0;
 
     // serialized and restored manually, to avoid stack overflow
-    transient private UVNetworkManager uvManager;
+    transient private UVManager uvManager;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ChannelGraph channelGraph;
     transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
@@ -90,7 +90,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param alias   an alias
      * @param funding initial onchain balance
      */
-    public UVNode(UVNetworkManager manager, String pubkey, String alias, int funding, UVConfig.NodeProfile profile) {
+    public UVNode(UVManager manager, String pubkey, String alias, int funding, UVConfig.NodeProfile profile) {
         this.uvManager = manager;
         this.pubkey = pubkey;
         this.alias = alias;
@@ -240,7 +240,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     /**
      * @param uvm
      */
-    public void setUVM(UVNetworkManager uvm) {
+    public void setUVM(UVManager uvm) {
         this.uvManager = uvm;
     }
 
@@ -258,7 +258,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    public boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
+    private boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
 
         for (ChannelGraph.Edge e : path) {
             if (e.capacity() < amount) return false;
@@ -491,7 +491,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
         final int amount = invoice.getAmount();
-        final int baseBlockHeight = uvManager.getTimechain().getCurrentBlock();
+        final int baseBlockHeight = uvManager.getTimechain().getCurrentBlockHeight();
         final var finalCLTV = baseBlockHeight+invoice.getMinFinalCltvExpiry();
 
         // last layer is the only one with the secret
@@ -510,6 +510,8 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             var source = path.get(n).source();
             var dest = path.get(n).destination();
 
+            // TODO UVMODEL: used only by node, should be a service from the node itself ?
+            // point to clarify: it is used for searching own nodes or in general ?
             var path_channel = uvManager.getChannelFromNodes(source,dest);
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
@@ -674,7 +676,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Processing: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
-        int currentBlock = uvManager.getTimechain().getCurrentBlock();
+        int currentBlock = uvManager.getTimechain().getCurrentBlockHeight();
         int cltv_expiry = msg.getCLTVExpiry();
         var incomingPeer = getChannelPeer(msg.getChannel_id());
 
@@ -909,10 +911,11 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
         // bolt: received funding_signed
-        uvManager.getTimechain().broadcastTx(funding_tx);
+        // UVMODE TODO: this should move to UVNetork
+        uvManager.getTimechain().addToMempool(funding_tx);
 
 
-        int taget_block = uvManager.getTimechain().getCurrentBlock()+acceptMessage.getMinimum_depth();
+        int taget_block = uvManager.getTimechain().getCurrentBlockHeight()+acceptMessage.getMinimum_depth();
 
         waitingFundings.put(funding_tx.txId(),new fundingConfirmation(taget_block, funding_tx.txId(),peerPubKey));
     }
@@ -926,7 +929,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         log("Confirmed funding tx "+tx_id);
 
-        var timestamp = uvManager.getTimechain().getCurrentBlock();
+        var timestamp = uvManager.getTimechain().getCurrentBlockHeight();
         var request = sentChannelOpenings.get(peer_id);
         sentChannelOpenings.remove(peer_id);
         var newChannel = UVChannel.buildFromProposal(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
@@ -980,7 +983,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         channelGraph.addLNChannel(newChannel);
         channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
 
-        var timestamp = uvManager.getTimechain().getCurrentBlock();
+        var timestamp = uvManager.getTimechain().getCurrentBlockHeight();
         // here sender is set as current node, all the other peers should receive the update
         String sender = this.getPubKey();
         var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
@@ -997,7 +1000,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      */
    private void broadcastToPeers(String fromID, GossipMsg msg) {
 
-       var current_age = uvManager.getTimechain().getCurrentBlock() -msg.getTimeStamp();
+       var current_age = uvManager.getTimechain().getCurrentBlockHeight() -msg.getTimeStamp();
        if (current_age> uvManager.getConfig().p2p_max_age) return;
        if (msg.getForwardings()>= uvManager.getConfig().p2p_max_hops)  return;
 
@@ -1143,7 +1146,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     private synchronized void checkTimechainTxConfirmations() {
 
         if (!waitingFundings.isEmpty()) {
-            final int current_block = uvManager.getTimechain().getCurrentBlock();
+            final int current_block = uvManager.getTimechain().getCurrentBlockHeight();
             var to_be_removed = new ArrayList<String>();
 
             for (var tx: waitingFundings.values()) {

@@ -6,9 +6,9 @@ import java.util.stream.DoubleStream;
 @SuppressWarnings("OptionalGetWithoutIsPresent")
 public class GlobalStats {
 
-    private final UVNetworkManager uvm;
+    private final UVManager uvm;
 
-    public GlobalStats(UVNetworkManager uv_manager) {
+    public GlobalStats(UVManager uv_manager) {
         uvm = uv_manager;
     }
 
