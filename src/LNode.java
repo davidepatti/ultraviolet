@@ -9,6 +9,5 @@ public interface LNode {
     String getAlias();
     LNInvoice generateInvoice(int amount,String msg);
     ArrayList<LNChannel> getLNChannelList();
-    void deliverMessage(P2PMessage message);
     int getNodeCapacity();
 }

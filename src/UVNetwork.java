@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class UVManager implements LNetwork {
+public class UVNetwork implements LNetwork {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
@@ -17,7 +17,7 @@ public class UVManager implements LNetwork {
     private ArrayList<String> pubkeys_list;
 
     private final Random random;
-    private UVTimechain UVTimechain;
+    private UVTimechain uvTimechain;
 
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
@@ -100,7 +100,7 @@ public class UVManager implements LNetwork {
     /**
      * Constructor
      */
-    public UVManager(UVConfig config) {
+    public UVNetwork(UVConfig config) {
         this.uvConfig = config;
         random = new Random();
         if (config.seed!=0) random.setSeed(config.seed);
@@ -113,7 +113,7 @@ public class UVManager implements LNetwork {
         }
 
         this.uvnodes = new HashMap<>();
-        UVTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
+        uvTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
         print_log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
@@ -452,9 +452,14 @@ public class UVManager implements LNetwork {
         return uvnodes.get(pubkey);
     }
 
+    @Override
+    public void deliverMessage(UVNode peer, P2PMessage message) {
+        peer.deliverMessage(message);
+    }
+
 
     public UVTimechain getTimechain() {
-        return UVTimechain;
+        return uvTimechain;
     }
 
     /**
@@ -482,7 +487,7 @@ public class UVManager implements LNetwork {
     public void log(String s) {
         try {
 
-            logfile.write("\n[block "+ UVTimechain.getCurrentBlockHeight()+"]:"+s);
+            logfile.write("\n[block "+ uvTimechain.getCurrentBlockHeight()+"]:"+s);
             logfile.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -515,7 +520,7 @@ public class UVManager implements LNetwork {
             print_log("Saving config...");
             f.writeObject(uvConfig);
             print_log("Saving timechain...");
-            f.writeObject(UVTimechain);
+            f.writeObject(uvTimechain);
             print_log("Saving UVNodes...");
             f.writeInt(uvnodes.size());
 
@@ -543,8 +548,8 @@ public class UVManager implements LNetwork {
             print_log("Loading config...");
             this.uvConfig = (UVConfig)s.readObject();
             print_log("Loading timechain status...");
-            this.UVTimechain = (UVTimechain)s.readObject();
-            this.UVTimechain.setUVM(this);
+            this.uvTimechain = (UVTimechain)s.readObject();
+            this.uvTimechain.setUVM(this);
 
             print_log("Loading UVNodes...");
             int num_nodes = s.readInt();

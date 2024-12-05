@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 
 public class UltraViolet {
 
-    private final UVManager networkManager;
+    private final UVNetwork networkManager;
     boolean quit = false;
     private String imported_graph_root;
 
@@ -185,7 +185,7 @@ public class UltraViolet {
     }
 
     public UltraViolet(UVConfig config) {
-        this.networkManager = new UVManager(config);
+        this.networkManager = new UVNetwork(config);
 
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         var scanner = new Scanner(System.in);

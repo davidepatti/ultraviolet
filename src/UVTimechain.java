@@ -14,17 +14,17 @@ public class UVTimechain implements Runnable, Serializable, Timechain {
     private final List<Block>  blockChain = new LinkedList<>();
     boolean running = false;
 
-    transient private UVManager uvm;
+    transient private UVNetwork uvm;
 
 
-    public UVTimechain(int blocktime, UVManager uvManager) {
+    public UVTimechain(int blocktime, UVNetwork uvNetwork) {
         current_height = 0;
         this.blocktime = blocktime;
         this.running = false;
-        this.uvm = uvManager;
+        this.uvm = uvNetwork;
     }
 
-    public void setUVM(UVManager uvm) {
+    public void setUVM(UVNetwork uvm) {
         this.uvm = uvm;
     }
 

@@ -6,10 +6,10 @@ import java.util.stream.DoubleStream;
 @SuppressWarnings("OptionalGetWithoutIsPresent")
 public class GlobalStats {
 
-    private final UVManager uvm;
+    private final UVNetwork uvNetwork;
 
-    public GlobalStats(UVManager uv_manager) {
-        uvm = uv_manager;
+    public GlobalStats(UVNetwork network) {
+        uvNetwork = network;
     }
 
     public static class StatFunctions {
@@ -83,17 +83,17 @@ public class GlobalStats {
 
     public UVNode getMaxGraphSizeNode() {
 
-        Optional<UVNode> max = uvm.getUVNodeList().values().stream().max(Comparator.comparingInt(e -> e.getChannelGraph().getNodeCount()));
+        Optional<UVNode> max = uvNetwork.getUVNodeList().values().stream().max(Comparator.comparingInt(e -> e.getChannelGraph().getNodeCount()));
         return max.orElse(null);
     }
     public UVNode getMinGraphSizeNode() {
 
-        Optional<UVNode> max = uvm.getUVNodeList().values().stream().min(Comparator.comparingInt(e -> e.getChannelGraph().getNodeCount()));
+        Optional<UVNode> max = uvNetwork.getUVNodeList().values().stream().min(Comparator.comparingInt(e -> e.getChannelGraph().getNodeCount()));
         return max.orElse(null);
     }
 
     public double getAverageGraphSize() {
-        return uvm.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).average().getAsDouble();
+        return uvNetwork.getUVNodeList().values().stream().mapToDouble(e->e.getChannelGraph().getNodeCount()).average().getAsDouble();
     }
 
 
@@ -117,19 +117,19 @@ public class GlobalStats {
 
 // DoubleStream Variables
         System.out.println("Calculating node count...");
-        DoubleStream graphNodeStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getNodeCount());
+        DoubleStream graphNodeStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getNodeCount());
         System.out.println("Calculating channel graph sizes... ");
-        DoubleStream graphChannelStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getChannelCount());
+        DoubleStream graphChannelStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getChannelCount());
         System.out.println("Calculating node channels count... ");
-        DoubleStream channelNumberStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLNChannelList().size());
+        DoubleStream channelNumberStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getLNChannelList().size());
         System.out.println("Calculating node capacities... ");
-        DoubleStream nodeCapacityStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getNodeCapacity());
+        DoubleStream nodeCapacityStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getNodeCapacity());
         System.out.println("Calculating local balances... ");
-        DoubleStream lightingBalanceStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
+        DoubleStream lightingBalanceStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
         System.out.println("Calculating outbound fraction... ");
-        DoubleStream outboundFractionStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getOverallOutboundFraction());
+        DoubleStream outboundFractionStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getOverallOutboundFraction());
         System.out.println("Calculating node node invoice count... ");
-        DoubleStream generatedInvoicesStream = uvm.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
+        DoubleStream generatedInvoicesStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
 
         System.out.println("Generating stats...");
         String s1 = generateStatsItem("Graph Nodes",graphNodeStream);
@@ -158,7 +158,7 @@ public class GlobalStats {
 
         var s = new StringBuilder("\nhash,sender,dest,amt,tot_paths,cand_paths,no_policy,fail_cap,miss_out_liquidity,exceed_fees,attempts,temp_failures,expiry,success");
 
-            for (UVNode node: uvm.getUVNodeList().values()) {
+            for (UVNode node: uvNetwork.getUVNodeList().values()) {
                 if (!node.getInvoiceReports().isEmpty()) {
                     for (InvoiceReport report: node.getInvoiceReports()) {
                         s.append("\n").append(report);
