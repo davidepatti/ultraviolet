@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class UVManager {
+public class UVManager implements Network {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
@@ -315,6 +315,7 @@ public class UVManager {
     /**
      *
      */
+    @Override
     public Optional<LNChannel> getChannelFromNodes(String pub1, String pub2) {
         // as the name suggests, the usage of this method assumes that at max ONE channel
         // is present between nodes. It should never be used when multiple channels
@@ -434,6 +435,7 @@ public class UVManager {
         return this.uvnodes;
     }
 
+    @Override
     public UVNode findLNNode(String pubkey) {
 
         var node = getUVNode(pubkey);
@@ -446,10 +448,12 @@ public class UVManager {
         return node;
     }
 
+    @Override
     public UVNode getUVNode(String pubkey) {
         return uvnodes.get(pubkey);
     }
 
+    @Override
     public P2PNode getP2PNode(String pubkey) {
         return uvnodes.get(pubkey);
     }
