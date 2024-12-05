@@ -20,7 +20,7 @@ public class UltraViolet {
             System.out.println("EMPTY NODE LIST");
             return;
         }
-        var node = networkManager.findLNNode(pubkey);
+        var node = networkManager.searchNode(pubkey);
 
         System.out.println("Channel ID      n1     n2     balances              base/ppm fees             outbound/inbound");
         System.out.println("--------------------------------------------");
@@ -82,10 +82,10 @@ public class UltraViolet {
         Scanner scanner = new Scanner(System.in);
         System.out.print("Starting node public key:");
         String start_id = scanner.nextLine();
-        var sender = networkManager.findLNNode(start_id);
+        var sender = networkManager.searchNode(start_id);
         System.out.print("Destination node public key:");
         String end_id = scanner.nextLine();
-        var dest = networkManager.findLNNode(end_id);
+        var dest = networkManager.searchNode(end_id);
         System.out.print("Invoice amount:");
         int amount = Integer.parseInt(scanner.nextLine());
         System.out.print("Max fees:");
@@ -123,7 +123,7 @@ public class UltraViolet {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.findLNNode(start).getChannelGraph().findPath(start,destination,stopfirst);
+        var paths = networkManager.searchNode(start).getChannelGraph().findPath(start,destination,stopfirst);
 
         if (!paths.isEmpty()) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {
@@ -179,7 +179,7 @@ public class UltraViolet {
     private void showGraphCommand(String node_id) {
 
         if (!networkManager.isBootstrapCompleted()) return;
-        var n = networkManager.findLNNode(node_id);
+        var n = networkManager.searchNode(node_id);
         System.out.println(n.getChannelGraph());
         System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
     }
@@ -279,7 +279,7 @@ public class UltraViolet {
             if (!networkManager.isBootstrapCompleted()) return;
             System.out.print("Insert node public key:");
             String node_id = scanner.nextLine();
-            var node = networkManager.findLNNode(node_id);
+            var node = networkManager.searchNode(node_id);
             showQueueCommand(node);
         }));
         menuItems.add(new MenuItem("qs", "Show Queues Status", x -> {

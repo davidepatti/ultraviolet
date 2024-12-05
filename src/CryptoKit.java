@@ -10,12 +10,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-public class Kit {
+public class CryptoKit {
 
 
     /***************************************************************************/
     public static byte[] encodeVarStr(byte[] str) {
-        return Kit.addLenPrefix(str);
+        return CryptoKit.addLenPrefix(str);
     }
 
     /***************************************************************************/
@@ -32,7 +32,7 @@ public class Kit {
     /***************************************************************************/
     public static byte[] addLenPrefix(byte[] bytes) {
         long len = bytes.length;
-        var varint = Kit.encodeVarint(len);
+        var varint = CryptoKit.encodeVarint(len);
         var bos = new ByteArrayOutputStream();
         try {
             assert varint != null;
@@ -169,10 +169,10 @@ public class Kit {
         }
 
         var combined = num.toByteArray();
-        var cobined_hex = Kit.bytesToHexString(combined);
+        var cobined_hex = CryptoKit.bytesToHexString(combined);
         var len = combined.length;
         byte[] checksum_start = Arrays.copyOfRange(combined,len-4,len);
-        var checksum_start_hex = Kit.bytesToHexString(checksum_start);
+        var checksum_start_hex = CryptoKit.bytesToHexString(checksum_start);
         var original = Arrays.copyOfRange(combined,0,len-4);
         var computed_checksum = hash256(original);
         var computed_checksim_start = Arrays.copyOfRange(computed_checksum,0,4);
@@ -353,8 +353,8 @@ public class Kit {
 
     /***************************************************************************/
     public static String reverseByteString(String s) {
-        var bytes = Kit.hexStringToByteArray(s);
-        return Kit.bytesToHexString(Kit.reverseBytes(bytes));
+        var bytes = CryptoKit.hexStringToByteArray(s);
+        return CryptoKit.bytesToHexString(CryptoKit.reverseBytes(bytes));
     }
 
     /***************************************************************************/

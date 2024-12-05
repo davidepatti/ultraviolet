@@ -18,7 +18,7 @@ public interface Timechain {
                               String node2_pub) implements Serializable {
         @Override
         public String toString() {
-            return "Tx{0x" + Kit.shortString(txId) + "," + type + ", amt:" + amount + ", node1:" + node1_pub + ", node2:" + node2_pub + '}';
+            return "Tx{0x" + CryptoKit.shortString(txId) + "," + type + ", amt:" + amount + ", node1:" + node1_pub + ", node2:" + node2_pub + '}';
         }
     }
 

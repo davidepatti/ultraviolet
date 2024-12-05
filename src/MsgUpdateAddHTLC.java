@@ -51,7 +51,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
                 "ch:'" + channel_id + '\'' +
                 ", id:" + id +
                 ", amt:" + amount +
-                ", hash:'" + Kit.shortString(payment_hash) + '\'' +
+                ", hash:'" + CryptoKit.shortString(payment_hash) + '\'' +
                 ", cltv_expiry:" + cltv_expiry +
                 '}';
     }

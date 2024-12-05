@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-public class UVManager implements Network {
+public class UVManager implements LNetwork {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
@@ -435,8 +435,7 @@ public class UVManager implements Network {
         return this.uvnodes;
     }
 
-    @Override
-    public UVNode findLNNode(String pubkey) {
+    public UVNode searchNode(String pubkey) {
 
         var node = getUVNode(pubkey);
         while (node==null) {
@@ -453,10 +452,6 @@ public class UVManager implements Network {
         return uvnodes.get(pubkey);
     }
 
-    @Override
-    public P2PNode getP2PNode(String pubkey) {
-        return uvnodes.get(pubkey);
-    }
 
     public UVTimechain getTimechain() {
         return UVTimechain;

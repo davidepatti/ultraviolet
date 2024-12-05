@@ -3,7 +3,7 @@ import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
+public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     private final UVConfig.NodeProfile profile;
 
@@ -63,7 +63,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     transient private UVManager uvManager;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ChannelGraph channelGraph;
-    transient private ConcurrentHashMap<String, P2PNode> peers = new ConcurrentHashMap<>();
+    transient private ConcurrentHashMap<String, UVNode> peers = new ConcurrentHashMap<>();
     transient private boolean p2pIsRunning = false;
     transient private ArrayList<String> saved_peers_id;
     transient public ScheduledFuture<?> p2pHandler;
@@ -157,7 +157,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     public ArrayList<LNChannel> getLNChannelList() {
         return new ArrayList<>(this.channels.values());
     }
-    public ConcurrentHashMap<String, P2PNode> getPeers() {
+    public ConcurrentHashMap<String, UVNode> getPeers() {
         return peers;
     }
     public ChannelGraph getChannelGraph() {
@@ -178,12 +178,12 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
      * @param channel_id
      * @return
      */
-    private P2PNode getChannelPeer(String channel_id) {
+    private UVNode getChannelPeer(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
-            return uvManager.getP2PNode(channel.getNode2PubKey());
+            return uvManager.getUVNode(channel.getNode2PubKey());
         else
-            return uvManager.getP2PNode(channel.getNode1PubKey());
+            return uvManager.getUVNode(channel.getNode1PubKey());
     }
 
     public synchronized int getOnChainBalance() {
@@ -251,7 +251,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
     @Override
     public LNInvoice generateInvoice(int amount,String msg) {
         long R = ThreadLocalRandom.current().nextInt();
-        var H = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(R).toByteArray()));
+        var H = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(R).toByteArray()));
         var invoice = new LNInvoice(H, amount, this.getPubKey(), msg);
         if (generatedInvoices == null) generatedInvoices = new ConcurrentHashMap<>();
         generatedInvoices.put(R, invoice);
@@ -465,7 +465,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         failure_reason.remove(invoice.getHash());
 
 
-        var report = new GlobalStats.InvoiceReport(Kit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_policy, miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, temporary_channel_failure, expiry_too_soon, success_htlc);
+        var report = new GlobalStats.InvoiceReport(CryptoKit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_policy, miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, temporary_channel_failure, expiry_too_soon, success_htlc);
         //log("Adding report: "+report);
         nodeStats.invoiceReports.add(report);
     }
@@ -544,7 +544,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
 
-        sendToPeer(uvManager.getP2PNode(first_hop),update_htcl);
+        sendToPeer(uvManager.getUVNode(first_hop),update_htcl);
         pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
     }
 
@@ -562,7 +562,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
         var preimage = msg.getPayment_preimage();
         var channel_id = msg.getChannel_id();
-        var computed_hash = Kit.bytesToHexString(Kit.sha256(BigInteger.valueOf(preimage).toByteArray()));
+        var computed_hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
         var channel_peer_id = getChannelPeer(channel_id).getPubKey();
         log("Fulfilling invocice hash " + computed_hash + " received from "+channel_peer_id+ " via " + channel_id);
 
@@ -686,7 +686,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
 
             for (long s: generatedInvoices.keySet()) {
                 var preimage_bytes = BigInteger.valueOf(s).toByteArray();
-                var hash = Kit.bytesToHexString(Kit.sha256(preimage_bytes));
+                var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(preimage_bytes));
                 if (hash.equals(secret)) {
                     var own_invoice =  generatedInvoices.get(s);
                     log("Received HTLC on own invoice "+own_invoice);
@@ -841,7 +841,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             return;
         }
 
-        var peer = uvManager.getP2PNode(peerPubKey);
+        var peer = uvManager.getUVNode(peerPubKey);
         peers.putIfAbsent(peer.getPubKey(),peer);
         var tempChannelId = generateTempChannelId(peerPubKey);
 
@@ -886,7 +886,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
         }
         log("Accepting channel "+ temporary_channel_id);
-        var channel_peer = uvManager.getP2PNode(initiator_id);
+        var channel_peer = uvManager.getUVNode(initiator_id);
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
         var acceptance = new MsgAcceptChannel(temporary_channel_id, uvManager.getConfig().minimum_depth, uvManager.getConfig().to_self_delay,this.getPubKey());
         sendToPeer(channel_peer,acceptance);
@@ -903,7 +903,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         var peerPubKey = acceptMessage.getFundingPubkey();
 
         log("Channel accepted by peer "+ peerPubKey+ " ("+temp_channel_id+")");
-        var pseudo_hash = Kit.bytesToHexString(Kit.hash256(temp_channel_id));
+        var pseudo_hash = CryptoKit.bytesToHexString(CryptoKit.hash256(temp_channel_id));
 
         var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
         // TODO: pubkeys should be lexically ordered, not based on initiator
@@ -1004,13 +1004,13 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
        if (current_age> uvManager.getConfig().p2p_max_age) return;
        if (msg.getForwardings()>= uvManager.getConfig().p2p_max_hops)  return;
 
-       for (P2PNode peer: peers.values()) {
+       for (UVNode peer: peers.values()) {
             if (peer.getPubKey().equals(fromID)) continue;
             sendToPeer(peer,msg);
         }
     }
 
-    private void sendToPeer(P2PNode peer, P2PMessage msg) {
+    private void sendToPeer(UVNode peer, P2PMessage msg) {
        //debug("Sending message "+msg+ " to "+peer.getPubKey());
        peer.deliverMessage(msg);
     }
@@ -1396,7 +1396,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
             }
             // saving only pubkey
             s.writeInt(peers.size());
-            for (P2PNode p:peers.values()) {
+            for (UVNode p:peers.values()) {
                 s.writeObject(p.getPubKey());
             }
 
@@ -1469,7 +1469,7 @@ public class UVNode implements LNode,P2PNode, Serializable,Comparable<UVNode> {
         // restore peers
         peers = new ConcurrentHashMap<>();
         for (String p: saved_peers_id)
-            peers.put(p, uvManager.getP2PNode(p));
+            peers.put(p, uvManager.getUVNode(p));
     }
 
 }
