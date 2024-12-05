@@ -3,40 +3,28 @@ import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
-public class UVTimechain implements Runnable, Serializable  {
+public class UVTimechain implements Runnable, Serializable, Timechain {
 
     @Serial
     private static final long serialVersionUID = 1207897L;
-    private int current_block;
+    private int current_height;
     private final int blocktime;
-    private final Set<CountDownLatch> timers = new HashSet<>();
+    private final Set<CountDownLatch> wait_blocks_latch = new HashSet<>();
     private final Set<Transaction> mempool = new HashSet<>();
     private final List<Block>  blockChain = new LinkedList<>();
     boolean running = false;
 
-    transient private UVNetworkManager uvm;
+    transient private UVManager uvm;
 
 
-    enum TxType {FUNDING_TX, COOPERATIVE_CLOSE,FORCE_CLOSE}
-    public record Transaction(String txId, TxType type, int amount, String node1_pub, String node2_pub) implements Serializable{
-        @Override
-        public String toString() {
-            return "Tx{0x"+ Kit.shortString(txId) +","+ type + ", amt:"+amount+", node1:" + node1_pub + ", node2:" + node2_pub + '}';
-        }
-    }
-
-    record Block(int height, List<Transaction> txs) implements Serializable {}
-    record ChainLocation(int height, int tx_index) {}
-
-
-    public UVTimechain(int blocktime, UVNetworkManager uvNetworkManager) {
-        current_block = 0;
+    public UVTimechain(int blocktime, UVManager uvManager) {
+        current_height = 0;
         this.blocktime = blocktime;
         this.running = false;
-        this.uvm = uvNetworkManager;
+        this.uvm = uvManager;
     }
 
-    public void setUVM(UVNetworkManager uvm) {
+    public void setUVM(UVManager uvm) {
         this.uvm = uvm;
     }
 
@@ -45,8 +33,8 @@ public class UVTimechain implements Runnable, Serializable  {
     }
 
     private synchronized void tictocNextBlock() {
-       current_block++;
-       var newBlock = new Block(current_block,new ArrayList<>(mempool));
+       current_height++;
+       var newBlock = new Block(current_height,new ArrayList<>(mempool));
        blockChain.add(newBlock);
 
        if (!newBlock.txs().isEmpty()) {
@@ -60,6 +48,7 @@ public class UVTimechain implements Runnable, Serializable  {
        mempool.clear();
     }
 
+    @Override
     public synchronized Optional<ChainLocation> getTxLocation(Transaction tx) {
 
         for (Block block: blockChain) {
@@ -70,29 +59,29 @@ public class UVTimechain implements Runnable, Serializable  {
         return Optional.empty();
     }
 
-    public int getCurrentBlock() {
-        return current_block;
+    @Override
+    public int getCurrentBlockHeight() {
+        return current_height;
     }
 
     public int getBlockToMillisecTimeDelay(int n_blocks) {
         return blocktime*n_blocks;
     }
 
-
-
-
     public synchronized int getCurrentLatches() {
-        return timers.size();
+        return wait_blocks_latch.size();
     }
 
-    public synchronized void broadcastTx( Transaction tx) {
+    @Override
+    public synchronized void addToMempool(Transaction tx) {
         mempool.add(tx);
     }
 
-    public CountDownLatch getTimechainLatch(int blocks) {
+    @Override
+    public CountDownLatch getWaitBlocksLatch(int blocks) {
         var new_latch = new CountDownLatch(blocks);
-        synchronized (timers) {
-            timers.add(new_latch);
+        synchronized (wait_blocks_latch) {
+            wait_blocks_latch.add(new_latch);
         }
         return new_latch;
     }
@@ -118,11 +107,11 @@ public class UVTimechain implements Runnable, Serializable  {
         while (isRunning()) {
             try {
                 Thread.sleep(blocktime);
-                synchronized (timers) {
-                    for (CountDownLatch t:timers ) {
+                synchronized (wait_blocks_latch) {
+                    for (CountDownLatch t: wait_blocks_latch) {
                         t.countDown();
                     }
-                    timers.removeIf(t -> t.getCount() == 0);
+                    wait_blocks_latch.removeIf(t -> t.getCount() == 0);
                 }
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
@@ -135,7 +124,7 @@ public class UVTimechain implements Runnable, Serializable  {
     @Override
     public String toString() {
         return "Timechain{" +
-                "current_block=" + current_block +
+                "current_height=" + current_height +
                 ", blocktime=" + blocktime +
                 '}';
     }
