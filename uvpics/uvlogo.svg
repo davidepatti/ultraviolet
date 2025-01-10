@@ -1,0 +1,788 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Livello_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 1803.87 763.01">
+  <defs>
+    <style>
+      body {
+        background: black
+      }
+      
+      .st0 {
+        fill: url(#Sfumatura_senza_nome_1651);
+        stroke: url(#Sfumatura_senza_nome_41);
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6, .st7, .st8, .st9, .st10 {
+        stroke-width: 6px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4, .st5, .st6, .st7, .st8, .st9, .st10, .st11 {
+        stroke-miterlimit: 10;
+      }
+
+      .st1 {
+        fill: url(#Sfumatura_senza_nome_1659);
+        stroke: url(#Sfumatura_senza_nome_49);
+      }
+
+      .st2 {
+        fill: url(#Sfumatura_senza_nome_1656);
+        stroke: url(#Sfumatura_senza_nome_46);
+      }
+
+      .st3 {
+        fill: url(#Sfumatura_senza_nome_1652);
+        stroke: url(#Sfumatura_senza_nome_42);
+      }
+
+      .st4 {
+        fill: url(#Sfumatura_senza_nome_1653);
+        stroke: url(#Sfumatura_senza_nome_43);
+      }
+
+      .st5 {
+        fill: url(#Sfumatura_senza_nome_1657);
+        stroke: url(#Sfumatura_senza_nome_47);
+      }
+
+      .st6 {
+        fill: url(#Sfumatura_senza_nome_1658);
+        stroke: url(#Sfumatura_senza_nome_48);
+      }
+
+      .st7 {
+        fill: url(#Sfumatura_senza_nome_1654);
+        stroke: url(#Sfumatura_senza_nome_44);
+      }
+
+      .st8 {
+        fill: url(#Sfumatura_senza_nome_1655);
+        stroke: url(#Sfumatura_senza_nome_45);
+      }
+
+      .st9 {
+        fill: url(#Sfumatura_senza_nome_165);
+        stroke: url(#Sfumatura_senza_nome_4);
+      }
+
+      .st10 {
+        fill: url(#Sfumatura_senza_nome_16510);
+        filter: url(#outer-glow-1);
+        stroke: url(#Sfumatura_senza_nome_410);
+      }
+
+      .st11 {
+        fill: none;
+        stroke: #41294c;
+        stroke-width: 12px;
+      }
+
+      .st12 {
+        fill: #41294c;
+      }
+
+      .st13 {
+        fill: #521760;
+        font-family: AvenirNext-Bold, 'Avenir Next';
+        font-size: 72px;
+        font-weight: 700;
+      }
+
+      
+      .node1, .node2, .node3, .node4, .node5, .node6, .node7, .node8, .node9, .node10, .node11, .node12, .node13, .node14 {
+        filter: drop-shadow(0 0 4px #cd00ff);
+        r: 16.48
+      }
+      
+       .lightning {
+         
+      
+      animation: lightning 7s ease infinite;
+      transform-origin: center;
+         stroke-width: 6px
+    }
+      
+      @keyframes lightning {
+      0%, 3%, 7%, 10%, 14%, 100% {
+        fill: url(#Sfumatura_senza_nome_16510);
+        filter: drop-shadow(0 0 0px #cd00ff);
+        stroke: url(#Sfumatura_senza_nome_410);
+        stroke-width: 6px
+      }
+      6%, 9%, 11% {
+        fill: #cd00ff;
+        filter: drop-shadow(0 0 20px #cd00ff);
+        stroke: #cd00ff;
+      }
+        99% {
+          filter: drop-shadow(0 0 30px rgba(205,0,255,0.5));
+        }
+    }
+  
+     .flash1 {
+        fill: url(#gradient_lightning_on1);
+        animation: flash1 7s linear infinite;
+        opacity:0
+      }
+      
+     .flash2 {
+        fill: url(#gradient_lightning_on2);
+        
+        opacity:0
+      }
+      
+      .flash3 {
+        fill: url(#gradient_lightning_on3);
+        animation: flash3 7s linear infinite;
+        opacity:0
+      }
+      
+      .flash4 {
+        fill: url(#gradient_lightning_on3);
+        opacity:0
+      }
+    @keyframes flash1 {
+      0%, 3%, 7%, 10%, 14%, 100% {
+        opacity: 0
+      }
+      6%, 9%, 11% {
+        opacity: 1
+      }
+    }
+      
+       @keyframes flash2 {
+      0, 3%, 5%, 14%, 100% {
+        opacity: 0
+      }
+      2%, 4% {
+        opacity: 1
+      }
+    }
+      
+      @keyframes flash3 {
+      0%, 2%, 4%, 9%, 14%, 100% {
+        opacity: 0
+      }
+      3%, 5%, 7% {
+        opacity: 1
+      }
+    }
+      
+      
+      .link1, .link2 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link1 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link1 {
+        0% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        7% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        8% {
+          stroke-dasharray: 400;
+        }
+        14%, 100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      .node1, .node2 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node1 7s ease infinite;
+      }
+      
+      @keyframes node1 {
+        0% {
+          opacity: 0;
+          r: 0
+        }
+        12% {
+          opacity: 1;
+          r: 16
+        }
+        13% {
+          opacity: 0.9;
+          r: 14
+        }
+        13.5% {
+          opacity: 1;
+          r: 16
+        }
+        17%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+      .link3, .link4, .link5 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link3 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link3 {
+        0%,5% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        12% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        13% {
+          stroke-dasharray: 400;
+        }
+        19%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+       .node3, .node4, .node5 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node3 7s ease infinite;
+      }
+      
+      @keyframes node3 {
+        0%, 5% {
+          opacity: 0;
+          r: 0
+        }
+        17% {
+          opacity: 1;
+          r: 16
+        }
+        18% {
+          opacity: 0.9;
+          r: 14
+        }
+        18.5% {
+          opacity: 1;
+          r: 16
+        }
+        22%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+      .node3, .node4 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node3b 7s ease infinite;
+      }
+      
+      @keyframes node3b {
+        0%, 5% {
+          opacity: 0;
+          r: 0
+        }
+        17% {
+          opacity: 1;
+          r: 16
+        }
+        18% {
+          opacity: 0.9;
+          r: 14
+        }
+        18.5% {
+          opacity: 1;
+          r: 16
+        }
+        22% {
+          opacity: 0;
+          r: 0
+        }
+        45% {
+          opacity: 0;
+          r: 0
+        }
+        57% {
+          opacity: 1;
+          r: 16
+        }
+        58% {
+          opacity: 0.9;
+          r: 14
+        }
+        58.5% {
+          opacity: 1;
+          r: 16
+        }
+        61%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+      
+      .link6, .link7, .link8 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link6 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link6 {
+        0%,10% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        17% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        18% {
+          stroke-dasharray: 400;
+        }
+        24%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+      .node6, .node7, .node8 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node6 7s ease infinite;
+      }
+      
+      .node6, .node7 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node6b 7s ease infinite;
+      }
+      
+      @keyframes node6 {
+        0%, 10% {
+          opacity: 0;
+          r: 0
+        }
+        22% {
+          opacity: 1;
+          r: 16
+        }
+        23% {
+          opacity: 0.9;
+          r: 14
+        }
+        23.5% {
+          opacity: 1;
+          r: 16
+        }
+        27%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      @keyframes node6b {
+        0%, 10% {
+          opacity: 0;
+          r: 0
+        }
+        22% {
+          opacity: 1;
+          r: 16
+        }
+        23% {
+          opacity: 0.9;
+          r: 14
+        }
+        23.5% {
+          opacity: 1;
+          r: 16
+        }
+        27% {
+          opacity: 0;
+          r: 0
+        }
+        40% {
+          opacity: 0;
+          r: 0
+        }
+        52% {
+          opacity: 1;
+          r: 16
+        }
+        53% {
+          opacity: 0.9;
+          r: 14
+        }
+        53.5% {
+          opacity: 1;
+          r: 16
+        }
+        56%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      .linkd1 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: linkd1 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes linkd1 {
+        0%,40% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        47%{
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        48% {
+          stroke-dasharray: 400;
+        }
+        54%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+      
+      .linkd2 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: linkd2 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes linkd2 {
+        0%,45% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        52%{
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        53% {
+          stroke-dasharray: 400;
+        }
+        59%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+      
+      .link9, .link10, .link11 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link9 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link9 {
+        0%,15% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        22% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        23% {
+          stroke-dasharray: 400;
+        }
+        29%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+      .node9, .node10, .node11 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node9 7s ease infinite;
+      }
+      
+      @keyframes node9 {
+        0%, 15% {
+          opacity: 0;
+          r: 0
+        }
+        27% {
+          opacity: 1;
+          r: 16
+        }
+        28% {
+          opacity: 0.9;
+          r: 14
+        }
+        28.5% {
+          opacity: 1;
+          r: 16
+        }
+        32%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+      .link12, .link13 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link12 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link12 {
+        0%,20% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        27% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        28% {
+          stroke-dasharray: 400;
+        }
+        34%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      .node12, .node13 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node12 7s ease infinite;
+      }
+      
+      @keyframes node12 {
+        0%, 20% {
+          opacity: 0;
+          r: 0
+        }
+        32% {
+          opacity: 1;
+          r: 16
+        }
+        33% {
+          opacity: 0.9;
+          r: 14
+        }
+        33.5% {
+          opacity: 1;
+          r: 16
+        }
+        37%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+       .link14, .link15 {
+        fill: none;
+        stroke: #cd00ff;
+        stroke-width: 12px;
+        animation: link14 7s ease infinite;
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+      }
+      
+      @keyframes link14 {
+        0%,25% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: -1000; /* Line is invisible */
+        }
+        32% {
+          stroke-dasharray: 40;
+          stroke-dashoffset: 0; /* Line fully appears */
+        }
+        33% {
+          stroke-dasharray: 400;
+        }
+        39%,100% {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000; /* Line disappears */
+        }
+      }
+      
+      
+      
+       .node14 {
+        fill: #cd00ff;
+        opacity: 0;
+        animation: node14 7s ease infinite;
+      }
+      
+      @keyframes node14 {
+        0%, 25% {
+          opacity: 0;
+          r: 0
+        }
+        37% {
+          opacity: 1;
+          r: 16
+        }
+        38% {
+          opacity: 0.9;
+          r: 14
+        }
+        38.5% {
+          opacity: 1;
+          r: 16
+        }
+        42%, 100% {
+          opacity: 0;
+          r: 0
+        }
+      }
+      
+      
+      
+    </style>
+    
+    
+    <radialGradient id="gradient_lightning_off">
+      <stop offset=".02" stop-color="#cd00ff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#cd00ff" stop-opacity="0"/>
+    </radialGradient>
+    
+     <radialGradient id="gradient_lightning_on1">
+      <stop offset=".3" stop-color="#cd00ff" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#cd00ff" stop-opacity="0"/>
+    </radialGradient>
+    
+    <radialGradient id="gradient_lightning_on2">
+      <stop offset=".5" stop-color="#cd00ff" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#cd00ff" stop-opacity="0"/>
+    </radialGradient>
+    
+    <radialGradient id="gradient_lightning_on3">
+      <stop offset=".2" stop-color="#cd00ff" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#cd00ff" stop-opacity="0"/>
+    </radialGradient>
+    
+    <linearGradient id="Sfumatura_senza_nome_165" data-name="Sfumatura senza nome 165" x1="96.98" y1="301.53" x2="96.98" y2="492" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#000"/>
+      <stop offset="1" stop-color="#4a0058"/>
+    </linearGradient>
+    <linearGradient id="Sfumatura_senza_nome_4" data-name="Sfumatura senza nome 4" x1="96.98" y1="298.53" x2="96.98" y2="495" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b639e5"/>
+      <stop offset="1" stop-color="#4a0058"/>
+    </linearGradient>
+    <linearGradient id="Sfumatura_senza_nome_1651" data-name="Sfumatura senza nome 165" x1="271.07" x2="271.07" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_41" data-name="Sfumatura senza nome 4" x1="271.07" x2="271.07" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1652" data-name="Sfumatura senza nome 165" x1="386.74" x2="386.74" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_42" data-name="Sfumatura senza nome 4" x1="386.74" x2="386.74" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1653" data-name="Sfumatura senza nome 165" x1="557.83" x2="557.83" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_43" data-name="Sfumatura senza nome 4" x1="559" x2="559" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1654" data-name="Sfumatura senza nome 165" x1="732.06" x2="732.06" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_44" data-name="Sfumatura senza nome 4" x1="732.05" x2="732.05" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1655" data-name="Sfumatura senza nome 165" x1="909.03" x2="909.03" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_45" data-name="Sfumatura senza nome 4" x1="909.05" x2="909.05" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1656" data-name="Sfumatura senza nome 165" x1="1236.14" y1="296.55" x2="1236.14" y2="492" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_46" data-name="Sfumatura senza nome 4" x1="1236.14" y1="293.55" x2="1236.14" y2="495" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1657" data-name="Sfumatura senza nome 165" x1="1425.17" x2="1425.17" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_47" data-name="Sfumatura senza nome 4" x1="1425.17" x2="1425.17" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1658" data-name="Sfumatura senza nome 165" x1="1569.27" x2="1569.27" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_48" data-name="Sfumatura senza nome 4" x1="1569.27" x2="1569.27" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+    <linearGradient id="Sfumatura_senza_nome_1659" data-name="Sfumatura senza nome 165" x1="1720.57" x2="1720.57" y2="487.02" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_49" data-name="Sfumatura senza nome 4" x1="1720.57" x2="1720.57" y2="490.02" xlink:href="#Sfumatura_senza_nome_4"/>
+
+    <linearGradient id="Sfumatura_senza_nome_16510" data-name="Sfumatura senza nome 165" x1="1002.95" y1="359.3" x2="1114.41" y2="359.3" xlink:href="#Sfumatura_senza_nome_165"/>
+    <linearGradient id="Sfumatura_senza_nome_410" data-name="Sfumatura senza nome 4" x1="999.95" y1="359.3" x2="1117.41" y2="359.3" xlink:href="#Sfumatura_senza_nome_4"/>
+    <filter id="outer-glow-1" x="999.95" y="202.25" width="117.47" height="314.09" filterUnits="userSpaceOnUse">
+      <feOffset dx="0" dy="0"/>
+      <feGaussianBlur result="blur" stdDeviation="144"/>
+      <feFlood flood-color="#a110ff" flood-opacity="1"/>
+      <feComposite in2="blur" operator="in"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <text class="st13" transform="translate(276.71 577.11)"><tspan x="0" y="0">Bitcoin Lightning Network Simulator</tspan></text>
+  <g>
+    <path class="st9" d="M170.86,447.59c-3.76,9.17-9.13,17.03-16.11,23.58-6.99,6.55-15.42,11.66-25.28,15.33-9.87,3.67-20.83,5.5-32.88,5.5s-23.23-1.83-33.01-5.5c-9.78-3.67-18.08-8.78-24.89-15.33-6.81-6.55-12.05-14.41-15.72-23.58s-5.5-19.34-5.5-30.52v-115.54h44.54v111.87c0,5.07.66,9.87,1.96,14.41,1.31,4.54,3.32,8.61,6.03,12.18,2.71,3.58,6.29,6.42,10.74,8.51,4.45,2.1,9.82,3.14,16.11,3.14s11.66-1.05,16.11-3.14,8.08-4.93,10.87-8.51c2.79-3.58,4.8-7.64,6.03-12.18,1.22-4.54,1.83-9.34,1.83-14.41v-111.87h44.8v115.54c0,11.18-1.88,21.35-5.63,30.52Z"/>
+    <path class="st0" d="M212.65,487.02v-185.5h45.06v146.46h71.79v39.04h-116.85Z"/>
+    <path class="st3" d="M409.14,339.78v147.24h-44.8v-147.24h-52.4v-38.25h149.6v38.25h-52.4Z"/>
+    <path class="st4" d="M581.28,487.02l-40.27-73.62h-15.27v73.62h-43.75v-185.5h70.74c8.91,0,17.59.92,26.07,2.75,8.47,1.83,16.07,4.94,22.79,9.3,6.72,4.37,12.09,10.13,16.11,17.29,4.02,7.16,6.03,16.07,6.03,26.72,0,12.58-3.41,23.15-10.22,31.7-6.81,8.56-16.24,14.67-28.3,18.34l48.47,79.39h-52.4ZM579.44,358.38c0-4.36-.92-7.9-2.77-10.61-1.84-2.71-4.21-4.8-7.11-6.29-2.9-1.48-6.14-2.49-9.74-3.01-3.6-.52-7.07-.79-10.4-.79h-23.96v43.23h21.32c3.68,0,7.46-.3,11.32-.92,3.86-.61,7.37-1.7,10.53-3.27,3.16-1.57,5.75-3.84,7.77-6.81,2.02-2.97,3.03-6.81,3.03-11.53Z"/>
+    <path class="st7" d="M781.44,487.02l-14.41-36.42h-71.79l-13.62,36.42h-48.73l77.81-185.5h43.49l77.03,185.5h-49.78ZM731.66,351.05l-23.58,63.67h46.64l-23.06-63.67Z"/>
+    <path class="st8" d="M930.78,487.02h-44.8l-70.22-185.5h50.3l42.97,131.52h1.05l42.71-131.52h49.52l-71.53,185.5Z"/>
+    <path class="st2" d="M1337.14,393.49c0,14.67-2.53,28.08-7.6,40.22-5.07,12.14-12.1,22.53-21.09,31.18-9,8.65-19.7,15.33-32.09,20.04-12.4,4.72-25.85,7.07-40.35,7.07s-27.9-2.36-40.22-7.07c-12.31-4.72-22.97-11.4-31.96-20.04-9-8.65-16.03-19.04-21.09-31.18-5.07-12.14-7.6-25.54-7.6-40.22s2.53-28.25,7.6-40.22c5.06-11.96,12.09-22.14,21.09-30.52,8.99-8.38,19.65-14.84,31.96-19.39,12.31-4.54,25.72-6.81,40.22-6.81s27.94,2.27,40.35,6.81c12.4,4.54,23.1,11,32.09,19.39,8.99,8.38,16.02,18.56,21.09,30.52,5.06,11.97,7.6,25.37,7.6,40.22ZM1289.2,393.49c0-8.03-1.31-15.54-3.93-22.53-2.62-6.98-6.25-12.97-10.87-17.95-4.63-4.98-10.22-8.91-16.77-11.79-6.55-2.88-13.75-4.32-21.62-4.32s-15.02,1.44-21.48,4.32c-6.46,2.88-12.05,6.81-16.77,11.79-4.72,4.98-8.34,10.96-10.87,17.95-2.53,6.99-3.8,14.5-3.8,22.53s1.31,16.11,3.93,23.19c2.62,7.07,6.24,13.14,10.87,18.21,4.63,5.07,10.17,9.04,16.64,11.92,6.46,2.88,13.62,4.32,21.48,4.32s15.02-1.44,21.48-4.32c6.46-2.88,12.05-6.85,16.77-11.92,4.72-5.06,8.38-11.13,11-18.21,2.62-7.07,3.93-14.8,3.93-23.19Z"/>
+    <path class="st5" d="M1366.75,487.02v-185.5h45.06v146.46h71.79v39.04h-116.85Z"/>
+    <path class="st6" d="M1504.56,487.02v-185.5h124.71v37.73h-81.48v35.11h77.03v35.89h-77.03v38.51h86.2v38.25h-129.43Z"/>
+    <path class="st1" d="M1742.97,339.78v147.24h-44.8v-147.24h-52.4v-38.25h149.6v38.25h-52.4Z"/>
+  </g>
+  <circle class="flash1" cx="1058.68" cy="380.91" r="363.1"/>
+  <circle class="flash2" cx="1058.68" cy="380.91" r="363.1"/>
+  <circle class="flash3" cx="1058.68" cy="380.91" r="363.1"/>
+  <circle class="flash4" cx="1058.68" cy="380.91" r="363.1"/>
+  
+  <line class="link14" x1="136.52" y1="361.66" x2="265.27" y2="453.15"/>
+  <line class="link15" x2="360.14" y2="334.88" x1="136.52" y1="361.66"/>
+  <line class="link12" x2="451.62" y2="426.04" x1="265.27" y1="453.15"/>
+  <line class="link9" x2="543.95" y2="342.18" x1="451.62" y1="426.04"/>
+  <line class="linkd1" x1="651.53" y1="445.52" x2="543.95" y2="342.18"/>
+  <line class="link6" x2="745.55" y2="342.18" x1="651.53" y1="445.52"/>
+  <line class="link5" x2="899.72" y2="373.85" x1="745.55" y1="342.18"/>
+  <line class="link13" x1="360.14" y1="334.88" x2="451.62" y2="426.04"/>
+  <line class="link7" x1="543.95" y1="342.18" x2="745.55" y2="342.18"/>
+  <line class="link1" x1="899.72" y1="373.85" x2="1040.59" y2="328.33"/>
+  <line class="link2" x1="1220.75" y1="361.66" x2="1065.43" y2="405.13"/>
+  <line class="link3" x1="1311.39" y1="433.66" x2="1220.75" y2="361.66"/>
+  <line class="link4" x1="1422.35" y1="334.88" x2="1220.75" y2="361.66"/>
+  <line class="link10" x2="1514.68" y2="426.04" x1="1609.55" y1="342.18"/>
+  <line class="link11" x1="1700.18" y1="445.52" x2="1514.68" y2="426.04"/>
+  <line class="linkd2" x1="1311.39" y1="433.66" x2="1422.35" y2="334.88"/>
+  <line class="link8" x1="1514.68" y1="426.04" x2="1422.35" y2="334.88"/>
+  <g>
+    <circle class="node5" cx="745.55" cy="342.18" r="19.48"/>
+    <circle class="node7" cx="651.53" cy="445.52" r="19.48"/>
+    <circle class="node6" cx="543.95" cy="342.18" r="19.48"/>
+    <circle class="node1" cx="899.72" cy="373.85" r="19.48"/>
+    <circle class="node9" cx="451.62" cy="426.04" r="19.48"/>
+    <circle class="node14" cx="136.52" cy="361.66" r="19.48"/>
+    <circle class="node13" cx="265.27" cy="453.15" r="19.48"/>
+    <circle class="node12" cx="360.14" cy="334.88" r="19.48"/>
+    <circle class="node2" cx="1220.75" cy="361.66" r="19.48"/>
+    <circle class="node3" cx="1311.39" cy="433.66" r="19.48"/>
+    <circle class="node4" cx="1422.35" cy="334.88" r="19.48"/>
+    <circle class="node8" cx="1514.68" cy="426.04" r="19.48"/>
+    <circle class="node10" cx="1609.55" cy="342.18" r="19.48"/>
+    <circle class="node11" cx="1700.18" cy="445.52" r="19.48"/>
+  </g>
+  <path class="lightning" d="M1044.87,390.46l-39.54-5.67c-1.82-.26-2.89-2.18-2.15-3.86l75.87-174c1.27-2.9,5.62-1.77,5.32,1.38l-12.82,132.47c-.15,1.54.99,2.91,2.53,3.04l37.78,3.19c1.94.16,3.11,2.21,2.28,3.96l-76.36,160.78c-1.36,2.86-5.67,1.59-5.27-1.54l14.72-116.65c.19-1.51-.86-2.89-2.36-3.1Z"/>
+</svg>
