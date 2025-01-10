@@ -1,7 +1,6 @@
-# UltraViolet
-_**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
+![UV](uvpics/uvlogo.svg)
 
-![screen](uvpics/uvlogo.svg)
+_**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**sible **O**n **LE**vel **T**imechain_
 
 ## Audio Introduction
 Ai-generared podcast discussion: [Google NotebookLM Audio](https://notebooklm.google.com/notebook/1a1c5193-65ed-4d0e-958e-a3c218da7831/audio)
