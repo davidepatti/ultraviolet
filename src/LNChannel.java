@@ -4,12 +4,12 @@ public interface LNChannel {
     class Policy implements Serializable {
 
         final int cltv_delta;
-        final int base_fee;
+        final int base_fee_msat;
         final int fee_ppm;
 
-        public Policy(int cltv_delta, int base_fee, int fee_ppm) {
+        public Policy(int cltv_delta, int base_fee_msat, int fee_ppm) {
             this.cltv_delta = cltv_delta;
-            this.base_fee = base_fee;
+            this.base_fee_msat = base_fee_msat;
             this.fee_ppm = fee_ppm;
         }
 
@@ -18,7 +18,7 @@ public interface LNChannel {
         }
 
         public int getBaseFee() {
-            return base_fee;
+            return base_fee_msat;
         }
 
         public int getFeePpm() {
@@ -27,7 +27,7 @@ public interface LNChannel {
 
         @Override
         public String toString() {
-            return String.format("%-5d %-5d", base_fee, fee_ppm);
+            return String.format("%-5d %-5d", base_fee_msat, fee_ppm);
         }
     }
 

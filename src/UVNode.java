@@ -294,12 +294,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    private int computeFees(int amount, int base_fee_rate, int fee_ppm_rate) {
-        double fee_ppm = fee_ppm_rate * (amount / 1e6);
-        double base_fee = base_fee_rate / (double) 1000;
-        return (int) (fee_ppm + base_fee);
-
+    private int computeFees(int amount, int base_fee_msat, int fee_ppm_rate) {
+        double fee_ppm = ((double) amount / 1e6) * fee_ppm_rate; // Ensure floating-point division
+        double base_fee = base_fee_msat / 1000.0;                // Convert msats to sats correctly
+        return (int) Math.ceil(fee_ppm + base_fee);              // Round up to avoid undercharging
     }
+
 
     private int getPathFees(ArrayList<ChannelGraph.Edge> path, int amount) {
         int fees = 0;
@@ -826,7 +826,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         updateOnchainPending(getOnchainPending()+channel_size);
 
         //Both sides of the channel are forced by the other side to keep 1% of funds in the channel on their side. This is in order to ensure cheating always costs something (at least 1% of the channel balance).
-        int reserve = (int)(0.01*channel_size);
+        double reserve_fraction = 0.01;
+        int reserve = (int)(reserve_fraction*channel_size);
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, reserve, 0, uvNetwork.getConfig().to_self_delay, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request, uvNetwork);
@@ -909,7 +910,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var channel_id = newChannel.getChannel_id();
         channels.put(channel_id,newChannel);
 
+        // in millisats
         int base_fee = uvNetwork.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
+
         int fee_ppm = getProfile().getRandomSample("ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
@@ -944,6 +947,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // setting a random policy
         int base_fee = uvNetwork.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
         int fee_ppm = getProfile().getRandomSample("ppm_fees");
+        // TODO: set some delta cltv
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
         newChannel.setPolicy(getPubKey(),newPolicy);
