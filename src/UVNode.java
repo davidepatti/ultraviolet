@@ -1236,7 +1236,51 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     public String getInfo() {
 
+        System.out.println(getInfoCSV());
         return String.format("%-10s %-30s %-,20d %-15d %.2f", pubkey, alias, getNodeCapacity(), channels.size(), getOverallOutboundFraction());
+    }
+
+    public String getInfoCSV() {
+
+        if (channels.size() == 0) {
+            return "-";
+        }
+
+        int min = Integer.MAX_VALUE;
+        int max = Integer.MIN_VALUE;
+        double sum = 0;
+
+        List<Integer> sizes = new ArrayList<>();
+        for (var channel : channels.values()) {
+            int size = channel.getCapacity();
+            sizes.add(size);
+
+            if (size < min) {
+                min = size;
+            }
+            if (size > max) {
+                max = size;
+            }
+            sum += size;
+        }
+
+        double average = sum / channels.size();
+
+        double median;
+        Collections.sort(sizes);
+        if (sizes.size() % 2 == 0)
+            median = ((double)sizes.get(sizes.size()/2) + (double)sizes.get(sizes.size()/2 - 1))/2;
+        else
+            median = (double) sizes.get(sizes.size()/2);
+
+        return String.format("%s,%s,%d,%d,%.2f,%d,%d,%.2f,%.2f,%d,%d,%d,%d,%d",
+                pubkey, alias,
+                getNodeCapacity(),
+                channels.size(),
+                getOverallOutboundFraction(),
+                max, min, average, median,
+                getNodeStats().HTLC_success, getNodeStats().HTLC_failure,
+                getNodeStats().forwarding_successes, getNodeStats().forwarding_failures, getNodeStats().forwarded_volume);
     }
 
     /**

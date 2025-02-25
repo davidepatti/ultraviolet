@@ -376,10 +376,17 @@ public class UltraViolet {
                 var rep = networkManager.getStats().generateNetworkReport();
                 var rep2 = networkManager.getStats().generateInvoiceReport();
 
+                String labels = "pubkey,alias,nodeCapacity,channels,overallOutboundFraction,maxChannelSize,minChannelSize,averageChannelSize,medianChannelSize,HTLC_success,HTCL_failure,forwarding_success,forwarding_failures,forwarded_volume";
+                StringBuilder r= new StringBuilder(labels).append('\n');
+                for (var n: networkManager.getSortedNodeListByPubkey()) {
+                    r.append(n.getInfoCSV()).append("\n");
+                }
+
                 try {
                     var fw = new FileWriter(s.toString());
                     fw.write(rep);
                     fw.write(rep2);
+                    fw.write(r.toString());
                     fw.close();
                     System.out.println("Written "+s);
                 } catch (IOException e) {

@@ -158,7 +158,7 @@ public class GlobalStats {
 
         var s = new StringBuilder("\nhash,sender,dest,amt,tot_paths,cand_paths,no_policy,fail_cap,miss_out_liquidity,exceed_fees,attempts,temp_failures,expiry,success");
 
-            for (UVNode node: uvNetwork.getUVNodeList().values()) {
+            for (UVNode node: uvNetwork.getSortedNodeListByPubkey()) {
                 if (!node.getInvoiceReports().isEmpty()) {
                     for (InvoiceReport report: node.getInvoiceReports()) {
                         s.append("\n").append(report);

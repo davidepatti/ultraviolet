@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class UVNetwork implements LNetwork {
 
@@ -432,6 +433,14 @@ public class UVNetwork implements LNetwork {
 
     public HashMap<String, UVNode> getUVNodeList(){
         return this.uvnodes;
+    }
+
+
+    public List<UVNode> getSortedNodeListByPubkey() {
+        return this.uvnodes.values()
+                .stream()
+                .sorted(Comparator.comparing(node -> Integer.valueOf(node.getPubKey().substring(2))))
+                .collect(Collectors.toList());
     }
 
     public UVNode searchNode(String pubkey) {
