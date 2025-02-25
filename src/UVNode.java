@@ -58,6 +58,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private final String alias;
     private int onchainBalance;
     private int onchainPending = 0;
+    private long last_gossip_flush = 0;
+
 
     // serialized and restored manually, to avoid stack overflow
     transient private UVNetwork uvNetwork;
@@ -391,10 +393,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             log(s.toString());
 
 
-            // routing stats
-            // TODO: conservative large delay of one 1/10 of block, i.e., 1 virtual minute for each attempt, could be far less
-            //final long delay = uvManager.getTimechain().getBlockToMillisecTimeDelay(1);
-            final long delay = uvNetwork.getTimechain().getBlockToMillisecTimeDelay(1)/10;
+            //  conservative large delay set to the same as p2p queue updates
+            // TODO: differentiate between gossip and htlc messages frequency updates
+            final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
 
             pendingInvoices.put(invoice.getHash(), invoice);
 
@@ -410,7 +411,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 while (pendingHTLC.containsKey(invoice.getHash())) {
                     try {
                         //System.out.println("WAITING...");
-                        Thread.sleep(delay);
+                        Thread.sleep(invoice_check_delay);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
@@ -857,7 +858,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
 
         if (this.hasChannelWith(initiator_id)) {
-            throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
+            //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
+            log("Warning: cannot accept channel, already a channel with "+initiator_id);
+            return;
         }
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvNetwork.getUVNode(initiator_id);
@@ -1100,14 +1103,27 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     /**
      * All the services and actions that are periodically performed by the node
      * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
+     * Starting from a base services_tick_period, different frequencies can be used
      */
     public void runServices() {
 
         try {
+            // should run at least at blocktime period speed, but we can just check at very services tick
             checkTimechainTxConfirmations();
+
+            // handled as soon as possible, just check at very services tick
             processChannelsMsgQueue();
+
+            // handled as soon as possible, just check at very services tick
             processHTLCMsgQueue();
-            processGossip();
+
+            // to avoid spam and network congestion, gossid should spread less frequenctly
+            long now = System.currentTimeMillis();
+            if (now - last_gossip_flush >= uvNetwork.getConfig().gossip_flush_period_ms) {
+                processGossip();  // or flushGossip()
+                last_gossip_flush = now;
+            }
+            //processGossip();
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1134,11 +1150,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
 
-    /**
-     * Check for incoming openchannel request/acceptance
-     */
     private void processChannelsMsgQueue() {
 
+        // TODO: this is enough for sure, but maybe move to some config constansts
         final int max = 20;
         int n = 0;
 
@@ -1154,10 +1168,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
     }
 
-    /**
-     * Check for HTLC related messages
-     */
     private void processHTLCMsgQueue() {
+        // TODO: this is enough for sure, but maybe move to some config constansts
         final int max = 20;
         int n = 0;
 
@@ -1219,12 +1231,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     @Override
     public String toString() {
-        int size;
-        if (getGossipMsgQueue()!=null)
-            size = getGossipMsgQueue().size();
-        else size = 0;
+        return getInfo();
+    }
 
-        return String.format("%-6s %-30s %-4d %-12d %-12d", pubkey, alias,  channels.size(),  this.getLocalBalance(),this.getRemoteBalance());
+    public String getInfo() {
+
+        return String.format("%-10s %-30s %-,20d %-15d %.2f", pubkey, alias, getNodeCapacity(), channels.size(), getOverallOutboundFraction());
     }
 
     /**
