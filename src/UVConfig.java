@@ -1,4 +1,3 @@
-import java.awt.image.AreaAveragingScaleFilter;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -33,7 +32,8 @@ public class UVConfig implements Serializable {
     final public int max_threads;
     final public int seed;
     final public int blocktime_ms;
-    final public int p2p_period_ms;
+    final public int node_services_tick_ms;
+    final public int gossip_flush_period_ms;
     final public String logfile;
     final public boolean debug;
 
@@ -52,7 +52,7 @@ public class UVConfig implements Serializable {
             this.name = profileName;
         }
 
-        public String getAttribute(String key) {
+        private String getAttribute(String key) {
             try {
                 if (!attributes.containsKey(key)){
                     throw new IllegalArgumentException("The provided key does not exist in the attributes map:"+key);
@@ -65,14 +65,27 @@ public class UVConfig implements Serializable {
         }
 
         public int getIntAttribute(String key) {
-            return Integer.parseInt(getAttribute(key));
+            return Integer.parseInt(Objects.requireNonNull(getAttribute(key)));
         }
         public double getDoubleAttribute(String key) {
-            return Double.parseDouble(getAttribute(key));
+            return Double.parseDouble(Objects.requireNonNull(getAttribute(key)));
         }
 
         public void addAttribute(String key, String value) {
             attributes.putIfAbsent(key, value);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            NodeProfile that = (NodeProfile) o;
+            return Objects.equals(name, that.name);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name);
         }
 
         public int getRandomSample(String key) {
@@ -163,7 +176,8 @@ public class UVConfig implements Serializable {
         bootstrap_nodes = Integer.parseInt(properties.getProperty("bootstrap_nodes"));
         max_threads = Integer.parseInt(properties.getProperty("max_threads"));
         blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
-        p2p_period_ms = Integer.parseInt(properties.getProperty("p2p_period_ms"));
+        node_services_tick_ms = Integer.parseInt(properties.getProperty("node_services_tick_ms"));
+        gossip_flush_period_ms = Integer.parseInt(properties.getProperty("gossip_flush_period_ms"));
         to_self_delay = Integer.parseInt(properties.getProperty("to_self_delay"));
         minimum_depth = Integer.parseInt(properties.getProperty("minimum_depth"));
         bootstrap_blocks = Integer.parseInt(properties.getProperty("bootstrap_blocks"));
@@ -213,24 +227,17 @@ public class UVConfig implements Serializable {
         return Integer.parseInt(getMultivalRandomItem(key));
     }
 
-    public synchronized NodeProfile getRandomProfile() {
+    // selects a profile according to some probabilistic criteria
+    public synchronized NodeProfile selectProfileBy(String attribute) {
         double p = random.nextDouble();
         double cumulativeProbability = 0.0;
         for (String profileName: profiles.keySet()) {
 
-            if (!profileName.equals("default")) {
-                try {
-                    cumulativeProbability += Double.parseDouble(profiles.get(profileName).getAttribute("prob"));
-                }
-                catch (RuntimeException e) {
-                    System.out.println("Wrong get request!");
-                    e.printStackTrace();
-                }
+            if (!profileName.equals("default"))
+                cumulativeProbability += Double.parseDouble(getProfileAttribute(profileName,attribute));
 
-            }
-            if (p <= cumulativeProbability) {
+            if (p <= cumulativeProbability)
                 return profiles.get(profileName);
-            }
         }
         return profiles.get("default");
     }
@@ -250,7 +257,8 @@ public class UVConfig implements Serializable {
                 ", max_threads=" + max_threads +
                 ", seed=" + seed +
                 ", blocktime_ms=" + blocktime_ms +
-                ", p2p_period_ms=" + p2p_period_ms +
+                ", node_services_tick_ms=" + node_services_tick_ms +
+                ", gossip_flush_period_ms=" + gossip_flush_period_ms +
                 ", logfile='" + logfile + '\'' +
                 ", random=" + random +
                 '}';

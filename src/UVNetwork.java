@@ -170,7 +170,7 @@ public class UVNetwork implements LNetwork {
 
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
         for (int n=0;n<uvConfig.bootstrap_nodes;n++) {
-            var profile = uvConfig.getRandomProfile();
+            var profile = uvConfig.selectProfileBy("prob");
             int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
             int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
             int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
@@ -287,7 +287,7 @@ public class UVNetwork implements LNetwork {
         int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.p2p_period_ms,TimeUnit.MILLISECONDS);
+            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
         }
     }
     public void stopP2PNetwork() {
@@ -306,7 +306,6 @@ public class UVNetwork implements LNetwork {
      * @return a UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
-        // TODO: to change if nodes will be closed in future versions
         var n = random.nextInt(pubkeys_list.size());
         var some_random_key = pubkeys_list.get(n);
         return uvnodes.get(some_random_key);
@@ -614,7 +613,7 @@ public class UVNetwork implements LNetwork {
         log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
         node.setP2PServices(true);
-        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.p2p_period_ms,TimeUnit.MILLISECONDS);
+        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
         // TODO: should be this an config value?
         int max_attempts = 200;
 
@@ -642,10 +641,20 @@ public class UVNetwork implements LNetwork {
                 continue;
             }
 
-            String peerPubkey;
+            boolean ok_node = false;
+            var target_profile = uvConfig.selectProfileBy("hubness");
 
-            while ((peerPubkey = getRandomNode().getPubKey()).equals(node.getPubKey()));
-            node.openChannel(peerPubkey,newChannelSize);
+            while (!ok_node) {
+                var n = random.nextInt(pubkeys_list.size());
+                var some_random_key = pubkeys_list.get(n);
+                var some_node = uvnodes.get(some_random_key);
+
+                if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
+                    node.openChannel(some_random_key,newChannelSize);
+                    ok_node = true;
+                }
+            }
+
         } // while
 
         bootstraps_running--;

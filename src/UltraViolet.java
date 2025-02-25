@@ -253,7 +253,11 @@ public class UltraViolet {
         }));
 
         menuItems.add(new MenuItem("nodes", "Show All Nodes ", x -> {
-            System.out.println("Pubkey   Alias                # channels  Local/Remote balances");
+
+
+            var s = String.format("%-10s %-30s %-20s %-15s %-15s", "Pubkey", "Alias", "Node Capacity", "Channels", "Outbound Fraction");
+
+            System.out.println(s);
             System.out.println("---------------------------------------------------------------------");
             networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println);
         }
