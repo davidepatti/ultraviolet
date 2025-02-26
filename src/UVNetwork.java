@@ -47,7 +47,7 @@ public class UVNetwork implements LNetwork {
         // get it from ulimit -a
         int max_threads = uvConfig.max_threads;
 
-        print_log("Determing appropriate pool sizes... (max threads " + max_threads + ")");
+        log("Determing appropriate pool sizes... (max threads " + max_threads + ")");
 
         bootstrap_thread_pool_size = uvConfig.bootstrap_nodes;
         p2p_thread_pool_size = bootstrap_thread_pool_size;
@@ -55,20 +55,20 @@ public class UVNetwork implements LNetwork {
         int peek_bootstrap = bootstrap_thread_pool_size + p2p_thread_pool_size;
         // during the bootstrap, 2*nodes threads could be potentially executed
         // due to bootstrap + p2p
-        print_log(" > Threads required for bootstrap nodes: "+uvConfig.bootstrap_nodes);
-        print_log(" > Threads required for p2p: "+p2p_thread_pool_size);
-        print_log(" ---> estimated peek of threads during bootstrap: "+peek_bootstrap);
+        log(" > Threads required for bootstrap nodes: "+uvConfig.bootstrap_nodes);
+        log(" > Threads required for p2p: "+p2p_thread_pool_size);
+        log(" ---> estimated peek of threads during bootstrap: "+peek_bootstrap);
 
         if (peek_bootstrap> max_threads) {
-            print_log("WARNING: bootstrap peek threads "+peek_bootstrap+ " execeeds max threads...");
-            print_log(" ---> Reducing both bootstrap and p2p threads pool sizes to "+max_threads/2);
+            log("WARNING: bootstrap peek threads "+peek_bootstrap+ " execeeds max threads...");
+            log(" ---> Reducing both bootstrap and p2p threads pool sizes to "+max_threads/2);
             bootstrap_thread_pool_size = max_threads/2;
             p2p_thread_pool_size = max_threads/2;
         }
 
         // when processing invoices, only the p2p services are running
         invoice_thread_pool_size = max_threads - p2p_thread_pool_size;
-        print_log("Setting invoice pool size to "+invoice_thread_pool_size);
+        log("Setting invoice pool size to "+invoice_thread_pool_size);
 
     }
 
@@ -116,7 +116,7 @@ public class UVNetwork implements LNetwork {
         this.uvnodes = new HashMap<>();
         uvTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
-        print_log(new Date() +":Initializing UVManager...");
+        log(new Date() +":Initializing UVManager...");
         stats = new GlobalStats(this);
         adjustThreadPoolSizes();
         loadAliasNames();
@@ -142,7 +142,7 @@ public class UVNetwork implements LNetwork {
         bootstraps_running = 0;
         bootstraps_ended = 0;
 
-        print_log("UVM: deploying nodes, configuration: "+ uvConfig);
+        log("UVM: deploying nodes, configuration: "+ uvConfig);
 
         setTimechainRunning(true);
         startP2PNetwork();
@@ -276,7 +276,7 @@ public class UVNetwork implements LNetwork {
         print_log("Launching p2p node service threads ...");
         // start p2p actions around every block
         if (p2pExecutor==null) {
-            print_log("Initializing p2p scheduled executor...");
+            log("Initializing p2p scheduled executor...");
             p2pExecutor = Executors.newScheduledThreadPool(p2p_thread_pool_size, new ThreadFactory() {
                 private final AtomicInteger counter = new AtomicInteger(0);
                 @Override
