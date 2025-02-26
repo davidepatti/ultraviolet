@@ -222,7 +222,7 @@ Marilyn Manson
 Martin Gore
 Master and Servant
 Match play
-Merry Christmas, Mr. Lawrence
+Merry Christmas Mr. Lawrence
 Mick Jagger
 Mick Rock
 Mick Ronson
@@ -540,7 +540,7 @@ Dramatic Theme
 Remember a Day
 Paintbox
 Julia Dream
-Careful with That Axe, Eugene
+Careful with That Axe Eugene
 See-Saw
 Jugband Blues
 Flaming
@@ -552,9 +552,9 @@ Point Me at the Sky
 It Would Be So Nice
 Vegetable Man
 Scream Thy Last Scream
-Heart Beat, Pig Meat
+Heart Beat Pig Meat
 Crumbling Land
-Come in Number 51, Your Time Is Up
+Come in Number 51 Your Time Is Up
 Country Song
 Unknown Song
 Love Scene Version 6
@@ -602,9 +602,9 @@ Who's Gonna Ride Your Wild Horses
 Zoo Station
 The Sweetest Thing
 Until the End of the World
-Hold Me, Thrill Me, Kiss Me, Kill Me
+Hold Me Thrill Me Kiss Me Kill Me
 Lemon
-Stay (Faraway, So Close!)
+Stay (Faraway So Close!)
 Gone
 Discothèque
 Mofo
@@ -645,8 +645,8 @@ Surrender
 Wire
 Promenade
 Indian Summer Sky
-Unchained Melody (cover)
-Everlasting Love (cover)
+Unchained Melody
+Everlasting Love
 All Along the Watchtower (cover)
 Helter Skelter (cover)
 Van Diemen's Land
@@ -692,7 +692,7 @@ Norwegian Wood (This Bird Has Flown)
 Michelle
 The Long and Winding Road
 Get Back
-Hello, Goodbye
+Hello Goodbye
 Ticket to Ride
 Octopus's Garden
 I Am the Walrus
@@ -706,9 +706,9 @@ Love Me Do
 Eight Days a Week
 We Can Work It Out
 And I Love Her
-Ob-La-Di, Ob-La-Da
+Ob-La-Di Ob-La-Da
 Back in the U.S.S.R.
-Here, There and Everywhere
+Here There and Everywhere
 Nowhere Man
 Because
 Happiness Is a Warm Gun
@@ -741,7 +741,6 @@ I'm Only Sleeping
 Fixing a Hole
 She Came in Through the Bathroom Window
 Lovely Rita
-Sgt. Pepper's Lonely Hearts Club Band (Reprise)
 Being for the Benefit of Mr. Kite!
 Tomorrow Never Knows
 The Inner Light
@@ -873,7 +872,7 @@ It's the End of the World
 Shiny Happy People
 Drive
 Orange Crush
-What's the Frequency, Kenneth?
+What's the Frequency Kenneth?
 Stand
 Fall on Me
 E-Bow the Letter
@@ -929,7 +928,7 @@ Green
 Out of Time
 Up
 Chronic Town
-Wolves, Lower
+Wolves Lower
 Radio Song
 Welcome to the Occupation
 Disturbance at the Heron House
@@ -946,10 +945,9 @@ Star Me Kitten
 Man on the Moon
 Nightswimming
 Find the River
-What's the Frequency, Kenneth?
+What's the Frequency Kenneth?
 Crush with Eyeliner
 King
-
 ChatGPT
 To Kill a Mockingbird
 1984
@@ -1043,6 +1041,3 @@ A Little Princess
 Black Beauty
 Anne of Green Gables
 The Wizard of Oz
-
-
-
