@@ -367,33 +367,48 @@ public class UltraViolet {
 
         menuItems.add(new MenuItem("wr", "Write Reports", x -> {
 
-            if (networkManager.isBootstrapCompleted())  {
-                System.out.print("Enter description prefix:");
-                var prefix = scanner.nextLine();
-                var s = new StringBuilder(prefix).append(".");
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
-                s.append(sdf.format(new Date())).append(".csv");
-                var rep = networkManager.getStats().generateNetworkReport();
-                var rep2 = networkManager.getStats().generateInvoiceReport();
-
-                String labels = "pubkey,alias,nodeCapacity,channels,overallOutboundFraction,maxChannelSize,minChannelSize,averageChannelSize,medianChannelSize,HTLC_success,HTCL_failure,forwarding_success,forwarding_failures,forwarded_volume";
-                StringBuilder r= new StringBuilder(labels).append('\n');
-                for (var n: networkManager.getSortedNodeListByPubkey()) {
-                    r.append(n.getInfoCSV()).append("\n");
-                }
-
-                try {
-                    var fw = new FileWriter(s.toString());
-                    fw.write(rep);
-                    fw.write(rep2);
-                    fw.write(r.toString());
-                    fw.close();
-                    System.out.println("Written "+s);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+            if (!networkManager.isBootstrapCompleted()) {
+                System.out.println("Bootstrap not completed!");
+                return;
             }
-            else System.out.println("Bootstrap not completed!");
+
+            var networkReport = networkManager.getStats().generateNetworkReport();
+            var invoiceReport = networkManager.getStats().generateInvoiceReport();
+
+            String labels = "pubkey,alias,capacity,channels,outbound fraction,max ch size,min ch size,average ch size,median ch size,HTLC_successes,HTCL_failures,forwarding_successes,forwarding_failures,forwarded_volume";
+            StringBuilder r= new StringBuilder(labels).append('\n');
+            for (var n: networkManager.getSortedNodeListByPubkey()) {
+                r.append(n.getInfoCSV()).append("\n");
+            }
+            var csvReport = r.toString();
+            System.out.print("Enter description prefix:");
+            var prefix = scanner.nextLine();
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
+            try {
+                // For network report
+                var filenameNetwork = new StringBuilder(prefix).append("_network.").append(sdf.format(new Date())).append(".csv");
+                var fwNetwork = new FileWriter(filenameNetwork.toString());
+                fwNetwork.write(networkReport);
+                fwNetwork.close();
+                System.out.println("Written " + filenameNetwork);
+
+                // For invoice report
+                var filenameInvoice = new StringBuilder(prefix).append("_invoice.").append(sdf.format(new Date())).append(".csv");
+                var fwInvoice = new FileWriter(filenameInvoice.toString());
+                fwInvoice.write(invoiceReport);
+                fwInvoice.close();
+                System.out.println("Written " + filenameInvoice);
+
+                // For csv report
+                var filenameCsv = new StringBuilder(prefix).append("_nodes.").append(sdf.format(new Date())).append(".csv");
+                var fwCsv = new FileWriter(filenameCsv.toString());
+                fwCsv.write(csvReport);
+                fwCsv.close();
+                System.out.println("Written " + filenameCsv);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
         } ));
 
         menuItems.add(new MenuItem("path", "Get routing paths between nodes", x -> findPathsCmd()));
