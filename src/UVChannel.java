@@ -185,6 +185,13 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         node2.balance = node2Balance;
         this.commitNumber = getLastCommitNumber()+1;
     }
+    public static String generateLabels() {
+        final String labelFormat = "%-15s %-6s %-6s %-20s %-12s %-12s";
+        String labels = String.format(labelFormat, "Channel ID", "Node 1", "Node 2",
+                "balances", "n1 base/ppm", "n2 base/ppm");
+
+        return labels;
+    }
 
     @Override
     public String toString() {
