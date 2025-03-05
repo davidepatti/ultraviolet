@@ -115,23 +115,16 @@ public class GlobalStats {
 
     public String generateNetworkReport() {
 
+        System.out.println("Generating stats...");
 // DoubleStream Variables
-        System.out.println("Calculating node count...");
         DoubleStream graphNodeStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getNodeCount());
-        System.out.println("Calculating channel graph sizes... ");
         DoubleStream graphChannelStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getChannelGraph().getChannelCount());
-        System.out.println("Calculating node channels count... ");
         DoubleStream channelNumberStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getLNChannelList().size());
-        System.out.println("Calculating node capacities... ");
         DoubleStream nodeCapacityStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getNodeCapacity());
-        System.out.println("Calculating local balances... ");
         DoubleStream lightingBalanceStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getLocalBalance());
-        System.out.println("Calculating outbound fraction... ");
         DoubleStream outboundFractionStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getOverallOutboundFraction());
-        System.out.println("Calculating node node invoice count... ");
         DoubleStream generatedInvoicesStream = uvNetwork.getUVNodeList().values().stream().mapToDouble(e -> e.getGeneratedInvoices().size());
 
-        System.out.println("Generating stats...");
         String s1 = generateStatsItem("Graph Nodes",graphNodeStream);
         String s2 = generateStatsItem("Graph Channels",graphChannelStream);
         String s3 = generateStatsItem("Node Channels",channelNumberStream);
@@ -156,11 +149,11 @@ public class GlobalStats {
 
     public String generateInvoiceReport() {
 
-        var s = new StringBuilder("\nhash,sender,dest,amt,tot_paths,cand_paths,no_policy,fail_cap,miss_out_liquidity,exceed_fees,attempts,temp_failures,expiry,success");
+        var s = new StringBuilder(NodeStats.InvoiceReport.generateInvoiceReportHeader());
 
             for (UVNode node: uvNetwork.getSortedNodeListByPubkey()) {
                 if (!node.getInvoiceReports().isEmpty()) {
-                    for (InvoiceReport report: node.getInvoiceReports()) {
+                    for (NodeStats.InvoiceReport report: node.getInvoiceReports()) {
                         s.append("\n").append(report);
                     }
                 }
@@ -184,27 +177,126 @@ public class GlobalStats {
         return -Math.log(1 - u) / lambda;
     }
 
-    public record InvoiceReport(String hash,
-                                String sender,
-                                String dest,
-                                int amt,
-                                int total_paths,
-                                int candidate_paths,
-                                int miss_policy,
-                                int miss_capacity,
-                                int miss_local_liquidity,
-                                int miss_fees,
-                                int attempted_paths,
-                                int temporary_channel_failures,
-                                int expiry_too_soon,
-                                boolean htlc_routing_success) implements Serializable {
+    static class NodeStats implements Serializable{
 
-        @Override
-        public String toString() {
-            return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," +miss_policy + ","+miss_capacity +
-                    "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + temporary_channel_failures +
-                    "," + expiry_too_soon + "," + htlc_routing_success;
+        // this refers to the invoices processed
+        public final ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
+        // these refer to partecipation in HTLC routings
+        private int invoice_processing_success = 0;
+        private int invoice_processing_failures = 0;
+        private int invoice_processing_volume = 0;
+        // local forwarding events outcome.
+        // For example, the local forwarding event can be a success, while eventually the HTLC routing could still fail
+        private int forwarding_failures = 0;
+        private int forwarding_successes = 0;
+        private int forwarded_volume = 0;
+
+        private int expiry_too_soon = 0;
+        private int temporary_channel_failure = 0;
+
+        public int getInvoiceProcessingSuccesses() { return invoice_processing_success; }
+        public int getInvoiceProcessingFailures() { return invoice_processing_failures; }
+        public int getForwarding_failures() { return forwarding_failures; }
+        public int getForwarding_successes() { return forwarding_successes; }
+        public int getForwarded_volume() { return forwarded_volume; }
+        public ArrayList<InvoiceReport> getInvoiceReports() { return invoiceReports; }
+        public void incrementInvoiceProcessingSuccessses() { this.invoice_processing_success++; }
+        public int getInvoiceProcessingVolume() { return invoice_processing_volume; }
+        public void incrementInvoiceProcessingFailures(String reason) { this.invoice_processing_failures++; }
+
+        public void incrementForwardingFailures(String reason) {
+            switch (reason) {
+                case "expiry_too_soon":
+                    expiry_too_soon++;
+                    break;
+                case "temporary_channel_failure":
+                    temporary_channel_failure++;
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid reason for forwarding failure");
+            }
+            this.forwarding_failures++;
+        }
+        public void incrementForwardingSuccesses() { this.forwarding_successes++; }
+        public void incrementForwardeVolume(int amt) { this.forwarded_volume+=amt; }
+        public void incrementInvoiceProcessingVolume(int amt) { this.invoice_processing_volume+=amt; }
+
+        public String generateHTLCStatsCSV() {
+            return invoice_processing_success + "," + invoice_processing_failures + "," + invoice_processing_volume + "," + forwarding_failures + "," + forwarding_successes + "," + forwarded_volume + "," + expiry_too_soon + "," + temporary_channel_failure;
+        }
+        public static String generateHTLCStatsHeader() {
+            return "invoice_processing_success, invoice_processing_failures, invoice_processing_volume, forwarding_failures, forwarding_successes, forwarded_volume, expiry_too_soon, temporary_channel_failure";
         }
 
+        public String generateStatsCSV(UVNode uvNode) {
+
+            if (uvNode.getChannels().isEmpty()) { return "-"; }
+
+            int min = Integer.MAX_VALUE;
+            int max = Integer.MIN_VALUE;
+            double sum = 0;
+
+            List<Integer> sizes = new ArrayList<>();
+            for (var channel : uvNode.getChannels().values()) {
+                int size = channel.getCapacity();
+                sizes.add(size);
+                if (size < min) { min = size; }
+                if (size > max) { max = size; }
+                sum += size;
+            }
+
+            double rawAverage = sum / uvNode.getChannels().size();
+            int average = (int) Math.round(rawAverage);
+
+            double rawMedian;
+            Collections.sort(sizes);
+            if (sizes.size() % 2 == 0)
+                rawMedian = ((double)sizes.get(sizes.size()/2) + (double)sizes.get(sizes.size()/2 - 1))/2;
+            else
+                rawMedian = (double) sizes.get(sizes.size()/2);
+
+            int median = (int) Math.round(rawMedian);
+
+            return String.format("%s,%s,%d,%d,%.2f,%d,%d,%d,%d,%s",
+                    uvNode.getPubKey(), uvNode.getAlias(),
+                    uvNode.getNodeCapacity(),
+                    uvNode.getChannels().size(),
+                    uvNode.getOverallOutboundFraction(),
+                    max, min, average, median,
+                    uvNode.getNodeStats().generateHTLCStatsCSV());
+        }
+        public static String generateStatsHeader() {
+            return "PubKey,Alias,Capacity,Channels,OutboundFraction,Max,Min,Average,Median,"+generateHTLCStatsHeader();
+        }
+
+        public record InvoiceReport(String hash,
+                                    String sender,
+                                    String dest,
+                                    int amt,
+                                    int total_paths,
+                                    int candidate_paths,
+                                    int miss_policy,
+                                    int miss_capacity,
+                                    int miss_local_liquidity,
+                                    int miss_fees,
+                                    int attempted_paths,
+                                    int temporary_channel_failures,
+                                    int expiry_too_soon,
+                                    boolean success) implements Serializable {
+
+            public static String generateInvoiceReportHeader() {
+                return "hash, sender, dest, amt, total_paths, candidate_paths, miss_policy, miss_capacity," +
+                        " miss_local_liquidity, miss_fees, attempted_paths, temporary_channel_failures," +
+                        " expiry_too_soon, success";
+            }
+
+            @Override
+            public String toString() {
+                return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," +miss_policy + ","+miss_capacity +
+                        "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + temporary_channel_failures +
+                        "," + expiry_too_soon + "," + success;
+            }
+
+        }
     }
 }
