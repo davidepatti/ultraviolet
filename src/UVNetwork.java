@@ -618,7 +618,7 @@ public class UVNetwork implements LNetwork {
         final var profile = node.getProfile();
         final int max_channels = profile.getIntAttribute("max_channels");
         final int min_channels = profile.getIntAttribute("min_channels");
-        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels-min_channels)+min_channels;
+        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels+1-min_channels)+min_channels;
         log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
         node.setP2PServices(true);
@@ -723,7 +723,7 @@ public class UVNetwork implements LNetwork {
                 while (dest.equals(sender));
 
                 if (max_amt==min_amt) max_amt++;
-                int amount = random.nextInt(max_amt-min_amt)+min_amt;
+                int amount = random.nextInt(max_amt+1-min_amt)+min_amt;
                 var invoice = dest.generateInvoice(amount, "to "+dest.getPubKey());
                 invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
