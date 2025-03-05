@@ -220,7 +220,7 @@ public class UVConfig implements Serializable {
     }
 
     public synchronized String getMultivalRandomItem(String key) {
-        int index = random.nextInt(getMultivalProperty(key).size()-1);
+        int index = random.nextInt(getMultivalProperty(key).size());
         return getMultivalProperty(key).get(index);
     }
     public int getMultivalPropertyRandomIntItem(String key) {
