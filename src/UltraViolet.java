@@ -25,7 +25,7 @@ public class UltraViolet {
         public MenuItem() {
             key = "";
             description = null;
-            func = null;
+            func = __ -> {};
             entry = "__________________________________________________";
         }
 
@@ -53,7 +53,7 @@ public class UltraViolet {
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         menuInputScanner = new Scanner(System.in);
 
-        menuItems.add(new MenuItem("b", "Bootstrap LN from scratch", this::bootstrapNetwork));
+        menuItems.add(new MenuItem("boot", "Bootstrap LN from scratch", this::bootstrapNetwork));
         menuItems.add(new MenuItem("t", "Start/Stop Timechain and P2P messages", this::handleTimeChainAndP2PMessages));
         menuItems.add(new MenuItem("path", "Find paths between nodes", x -> findPathsCmd()));
         menuItems.add(new MenuItem("route", "Route Invoice", x -> testInvoiceRoutingCmd()));
@@ -62,13 +62,13 @@ public class UltraViolet {
         menuItems.add(new MenuItem("rndbal", "Set Random Channels balances", this::setRandomChannelsBalances));
         menuItems.add(new MenuItem());
         menuItems.add(new MenuItem("all", "Show Nodes and Channels", this::showNodesAndChannels));
-        menuItems.add(new MenuItem("n", "Show All Nodes ", this::showAllNodes));
+        menuItems.add(new MenuItem("net", "Show All Nodes ", this::showAllNodes));
         menuItems.add(new MenuItem("node", "Show Node ", this::showNode));
         menuItems.add(new MenuItem("graph", "Show Node Graph", this::showNodeGraph));
         menuItems.add(new MenuItem("qu", "Show Node Queues", this::showNodeQueues));
         menuItems.add(new MenuItem("qs", "Show Queues Status", this::showQueuesStatus));
         menuItems.add(new MenuItem("rep", "Show Invoice Reports", this::invoiceReportsMethod));
-        menuItems.add(new MenuItem("nets", "Show Network Stats", this::showNetworkStatsMethod));
+        menuItems.add(new MenuItem("stat", "Show Network Stats", this::showNetworkStatsMethod));
         //menuItems.add(new MenuItem("reset", "Reset the UVM (experimental)", x -> { networkManager.resetUVM(); }));
         //menuItems.add(new MenuItem("free", "Try to free memory", x -> { System.gc(); }));
 
@@ -161,8 +161,7 @@ public class UltraViolet {
     }
 
     private void showAllNodes(Void unused) {
-        var formattedNodesString = getFormattedNodesString();
-        System.out.println(formattedNodesString);
+        System.out.println(UVNode.generateNodeLabelString());
         System.out.println("---------------------------------------------------------------------");
         networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println);
     }
@@ -174,7 +173,10 @@ public class UltraViolet {
         }
         var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
         for (UVNode n : ln) {
+            System.out.println("--------------------------------------------");
+            System.out.println(UVNode.generateNodeLabelString());
             System.out.println(n);
+            System.out.println(UVChannel.generateLabels());
             n.getChannels().values().forEach(System.out::println);
         }
     }
@@ -225,10 +227,10 @@ public class UltraViolet {
         var networkReport = networkManager.getStats().generateNetworkReport();
         var invoiceReport = networkManager.getStats().generateInvoiceReport();
 
-        String labels = "pubkey,alias,capacity,channels,outbound fraction,max ch size,min ch size,average ch size,median ch size,HTLC_successes,HTCL_failures,forwarding_successes,forwarding_failures,forwarded_volume";
+        String labels = GlobalStats.NodeStats.generateStatsHeader();
         StringBuilder r = new StringBuilder(labels).append('\n');
         for (var n : networkManager.getSortedNodeListByPubkey()) {
-            r.append(n.getInfoCSV()).append("\n");
+            r.append(n.nodeStats.generateStatsCSV(n)).append("\n");
         }
         var csvReport = r.toString();
         System.out.print("Enter description prefix:");
@@ -334,9 +336,6 @@ public class UltraViolet {
     }
 
 
-    private String getFormattedNodesString() {
-        return String.format("%-10s %-30s %-20s %-15s %-15s", "Pubkey", "Alias", "Node Capacity", "Channels", "Outbound Fraction");
-    }
     private void showNodeCommand(String pubkey) {
 
         if (networkManager.getUVNodeList().isEmpty()) {
@@ -344,27 +343,35 @@ public class UltraViolet {
             return;
         }
         var node = networkManager.searchNode(pubkey);
+        System.out.println("---------------------------------------------------------------------");
+        UVNode.generateNodeLabelString();
+        System.out.println(node);
 
+        System.out.println("---------------------------------------------------------------------");
         System.out.println("Channel ID      n1     n2     balances              base/ppm fees             outbound/inbound");
-        System.out.println("--------------------------------------------");
+        System.out.println("---------------------------------------------------------------------");
 
         for (var channel: node.getChannels().values()) {
             int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
             System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
         }
 
-        System.out.println("--------------------------------------------");
+        System.out.println("---------------------------------------------------------------------");
         int edges = node.getChannelGraph().getChannelCount();
         int vertex = node.getChannelGraph().getNodeCount();
-        System.out.println("Graph nodes:" + vertex);
-        System.out.println("Graph channels:" + edges);
-        System.out.println("Graph null policies: "+node.getChannelGraph().countNullPolicies());
-        System.out.println("--------------------------------------------");
-
-        System.out.println("*** NODE STATS ");
-        System.out.println("--------------------------------------------");
-        System.out.println(node.getNodeStats());
-        System.out.println("--------------------------------------------");
+        System.out.println("Graph nodes: " + vertex + " Graph channels: " + edges + " Graph null policies: " + node.getChannelGraph().countNullPolicies());
+        System.out.println("---------------------------------------------------------------------");
+        System.out.println("*** HTLC Node Statistics ");
+        System.out.println("---------------------------------------------------------------------");
+        System.out.println(GlobalStats.NodeStats.generateHTLCStatsHeader());
+        System.out.println(node.getNodeStats().generateHTLCStatsCSV());
+        System.out.println("---------------------------------------------------------------------");
+        System.out.println("*** Invoice Reports ");
+        System.out.println("---------------------------------------------------------------------");
+        System.out.println(GlobalStats.NodeStats.InvoiceReport.generateInvoiceReportHeader());
+        for (var r :node.getNodeStats().getInvoiceReports()) {
+            System.out.println(r);
+        }
         node.showQueuesStatus();
     }
 
