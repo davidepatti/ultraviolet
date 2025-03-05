@@ -6,47 +6,7 @@ import java.util.concurrent.*;
 public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     private final UVConfig.NodeProfile profile;
-
-    transient private NodeStats nodeStats = new NodeStats();
-
-    public NodeStats getNodeStats() {
-        return nodeStats;
-    }
-    private int channel_openings = 0;
-    public synchronized int getChannelOpenings() {
-        return channel_openings;
-    }
-    public synchronized void increaseChannelOpenings() {
-        channel_openings++;
-    }
-
-    private static class NodeStats implements Serializable{
-        // this refers to the invoices processed
-        public final ArrayList<GlobalStats.InvoiceReport> invoiceReports = new ArrayList<>();
-        // these refer to partecipation in HTLC routings
-        private int HTLC_success = 0;
-        private int HTLC_failure = 0;
-        // local forwarding events outcome.
-        // For example, the local forwarding event can be a success, while eventually the HTLC routing could still fail
-        private int forwarding_failures = 0;
-        private int forwarding_successes = 0;
-        private int forwarded_volume = 0;
-
-        @Override
-        public String toString() {
-            var s = new StringBuilder();
-
-            for (var inv : invoiceReports)  s.append('\n').append(inv);
-
-            s.append("HTLC_success=").append(HTLC_success).append("\n")
-            .append("HTLC_failure=").append(HTLC_failure).append("\n")
-            .append("forwarding_failures=").append(forwarding_failures).append("\n")
-            .append("forwarding_successes=").append(forwarding_successes).append("\n")
-            .append("forwarded_volume=").append(forwarded_volume).append("\n");
-
-            return s.toString();
-        }
-    }
+    transient GlobalStats.NodeStats nodeStats = new GlobalStats.NodeStats();
 
     // temporary store for an invoice failure reason
     transient private Map<String,String> failure_reason = new HashMap<>();
@@ -59,7 +19,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private int onchainBalance;
     private int onchainPending = 0;
     private long last_gossip_flush = 0;
-
+    private int channel_openings = 0;
 
     // serialized and restored manually, to avoid stack overflow
     transient private UVNetwork uvNetwork;
@@ -100,12 +60,21 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         channelGraph = new ChannelGraph(pubkey);
         this.profile = profile;
     }
+    public GlobalStats.NodeStats getNodeStats() {
+        return nodeStats;
+    }
 
     public UVConfig.NodeProfile getProfile() {
         return profile;
     }
     public Queue<GossipMsg> getGossipMessageQueue() {
         return GossipMessageQueue;
+    }
+    public synchronized int getChannelOpenings() {
+        return channel_openings;
+    }
+    public synchronized void increaseChannelOpenings() {
+        channel_openings++;
     }
     public Queue<MsgOpenChannel> getChannelsToAcceptQueue() {
         return channelsToAcceptQueue;
@@ -168,7 +137,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public String getPubKey() {
         return pubkey;
     }
-    public ArrayList<GlobalStats.InvoiceReport> getInvoiceReports() {
+    public ArrayList<GlobalStats.NodeStats.InvoiceReport> getInvoiceReports() {
         return nodeStats.invoiceReports;
     }
     @Override
@@ -333,6 +302,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int miss_policy = 0;
         int unknonw_reason = 0;
 
+        String logMessage;
+
         var totalPaths = this.getChannelGraph().findPath(this.getPubKey(),invoice.getDestination(),false);
         var candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
 
@@ -346,9 +317,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
 
             if (!checkPathCapacity(path, invoice.getAmount())) {
-                debug("Discarding path: missing capacity" + ChannelGraph.pathString(path));
-                if (showui)
-                    System.out.println("Discarding path: missing capacity" + ChannelGraph.pathString(path));
+                logMessage = "Discarding path: missing capacity" + ChannelGraph.pathString(path);
+                debug(logMessage);
+                if (showui) System.out.println(logMessage);
                 to_discard = true;
                 miss_capacity++;
             }
@@ -356,26 +327,22 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // please notice that this does not exclude further missing local liquidy events
             // that will happen at the momennt of actual reservation, and will be accoutned in another place
             if (!checkOutboundPathLiquidity(path, invoice.getAmount())) {
-                debug("Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path));
-                if (showui)
-                    System.out.println("Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path));
+                logMessage = "Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path);
+                debug(logMessage);
+                if (showui) System.out.println(logMessage);
                 to_discard = true;
                 miss_local_liquidity++;
             }
 
             if (getPathFees(path, invoice.getAmount()) > max_fees) {
-                debug("Discarding path: missing max fees " + ChannelGraph.pathString(path));
-                if (showui)
-                    System.out.println("Discarding path (exceed fees)" + ChannelGraph.pathString(path));
+                logMessage = "Discarding path: missing max fees " + ChannelGraph.pathString(path);
+                debug(logMessage);
+                if (showui) System.out.println(logMessage);
                 to_discard = true;
                 miss_max_fees++;
             }
 
-            if (!to_discard) {
-                candidatePaths.add(path);
-                if (showui)
-                    System.out.println("Added to candidates: " + ChannelGraph.pathString(path));
-            }
+            if (!to_discard)  candidatePaths.add(path);
         }
 
         boolean success_htlc = false;
@@ -384,29 +351,27 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int temporary_channel_failure = 0;
 
         if (!candidatePaths.isEmpty()) {
-            if (showui) System.out.println("Found " + candidatePaths.size() + " paths...");
 
             var s = new StringBuilder();
             s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(invoice.getHash());
             for (var path : candidatePaths)
                 s.append('\n').append(ChannelGraph.pathString(path));
             log(s.toString());
-
+            if (showui) System.out.println(s.toString());
 
             //  conservative large delay set to the same as p2p queue updates
-            // TODO: differentiate between gossip and htlc messages frequency updates
             final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
 
             pendingInvoices.put(invoice.getHash(), invoice);
 
             for (var path : candidatePaths) {
                 attempted_paths++;
-
-                if (showui) System.out.println("Trying path " + path);
-                log("Trying path "+attempted_paths+ " of "+candidatePaths.size()+" for invoice "+invoice.getHash());
+                logMessage = "Trying path " + attempted_paths + " of " + candidatePaths.size() + " for invoice " + invoice.getHash();
+                if (showui) System.out.println(logMessage);
+                log(logMessage);
 
                 routeInvoiceOnPath(invoice, path);
-                log("Waiting for pending HTLC "+invoice.getHash());
+                debug("Waiting for pending HTLC "+invoice.getHash());
 
                 while (pendingHTLC.containsKey(invoice.getHash())) {
                     try {
@@ -416,12 +381,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                         throw new RuntimeException(e);
                     }
                 }
-                log("Cleared pending HTLC "+invoice.getHash());
-
+                debug("Cleared pending HTLC "+invoice.getHash());
 
                 if (payedInvoices.containsKey(invoice.getHash())) {
-                    if (showui) System.out.println(" Successfully routed invoice " + invoice.getHash());
-                    log(" Successfully routed invoice " + invoice.getHash());
+                    String successMessage = " Successfully routed invoice " + invoice.getHash();
+                    if (showui) System.out.println(successMessage);
+                    log(successMessage);
+
                     success_htlc = true;
                     break; // exit the for cycle of trying the paths...
                 } else {
@@ -430,7 +396,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     if (reason==null) reason = "unknown";
 
                     // TOFIX: reason should not be null
-                    log("Evaluating failure reason...");
                     switch (reason) {
                         case "expiry_too_soon":
                             expiry_too_soon++;
@@ -446,28 +411,42 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             unknonw_reason++;
                             break;
                     }
-                    log("Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths);
-
-                    if (showui) System.out.println("Could not route invoice: " + invoice.getHash());
+                    logMessage = "Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths;
+                    log(logMessage);
+                    if (showui) System.out.println(logMessage);
                 }
             }
         }
 
         if (!success_htlc) {
-            log("No viable candidate paths found for:" + invoice.getHash());
-            if (showui)
-                System.out.println("Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash());
+            logMessage = "Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash();
+            log(logMessage);
+            if (showui) System.out.println(logMessage);
         }
 
-        log("Removing pending invoice for "+invoice.getHash());
+        debug("Removing pending invoice for "+invoice.getHash());
 
         // the invoice, success or not, is not useful anymore
         pendingInvoices.remove(invoice.getHash());
         failure_reason.remove(invoice.getHash());
 
 
-        var report = new GlobalStats.InvoiceReport(CryptoKit.shortString(invoice.getHash()), this.getPubKey(), invoice.getDestination(), invoice.getAmount(), totalPaths.size(), candidatePaths.size(), miss_policy, miss_capacity, miss_local_liquidity, miss_max_fees, attempted_paths, temporary_channel_failure, expiry_too_soon, success_htlc);
-        //log("Adding report: "+report);
+        var report = new GlobalStats.NodeStats.InvoiceReport(
+                CryptoKit.shortString(invoice.getHash()),
+                this.getPubKey(),
+                invoice.getDestination(),
+                invoice.getAmount(),
+                totalPaths.size(),
+                candidatePaths.size(),
+                miss_policy,
+                miss_capacity,
+                miss_local_liquidity,
+                miss_max_fees,
+                attempted_paths,
+                temporary_channel_failure,
+                expiry_too_soon,
+                success_htlc);
+
         nodeStats.invoiceReports.add(report);
     }
 
@@ -569,15 +548,16 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 var new_msg = new MsgUpdateFulFillHTLC(received_htlc.getChannel_id(),received_htlc.getId(),preimage);
                 sendToPeer(getChannelPeer(received_htlc.getChannel_id()),new_msg, uvNetwork);
                 receivedHTLC.remove(computed_hash);
-                nodeStats.HTLC_success++;
-                nodeStats.forwarded_volume += received_htlc.getAmount();
+                // I successfully partecipated to some HTLC routing, my balances will change
+                nodeStats.incrementForwardeVolume(received_htlc.getAmount());
             }
             // I offered, but did not receive the htlc, I'm initial sender?
             else {
                 if (pendingInvoices.containsKey(computed_hash)) {
                     log("LN invoice for hash "+computed_hash+ " Completed!");
                     payedInvoices.put(computed_hash,pendingInvoices.get(computed_hash));
-                    nodeStats.HTLC_success++;
+                    nodeStats.incrementInvoiceProcessingSuccessses();
+                    nodeStats.incrementInvoiceProcessingVolume(pendingInvoices.get(computed_hash).getAmount());
                 }
                 else {
                     log("FATAL: Missing pending invoice for " + computed_hash);
@@ -610,8 +590,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
                 channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
-                // I offered a HTLC with the same hash
-                // So I shoould send back the same failure msg to the previous node
+                // I previouosly forwarded this HTLC, so I shoould send back the failure msg to the previous node
+                // no stats involved, the node is not responsible for the failure
                 if (receivedHTLC.containsKey(hash)) {
                     var prev_htlc = receivedHTLC.get(hash);
                     var prev_ch_id = prev_htlc.getChannel_id();
@@ -620,7 +600,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     debug("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
                     sendToPeer(prev_peer, fail_msg, uvNetwork);
                     receivedHTLC.remove(hash);
-                    nodeStats.HTLC_failure++;
                 } // I offered, but did not receive the htlc, I'm initial sender?
                 else {
                     // The origin node can detect the sender of the error message by matching the hmac field with the computed HMAC.
@@ -629,8 +608,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     // TODO: This could be abstracted in the future if necessary, by putting some field in the fail message
 
                     // this set the reason of current HTLC routing attempt failure, so that we can make some invoice specific stats
+                    // however, no need to increase stats about invoice failures, the invoice could still succeed in another attempt...
                     failure_reason.put(hash,msg.getReason());
-                    nodeStats.HTLC_failure++;
                     log("Original sender of "+msg+ " recognize failure due to "+msg.getReason());
                 }
                 return;
@@ -640,13 +619,16 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending HTLC for "+msg);
     }
 
+    private void failHTLC(final MsgUpdateAddHTLC msg, String reason) {
+        var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), reason);
+        nodeStats.incrementForwardingFailures(reason);
+        sendToPeer(getChannelPeer(msg.getChannel_id()), fail_msg, uvNetwork);
+    }
+
     /**
      * This method is responsible for handling HTLC messages in Lightning Network.
      */
     private synchronized void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
-
-        // IMPORTANT: a failure at this point, due to fees, missing liquidity or expiration, will NOT
-        // need any pending balance removal on the outgoing channel, it wil simply not be reserved at all
 
         log("Processing: "+msg);
         final var payload = msg.getOnionPacket().getPayload();
@@ -656,6 +638,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
+
             final var secret = payload.getPayment_secret().get();
 
             for (long s: generatedInvoices.keySet()) {
@@ -663,17 +646,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(preimage_bytes));
                 if (hash.equals(secret)) {
                     var own_invoice =  generatedInvoices.get(s);
-                    log("Received HTLC on own invoice "+own_invoice);
+                    log("Received HTLC of own invoice "+own_invoice);
 
                     if (currentBlock <= cltv_expiry) {
-                        nodeStats.HTLC_success++;
                         var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
                         sendToPeer(incomingPeer,to_send, uvNetwork);
                     }
                     else {
                         log("Final node discarding late HTLC: expired in block "+cltv_expiry+ " hash:"+msg.getPayment_hash());
                         var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
-                        nodeStats.HTLC_failure++;
                         sendToPeer(incomingPeer,fail_msg, uvNetwork);
                     }
                     return;
@@ -706,29 +687,21 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         var cltv_expiry_delta = forwardingChannel.getPolicy(this.getPubKey()).getCLTVDelta();
 
-        if ( (currentBlock > cltv_expiry ) || (cltv_expiry-currentBlock) < cltv_expiry_delta )  {
-           log("Expired HTLC: cltv_expiry="+cltv_expiry + ", out cltv_expiry_delta="+cltv_expiry_delta+" , hash:"+msg.getPayment_hash());
-           var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
-           nodeStats.forwarding_failures++;
-           sendToPeer(incomingPeer,fail_msg, uvNetwork);
-           return;
-        }
-
-
-        // check liquidity to be reserved before accepting htlc add
-        debug("Checking liquidity for forwarding channel "+forwardingChannel.getId());
-        if (!forwardingChannel.reservePending(this.getPubKey(),amt_forward)) {
-            log("Not enought local liquidity to forward "+amt_forward+ " in channel "+forwardingChannel.getId());
-            var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "temporary_channel_failure");
-            nodeStats.forwarding_failures++;
-            sendToPeer(incomingPeer,fail_msg, uvNetwork);
+        if ((currentBlock > cltv_expiry) || (cltv_expiry - currentBlock) < cltv_expiry_delta) {
+            var reason = "expiry_too_soon";
+            log("Expired HTLC: cltv_expiry=" + cltv_expiry + ", out cltv_expiry_delta=" + cltv_expiry_delta + " , hash:" + msg.getPayment_hash());
+            failHTLC(msg, reason);
             return;
         }
 
-        else {
-            debug("Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
+        if (!forwardingChannel.reservePending(this.getPubKey(), amt_forward)) {
+            var reason = "temporary_channel_failure";
+            log("Not enough local liquidity to forward " + amt_forward + " in channel " + forwardingChannel.getId());
+            failHTLC(msg, reason);
+            return;
         }
 
+        debug("Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
         int cltv = payload.getOutgoingCLTV();
@@ -742,9 +715,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         debug("Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
-        nodeStats.forwarding_successes++;
-        // Forwading successfull: the pending balance will be free on fullfill by current node or
-        // by the next node if failure happens...
+        nodeStats.incrementForwardingSuccesses();
 
         var next_channel_peer = getChannelPeer(forwardingChannel.getId());
         sendToPeer(next_channel_peer,new_msg, uvNetwork);
@@ -1227,60 +1198,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-
-
+    public static String generateNodeLabelString() {
+        return String.format("%-10s %-30s %-20s %-15s", "Pubkey", "Alias", "Node Capacity", "Channels");
+    }
     @Override
     public String toString() {
-        return getInfo();
-    }
-
-    public String getInfo() {
-
-        System.out.println(getInfoCSV());
-        return String.format("%-10s %-30s %-,20d %-15d %.2f", pubkey, alias, getNodeCapacity(), channels.size(), getOverallOutboundFraction());
-    }
-
-    public String getInfoCSV() {
-
-        if (channels.size() == 0) {
-            return "-";
-        }
-
-        int min = Integer.MAX_VALUE;
-        int max = Integer.MIN_VALUE;
-        double sum = 0;
-
-        List<Integer> sizes = new ArrayList<>();
-        for (var channel : channels.values()) {
-            int size = channel.getCapacity();
-            sizes.add(size);
-
-            if (size < min) {
-                min = size;
-            }
-            if (size > max) {
-                max = size;
-            }
-            sum += size;
-        }
-
-        double average = sum / channels.size();
-
-        double median;
-        Collections.sort(sizes);
-        if (sizes.size() % 2 == 0)
-            median = ((double)sizes.get(sizes.size()/2) + (double)sizes.get(sizes.size()/2 - 1))/2;
-        else
-            median = (double) sizes.get(sizes.size()/2);
-
-        return String.format("%s,%s,%d,%d,%.2f,%d,%d,%.2f,%.2f,%d,%d,%d,%d,%d",
-                pubkey, alias,
-                getNodeCapacity(),
-                channels.size(),
-                getOverallOutboundFraction(),
-                max, min, average, median,
-                getNodeStats().HTLC_success, getNodeStats().HTLC_failure,
-                getNodeStats().forwarding_successes, getNodeStats().forwarding_failures, getNodeStats().forwarded_volume);
+        return String.format("%-10s %-30s %-,20d %-15d", pubkey, alias, getNodeCapacity(), channels.size());
     }
 
     /**
@@ -1309,44 +1232,62 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     public void showQueuesStatus() {
 
-        if (countNonEmptyQueues()!=0)
-            System.out.println("----- node " +this.getPubKey()+ "----------------------------------------------");
-
-        System.out.println("GossipMessageQueue");
-        for(var element : GossipMessageQueue) {
-            System.out.println(element);
+        if (countNonEmptyQueues()==0) {
+            System.out.println("All node's queues are empty");
+            return;
         }
 
-        System.out.println("channelsAcceptedQueue");
-        for(var element : channelsAcceptedQueue) {
-            System.out.println(element);
+        System.out.println("----- node " +this.getPubKey()+ " Queues -----------------------------------");
+
+        if (!GossipMessageQueue.isEmpty()) {
+            System.out.println("GossipMessageQueue");
+            for(var element : GossipMessageQueue) {
+                System.out.println(element);
+            }
         }
 
-        System.out.println("channelsToAcceptQueue");
-        for(var element : channelsToAcceptQueue) {
-            System.out.println(element);
+        if (!channelsAcceptedQueue.isEmpty()) {
+            System.out.println("channelsAcceptedQueue");
+            for(var element : channelsAcceptedQueue) {
+                System.out.println(element);
+            }
         }
 
-        System.out.println("updateAddHTLCQueue");
-        for(var element : updateAddHTLCQueue) {
-            System.out.println(element);
+        if (!channelsToAcceptQueue.isEmpty()) {
+            System.out.println("channelsToAcceptQueue");
+            for(var element : channelsToAcceptQueue) {
+                System.out.println(element);
+            }
         }
 
-        System.out.println("updateFulFillHTLCQueue");
-        for(var element : updateFulFillHTLCQueue) {
-            System.out.println(element);
+        if (!updateAddHTLCQueue.isEmpty()) {
+            System.out.println("updateAddHTLCQueue");
+            for(var element : updateAddHTLCQueue) {
+                System.out.println(element);
+            }
         }
 
-        System.out.println("updateFailHTLCQueue");
-        for(var element : updateFailHTLCQueue) {
-            System.out.println(element);
+        if (!updateFulFillHTLCQueue.isEmpty()) {
+            System.out.println("updateFulFillHTLCQueue");
+            for(var element : updateFulFillHTLCQueue) {
+                System.out.println(element);
+            }
         }
 
-        int i=0;
-        System.out.println("pendingInvoices.values()");
-        for(var value : pendingInvoices.values()) {
-            System.out.println(value);
-            i++;
+        if (!updateFailHTLCQueue.isEmpty()) {
+            System.out.println("updateFailHTLCQueue");
+            for(var element : updateFailHTLCQueue) {
+                System.out.println(element);
+            }
+        }
+
+        int i = 0;
+        if (!pendingInvoices.values().isEmpty()) {
+            System.out.println("pendingInvoices.values()");
+            for(var value : pendingInvoices.values()) {
+                i++;
+                System.out.println(value);
+            }
         }
         if (i != pendingInvoices.size()) {
             var s = "WARNING: For pendingInvoices .values() are " + i + " while .size() returns " + pendingInvoices.size();
@@ -1355,14 +1296,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
 
-        System.out.println("pendingHTLC.values()");
-        for(var value : pendingHTLC.values()) {
-            System.out.println(value);
+        if (!pendingHTLC.values().isEmpty()) {
+            System.out.println("pendingHTLC.values()");
+            for(var value : pendingHTLC.values()) {
+                System.out.println(value);
+            }
         }
 
-        System.out.println("pendingAcceptedChannelPeers");
-        for(var element : pendingAcceptedChannelPeers) {
-            System.out.println(element);
+        if (!pendingAcceptedChannelPeers.isEmpty()) {
+            System.out.println("pendingAcceptedChannelPeers");
+            for(var element : pendingAcceptedChannelPeers) {
+                System.out.println(element);
+            }
         }
     }
     public int countNonEmptyQueues() {
@@ -1464,7 +1409,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             //noinspection unchecked
             generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
             //invoiceReports = (ArrayList<GlobalStats.InvoiceReport>) s.readObject();
-            nodeStats = (NodeStats) s.readObject();
+            nodeStats = (GlobalStats.NodeStats) s.readObject();
             payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
             channelGraph = (ChannelGraph) s.readObject();
 
