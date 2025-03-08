@@ -3,6 +3,8 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
 import java.io.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -705,6 +707,8 @@ public class UVNetwork implements LNetwork {
 
         // so to be sure to align to a just found block timing
         waitForBlocks(1);
+        Instant start_gen = Instant.now();
+
         for (int nb = 0; nb < blocks_duration; nb++) {
             int current_block = getTimechain().getCurrentBlockHeight();
 
@@ -724,7 +728,7 @@ public class UVNetwork implements LNetwork {
 
                 if (max_amt==min_amt) max_amt++;
                 int amount = random.nextInt(max_amt+1-min_amt)+min_amt;
-                var invoice = dest.generateInvoice(amount, "to "+dest.getPubKey());
+                var invoice = dest.generateInvoice(amount,amount+ " "+ sender.getPubKey()+" to "+dest.getPubKey(),true);
                 invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
             }
             // we are still in the same block after all traffic has been generated
@@ -740,6 +744,9 @@ public class UVNetwork implements LNetwork {
         // the wait interval is just a reasonable value of ms between checks
         waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
         print_log("DONE !!");
+        Instant end_gen = Instant.now();
+        Duration timeElapsed = Duration.between(start_gen, end_gen);
+        System.out.println("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
         invoiceExecutor.shutdown();
     }
 
