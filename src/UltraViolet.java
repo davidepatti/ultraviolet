@@ -65,7 +65,6 @@ public class UltraViolet {
         menuItems.add(new MenuItem("net", "Show All Nodes ", this::showAllNodes));
         menuItems.add(new MenuItem("node", "Show Node ", this::showNode));
         menuItems.add(new MenuItem("graph", "Show Node Graph", this::showNodeGraph));
-        menuItems.add(new MenuItem("qu", "Show Node Queues", this::showNodeQueues));
         menuItems.add(new MenuItem("qs", "Show Queues Status", this::showQueuesStatus));
         menuItems.add(new MenuItem("rep", "Show Invoice Reports", this::invoiceReportsMethod));
         menuItems.add(new MenuItem("stat", "Show Network Stats", this::showNetworkStatsMethod));
@@ -201,14 +200,6 @@ public class UltraViolet {
         showGraphCommand(node);
     }
 
-    private void showNodeQueues(Object x) {
-        if (!networkManager.isBootstrapCompleted()) return;
-        System.out.print("Insert node public key:");
-        String node_id = menuInputScanner.nextLine();
-        var node = networkManager.searchNode(node_id);
-        showQueueCommand(node);
-    }
-
     private void showQueuesStatus(Object x) {
         if (!networkManager.isBootstrapCompleted()) return;
         System.out.println("Showing not empty queues...");
@@ -263,8 +254,6 @@ public class UltraViolet {
 
     }
 
-    ;
-
     // Method for "Generate Invoice Events"
     public void generateInvoiceEventsMethod(Object x) {
         if (!networkManager.isBootstrapCompleted()) {
@@ -277,15 +266,31 @@ public class UltraViolet {
         }
         System.out.print("Injection Rate (node events per block):");
         double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
-        System.out.print("Timechain duration (blocks): ");
-        int n_blocks = Integer.parseInt(menuInputScanner.nextLine());
-        System.out.println("Min amount");
-        int amt_min = Integer.parseInt(menuInputScanner.nextLine());
-        System.out.println("Max amount");
-        int amt_max = Integer.parseInt(menuInputScanner.nextLine());
-        System.out.println("Max fees");
-        int fees = Integer.parseInt(menuInputScanner.nextLine());
+
+        int n_blocks;
+        int amt_min;
+        int amt_max;
+        int fees;
+
+        if(node_events_per_block == 0) {
+            node_events_per_block = 0.01;
+            n_blocks = 100;
+            amt_min = 1000;
+            amt_max = 1000000;
+            fees = 1000;
+        } else {
+            System.out.print("Timechain duration (blocks): ");
+            n_blocks = Integer.parseInt(menuInputScanner.nextLine());
+            System.out.println("Min amount");
+            amt_min = Integer.parseInt(menuInputScanner.nextLine());
+            System.out.println("Max amount");
+            amt_max = Integer.parseInt(menuInputScanner.nextLine());
+            System.out.println("Max fees");
+            fees = Integer.parseInt(menuInputScanner.nextLine());
+        }
+
         networkManager.generateInvoiceEvents(node_events_per_block, n_blocks, amt_min, amt_max, fees);
+
     }
 
     // Method for "Invoice Reports"
@@ -403,8 +408,10 @@ public class UltraViolet {
         int amount = Integer.parseInt(scanner.nextLine());
         System.out.print("Max fees:");
         int fees = Integer.parseInt(scanner.nextLine());
+        System.out.print("Invoice message:");
+        String msg = scanner.nextLine();
 
-        var invoice = dest.generateInvoice(amount,"test");
+        var invoice = dest.generateInvoice(amount,msg,true);
         System.out.println("Generated Invoice: "+invoice);
 
         new Thread(()->sender.processInvoice(invoice, fees,true)).start();
@@ -444,49 +451,6 @@ public class UltraViolet {
             }
         }
         else System.out.println("NO PATH FOUND");
-    }
-
-
-    private void showQueueCommand(UVNode node) {
-        System.out.println("P2P message queue:");
-        System.out.println("-------------------------------------------------------------");
-        node.getGossipMessageQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending channels to accept:");
-        node.getChannelsToAcceptQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending channel accepted:");
-        node.getChannelsAcceptedQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending updateAddHTLC:");
-        node.getUpdateAddHTLCQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending updateFulfilHTLC:");
-        node.getUpdateFulFillHTLCQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending updateFailHTLC:");
-        node.getUpdateFailHTLCQueue().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending invoices:");
-        node.getPendingInvoices().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending received HTLC:");
-        node.getReceivedHTLC().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending HTLC:");
-        node.getPendingHTLC().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending sent channel openings:");
-        node.getSentChannelOpenings().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Pending accepted channel peers:");
-        node.getPendingAcceptedChannelPeers().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Generated Invoices:");
-        node.getGeneratedInvoices().values().forEach(System.out::println);
-        System.out.println("-------------------------------------------------------------");
-        System.out.println("Payed Invoices:");
-        node.getPayedInvoices().values().forEach(System.out::println);
     }
 
     private void showGraphCommand(String node_id) {
