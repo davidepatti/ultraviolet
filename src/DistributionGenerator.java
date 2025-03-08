@@ -61,8 +61,10 @@ public class DistributionGenerator {
         double[] samples = generateUniformSamplesWithMedian(size, lower_limit, upper_limit, median);
         return adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
     }
+    @SuppressWarnings("DataFlowIssue")
     public static int[] generateIntSamples(int size, int lower_limit, int upper_limit, double median, double mean) {
         double[] samples = generateUniformSamplesWithMedian(size, lower_limit, upper_limit, median);
+        //noinspection DataFlowIssue
         samples = adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
         // Convert double[] to int[]
         int[] intSamples = new int[samples.length];
