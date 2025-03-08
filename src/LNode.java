@@ -7,7 +7,7 @@ import java.util.ArrayList;
 public interface LNode {
     String getPubKey();
     String getAlias();
-    LNInvoice generateInvoice(int amount,String msg);
+    LNInvoice generateInvoice(int amount,String msg, boolean deterministic );
     ArrayList<LNChannel> getLNChannelList();
     int getNodeCapacity();
 }
