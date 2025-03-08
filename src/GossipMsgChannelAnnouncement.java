@@ -1,5 +1,3 @@
-import java.util.Objects;
-
 public class GossipMsgChannelAnnouncement extends GossipMsg {
 
     private final String short_channel_id;
@@ -47,7 +45,6 @@ public class GossipMsgChannelAnnouncement extends GossipMsg {
         if (this == o) return true;
         if (!(o instanceof GossipMsgChannelAnnouncement that)) return false;
 
-        var e =  short_channel_id.equals(that.short_channel_id) && timestamp == that.timestamp;
-        return e;
+        return short_channel_id.equals(that.short_channel_id) && timestamp == that.timestamp;
     }
 }

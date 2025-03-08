@@ -36,7 +36,6 @@ public class GossipMsgChannelUpdate extends GossipMsg {
         if (this == o) return true;
         if (!(o instanceof GossipMsgChannelUpdate that)) return false;
 
-        var e = channel_id.equals(that.channel_id) && timestamp == that.timestamp && signerId.equals(that.signerId);
-        return e;
+        return channel_id.equals(that.channel_id) && timestamp == that.timestamp && signerId.equals(that.signerId);
     }
 }
