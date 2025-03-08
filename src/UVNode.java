@@ -220,12 +220,22 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      * @return
      */
     @Override
-    public LNInvoice generateInvoice(int amount,String msg) {
-        long R = ThreadLocalRandom.current().nextInt();
-        var H = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(R).toByteArray()));
+    public LNInvoice generateInvoice(int amount,String msg, boolean determininistic ) {
+        // determining secret based on message, useful for testing
+        // Must use properly generated msg, since same strings would lead to same invoice hash
+        byte[] R;
+        long secret;
+        if (determininistic) {
+            secret = (long) msg.hashCode();
+        }
+        else {
+            secret = ThreadLocalRandom.current().nextInt();
+        }
+        R = BigInteger.valueOf(secret).toByteArray();
+        var H = CryptoKit.bytesToHexString(CryptoKit.sha256(R));
         var invoice = new LNInvoice(H, amount, this.getPubKey(), msg);
         if (generatedInvoices == null) generatedInvoices = new ConcurrentHashMap<>();
-        generatedInvoices.put(R, invoice);
+        generatedInvoices.put(secret, invoice);
         return invoice;
     }
 
@@ -357,7 +367,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             for (var path : candidatePaths)
                 s.append('\n').append(ChannelGraph.pathString(path));
             log(s.toString());
-            if (showui) System.out.println(s.toString());
+            if (showui) System.out.println(s);
 
             //  conservative large delay set to the same as p2p queue updates
             final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
@@ -1230,6 +1240,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return pubkey.hashCode();
     }
 
+    private void printQueue(Queue<?> queue, String queueName) {
+        if (!queue.isEmpty()) {
+            System.out.println(queueName);
+            for (var element : queue) {
+                System.out.println(element);
+            }
+        }
+    }
+
     public void showQueuesStatus() {
 
         if (countNonEmptyQueues()==0) {
@@ -1237,50 +1256,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             return;
         }
 
-        System.out.println("----- node " +this.getPubKey()+ " Queues -----------------------------------");
-
-        if (!GossipMessageQueue.isEmpty()) {
-            System.out.println("GossipMessageQueue");
-            for(var element : GossipMessageQueue) {
-                System.out.println(element);
-            }
-        }
-
-        if (!channelsAcceptedQueue.isEmpty()) {
-            System.out.println("channelsAcceptedQueue");
-            for(var element : channelsAcceptedQueue) {
-                System.out.println(element);
-            }
-        }
-
-        if (!channelsToAcceptQueue.isEmpty()) {
-            System.out.println("channelsToAcceptQueue");
-            for(var element : channelsToAcceptQueue) {
-                System.out.println(element);
-            }
-        }
-
-        if (!updateAddHTLCQueue.isEmpty()) {
-            System.out.println("updateAddHTLCQueue");
-            for(var element : updateAddHTLCQueue) {
-                System.out.println(element);
-            }
-        }
-
-        if (!updateFulFillHTLCQueue.isEmpty()) {
-            System.out.println("updateFulFillHTLCQueue");
-            for(var element : updateFulFillHTLCQueue) {
-                System.out.println(element);
-            }
-        }
-
-        if (!updateFailHTLCQueue.isEmpty()) {
-            System.out.println("updateFailHTLCQueue");
-            for(var element : updateFailHTLCQueue) {
-                System.out.println(element);
-            }
-        }
-
+        printQueue(GossipMessageQueue, "GossipMessageQueue");
+        printQueue(channelsAcceptedQueue, "channelsAcceptedQueue");
+        printQueue(channelsToAcceptQueue, "channelsToAcceptQueue");
+        printQueue(updateAddHTLCQueue, "updateAddHTLCQueue");
+        printQueue(updateFulFillHTLCQueue, "updateFulFillHTLCQueue");
+        printQueue(updateFailHTLCQueue, "updateFailHTLCQueue");
         int i = 0;
         if (!pendingInvoices.values().isEmpty()) {
             System.out.println("pendingInvoices.values()");
