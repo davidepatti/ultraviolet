@@ -187,10 +187,9 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
     public static String generateLabels() {
         final String labelFormat = "%-15s %-6s %-6s %-20s %-12s %-12s";
-        String labels = String.format(labelFormat, "Channel ID", "Node 1", "Node 2",
-                "balances", "n1 base/ppm", "n2 base/ppm");
 
-        return labels;
+        return String.format(labelFormat, "Channel ID", "Node 1", "Node 2",
+                "balances", "n1 base/ppm", "n2 base/ppm");
     }
 
     @Override
