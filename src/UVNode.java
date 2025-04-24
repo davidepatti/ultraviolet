@@ -362,8 +362,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         if (!candidatePaths.isEmpty()) {
 
+            final var hash = invoice.getHash();
+
             var s = new StringBuilder();
-            s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(invoice.getHash());
+            s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(hash);
             for (var path : candidatePaths)
                 s.append('\n').append(ChannelGraph.pathString(path));
             log(s.toString());
@@ -372,36 +374,36 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             //  conservative large delay set to the same as p2p queue updates
             final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
 
-            pendingInvoices.put(invoice.getHash(), invoice);
+            pendingInvoices.put(hash, invoice);
 
             for (var path : candidatePaths) {
                 attempted_paths++;
-                logMessage = "Trying path " + attempted_paths + " of " + candidatePaths.size() + " for invoice " + invoice.getHash();
+                logMessage = "Trying path " + attempted_paths + " of " + candidatePaths.size() + " for invoice " + hash;
                 if (showui) System.out.println(logMessage);
                 log(logMessage);
 
                 routeInvoiceOnPath(invoice, path);
                 debug("Waiting for pending HTLC "+invoice.getHash());
 
-                while (pendingHTLC.containsKey(invoice.getHash())) {
+                while (pendingHTLC.containsKey(hash)) {
                     try {
-                        //System.out.println("WAITING...");
                         Thread.sleep(invoice_check_delay);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 }
-                debug("Cleared pending HTLC "+invoice.getHash());
 
-                if (payedInvoices.containsKey(invoice.getHash())) {
-                    String successMessage = " Successfully routed invoice " + invoice.getHash();
+                debug("Cleared pending HTLC "+hash);
+
+                if (payedInvoices.containsKey(hash)) {
+                    String successMessage = " Successfully routed invoice " + hash;
                     if (showui) System.out.println(successMessage);
                     log(successMessage);
 
                     success_htlc = true;
                     break; // exit the for cycle of trying the paths...
                 } else {
-                    var reason = failure_reason.get(invoice.getHash());
+                    var reason = failure_reason.get(hash);
 
                     if (reason==null) reason = "unknown";
 
@@ -417,11 +419,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             miss_local_liquidity++;
                             break;
                         default:
-                            debug("No reason for failure of "+invoice.getHash());
+                            debug("No reason for failure of "+hash);
                             unknonw_reason++;
                             break;
                     }
-                    logMessage = "Could not route invoice: " + invoice.getHash()+ ", "+reason+ " on path #"+attempted_paths;
+                    logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
                     log(logMessage);
                     if (showui) System.out.println(logMessage);
                 }
@@ -439,7 +441,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // the invoice, success or not, is not useful anymore
         pendingInvoices.remove(invoice.getHash());
         failure_reason.remove(invoice.getHash());
-
 
         var report = new GlobalStats.NodeStats.InvoiceReport(
                 CryptoKit.shortString(invoice.getHash()),
@@ -540,7 +541,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var channel_id = msg.getChannel_id();
         var computed_hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
         var channel_peer_id = getChannelPeer(channel_id).getPubKey();
-        log("Fulfilling invocice hash " + computed_hash + " received from "+channel_peer_id+ " via " + channel_id);
+        log("UpdateFulfillHTLC invoice hash " + computed_hash + " from "+channel_peer_id+ " via " + channel_id);
 
         // As expected, I offered a HTLC with the same hash
         if (pendingHTLC.containsKey(computed_hash)) {
@@ -594,7 +595,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
 
             if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
-                var hash = pending_msg.getPayment_hash();
+                final var hash = pending_msg.getPayment_hash();
 
                 pendingHTLC.remove(hash);
                 debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
