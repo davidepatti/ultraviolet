@@ -271,7 +271,7 @@ public class UltraViolet {
             return;
         }
         System.out.print(String.format(
-            "Invoice Generation Rate (events/node/block) [Enter 0 for defaults – rate=%.1f, blocks=%d, min amount=%d, max amount=%d, fees=%d]: ",
+            "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
             DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES));
         double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
 
