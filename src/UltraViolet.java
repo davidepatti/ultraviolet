@@ -256,6 +256,12 @@ public class UltraViolet {
 
     // Method for "Generate Invoice Events"
     public void generateInvoiceEventsMethod(Object x) {
+        // Default values for invoice generation
+        final double DEFAULT_NODE_EVENTS_PER_BLOCK = 0.1;
+        final int DEFAULT_N_BLOCKS = 500;
+        final int DEFAULT_AMT_MIN = 1000;
+        final int DEFAULT_AMT_MAX = 1000000;
+        final int DEFAULT_FEES = 1000;
         if (!networkManager.isBootstrapCompleted()) {
             System.out.println("Bootstrap not completed, cannot generate events!");
             return;
@@ -264,7 +270,9 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.print("Injection Rate (node events per block):");
+        System.out.print(String.format(
+            "Invoice Generation Rate (events/node/block) [Enter 0 for defaults – rate=%.1f, blocks=%d, min amount=%d, max amount=%d, fees=%d]: ",
+            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES));
         double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
 
         int n_blocks;
@@ -273,11 +281,11 @@ public class UltraViolet {
         int fees;
 
         if(node_events_per_block == 0) {
-            node_events_per_block = 0.01;
-            n_blocks = 100;
-            amt_min = 1000;
-            amt_max = 1000000;
-            fees = 1000;
+            node_events_per_block = DEFAULT_NODE_EVENTS_PER_BLOCK;
+            n_blocks = DEFAULT_N_BLOCKS;
+            amt_min = DEFAULT_AMT_MIN;
+            amt_max = DEFAULT_AMT_MAX;
+            fees = DEFAULT_FEES;
         } else {
             System.out.print("Timechain duration (blocks): ");
             n_blocks = Integer.parseInt(menuInputScanner.nextLine());
