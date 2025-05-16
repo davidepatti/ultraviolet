@@ -1,4 +1,4 @@
- /* Copyright (c) Project Nayuki
+package utils; /* Copyright (c) Project Nayuki
  *
  * https://www.nayuki.io/page/bitcoin-cryptography-library
  * https://github.com/nayuki/Bitcoin-Cryptography-Library
