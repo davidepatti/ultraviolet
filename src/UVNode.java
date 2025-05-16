@@ -1,3 +1,5 @@
+import utils.CryptoKit;
+
 import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
@@ -853,7 +855,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
 
     private void channelAccepted(MsgAcceptChannel acceptMessage) {
-
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
 
@@ -862,17 +863,17 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
         // TODO: pubkeys should be lexically ordered, not based on initiator
-        var funding_tx = new UVTimechain.Transaction(pseudo_hash, UVTimechain.TxType.FUNDING_TX,funding_amount,getPubKey(),peerPubKey);
+        int fees_per_byte = 1;
+        var funding_tx = UVTransaction.createTx(pseudo_hash, UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
         // bolt: received funding_signed
-        // UVMODE TODO: this should move to UVNetork
         uvNetwork.getTimechain().addToMempool(funding_tx);
 
 
-        int taget_block = uvNetwork.getTimechain().getCurrentBlockHeight()+acceptMessage.getMinimum_depth();
+        int target_block = uvNetwork.getTimechain().getCurrentBlockHeight()+acceptMessage.getMinimum_depth();
 
-        waitingFundings.put(funding_tx.txId(),new fundingConfirmation(taget_block, funding_tx.txId(),peerPubKey));
+        waitingFundings.put(funding_tx.getTxId(),new fundingConfirmation(target_block, funding_tx.getTxId(),peerPubKey));
     }
 
     private void fundingChannelConfirmed(String peer_id, String tx_id) {
@@ -1113,6 +1114,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     private synchronized void checkTimechainTxConfirmations() {
+        // TODO: this should not remove the wait record just after the target block
+        // but after 6 blocks from the first confirmation. How to check first conf:
+        // - check tx in mempool, if not present, assume in some block and increase a count at each new block height
 
         if (!waitingFundings.isEmpty()) {
             final int current_block = uvNetwork.getTimechain().getCurrentBlockHeight();
@@ -1375,6 +1379,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         channels = new ConcurrentHashMap<>();
         saved_peers_id = new ArrayList<>();
         failure_reason = new HashMap<>();
+
 
         try {
             s.defaultReadObject();

@@ -807,7 +807,7 @@ public class UVNetwork implements LNetwork {
         }
     }
 
-    public String generateChannelIdFromTimechain(UVTimechain.Transaction tx, UVNode uvNode) {
+    public String generateChannelIdFromTimechain(UVTransaction tx, UVNode uvNode) {
         var searchPos = getTimechain().getTxLocation(tx);
         var position = searchPos.get();
 
