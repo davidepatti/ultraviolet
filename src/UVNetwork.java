@@ -648,7 +648,7 @@ public class UVNetwork implements LNetwork {
                 log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
                 max_attempts--;
                 if (max_attempts==0)
-                    log("WARNING: Exiting bootstrap due to max discards reached...");
+                    log("WARNING: Exiting bootstrap due to max attempts reached...");
                 continue;
             }
 
@@ -658,6 +658,14 @@ public class UVNetwork implements LNetwork {
             while (!ok_node) {
                 var n = random.nextInt(pubkeys_list.size());
                 var some_random_key = pubkeys_list.get(n);
+                if (node.hasChannelWith(some_random_key)) {
+                    max_attempts--;
+                    if (max_attempts==0) {
+                        log("WARNING: Exiting bootstrap due to max attempts reached...");
+                        break;
+                    }
+                    continue;
+                }
                 var some_node = uvnodes.get(some_random_key);
 
                 if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
@@ -808,7 +816,7 @@ public class UVNetwork implements LNetwork {
     }
 
     public String generateChannelIdFromTimechain(UVTransaction tx, UVNode uvNode) {
-        var searchPos = getTimechain().getTxLocation(tx);
+        var searchPos = getTimechain().findTxLocation(tx,0);
         var position = searchPos.get();
 
         return position.height() + "x" + position.tx_index();
