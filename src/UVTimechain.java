@@ -135,13 +135,12 @@ public class UVTimechain implements Runnable, Serializable {
        }
     }
 
-    public synchronized Optional<ChainLocation> getTxLocation(UVTransaction tx) {
-
-        for (Block block: blockChain) {
+    public synchronized Optional<ChainLocation> findTxLocation(UVTransaction tx, int start_block) {
+        for (int i = start_block; i < blockChain.size(); i++) {
+            Block block = blockChain.get(i);
             int index = block.txs().indexOf(tx);
-            if (index!=-1) return Optional.of(new ChainLocation(block.height(),index));
+            if (index != -1) return Optional.of(new ChainLocation(block.height(), index));
         }
-
         return Optional.empty();
     }
 
