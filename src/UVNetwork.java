@@ -242,31 +242,34 @@ public class UVNetwork implements LNetwork {
     public void waitForEmptyQueues(int check_period) {
 
         int warning_timeout = 10000; // 10 sec
-
+        boolean enable_warning = false;
         boolean queues_empty = false;
 
         while (!queues_empty) {
             queues_empty = true;
+
             for (UVNode node : getUVNodeList().values()) {
                 if (!node.areQueuesEmpty())  {
-                    System.out.print("#");
-
-                    if (warning_timeout>0) {
-                        warning_timeout -= check_period;
-                    }
-                    else {
-                        check_period = 1000;
+                    System.out.println("** Waiting to empty queues on "+node.getPubKey());
+                    if (enable_warning)  {
+                        System.out.printf("-->");
                         node.showQueuesStatus();
-                    }
-
-                    try {
-                        Thread.sleep(check_period);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
+                        System.out.printf("------------------------------------------");
                     }
                     queues_empty = false;
-                    break;
                 }
+            }
+            try {
+                Thread.sleep(check_period);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            if (warning_timeout>0) {
+                warning_timeout -= check_period;
+            }
+            else {
+                check_period = 1000;
+                enable_warning = true;
             }
         }
     }
