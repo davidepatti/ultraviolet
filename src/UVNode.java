@@ -4,6 +4,7 @@ import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
@@ -21,6 +22,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private int onchainBalance;
     private int onchainPending = 0;
     private long last_gossip_flush = 0;
+    private long last_mempool_check = 0;
     private int channel_openings = 0;
 
     // serialized and restored manually, to avoid stack overflow
@@ -44,8 +46,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private ConcurrentHashMap<String, MsgUpdateAddHTLC> pendingHTLC = new ConcurrentHashMap<>();
     transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
     transient private Set<String> pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
-    public record fundingConfirmation(int target_block, String tx_id, String peer) { }
-    transient private HashMap<String,fundingConfirmation > waitingFundings = new HashMap<>();
+    // associate a tx with its broadcast height
+    transient private HashMap<UVTransaction,Integer> waitingTxConf = new HashMap<>();
 
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
@@ -118,13 +120,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private void log(String s) {
         uvNetwork.log(this.getPubKey() + ':' + s);
     }
-
-    private void print_log(String s) {
-        uvNetwork.print_log(s);
-    }
-
-    private void debug(String s) {
-        if (uvNetwork.getConfig().debug) log("_DEBUG_" + s);
+    private void debug(Supplier<String> messageSupplier) {
+        if (uvNetwork.getConfig().debug) {
+            log("_DEBUG_" + messageSupplier.get());
+        }
     }
 
     public ArrayList<LNChannel> getLNChannelList() {
@@ -263,17 +262,17 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         var firstChannelId = getMyChannelWith(path.get(path.size() - 1).destination());
         var firstChannel = channels.get(firstChannelId);
-        debug("Checking outbound path liquidity (amt:" + amount + ")" + ChannelGraph.pathString(path) + " for first channel " + firstChannel);
+        debug(()->"Checking outbound path liquidity (amt:" + amount + ")" + ChannelGraph.pathString(path) + " for first channel " + firstChannel);
 
         // this is the only liquidity check that can be performed in advance
         var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
 
         if (senderLiquidity < amount) {
-            debug("Discarding route for missing liquidity in first channel " + firstChannel);
+            debug(()->"Discarding route for missing liquidity in first channel " + firstChannel);
             return false;
         }
 
-        debug("Liquidity ok for " + firstChannelId + " (required " + amount + " of " + senderLiquidity + ")");
+        debug(()->"Liquidity ok for " + firstChannelId + " (required " + amount + " of " + senderLiquidity + ")");
         return true;
     }
 
@@ -329,9 +328,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
 
             if (!checkPathCapacity(path, invoice.getAmount())) {
-                logMessage = "Discarding path: missing capacity" + ChannelGraph.pathString(path);
-                debug(logMessage);
-                if (showui) System.out.println(logMessage);
+                debug(()->"Discarding path: missing capacity" + ChannelGraph.pathString(path));
                 to_discard = true;
                 miss_capacity++;
             }
@@ -339,17 +336,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // please notice that this does not exclude further missing local liquidy events
             // that will happen at the momennt of actual reservation, and will be accoutned in another place
             if (!checkOutboundPathLiquidity(path, invoice.getAmount())) {
-                logMessage = "Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path);
-                debug(logMessage);
-                if (showui) System.out.println(logMessage);
+                debug(()->"Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path));
                 to_discard = true;
                 miss_local_liquidity++;
             }
 
             if (getPathFees(path, invoice.getAmount()) > max_fees) {
-                logMessage = "Discarding path: missing max fees " + ChannelGraph.pathString(path);
-                debug(logMessage);
-                if (showui) System.out.println(logMessage);
+                debug(()->"Discarding path: missing max fees " + ChannelGraph.pathString(path));
                 to_discard = true;
                 miss_max_fees++;
             }
@@ -385,7 +378,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 log(logMessage);
 
                 routeInvoiceOnPath(invoice, path);
-                debug("Waiting for pending HTLC "+invoice.getHash());
+                debug(()->"Waiting for pending HTLC "+invoice.getHash());
 
                 while (pendingHTLC.containsKey(hash)) {
                     try {
@@ -395,7 +388,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     }
                 }
 
-                debug("Cleared pending HTLC "+hash);
+                debug(()->"Cleared pending HTLC "+hash);
 
                 if (payedInvoices.containsKey(hash)) {
                     String successMessage = " Successfully routed invoice " + hash;
@@ -421,7 +414,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             miss_local_liquidity++;
                             break;
                         default:
-                            debug("No reason for failure of "+hash);
+                            debug(()->"No reason for failure of "+hash);
                             unknonw_reason++;
                             break;
                     }
@@ -438,7 +431,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             if (showui) System.out.println(logMessage);
         }
 
-        debug("Removing pending invoice for "+invoice.getHash());
+        debug(()->"Removing pending invoice for "+invoice.getHash());
 
         // the invoice, success or not, is not useful anymore
         pendingInvoices.remove(invoice.getHash());
@@ -518,7 +511,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
-        debug("Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getId());
+        debug(()->"Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getId());
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
 
             failure_reason.put(invoice.getHash(),"missing local liquidity");
@@ -600,7 +593,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 final var hash = pending_msg.getPayment_hash();
 
                 pendingHTLC.remove(hash);
-                debug("Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
+                debug(()->"Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
                 channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
 
                 // I previouosly forwarded this HTLC, so I shoould send back the failure msg to the previous node
@@ -610,7 +603,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     var prev_ch_id = prev_htlc.getChannel_id();
                     var prev_peer = getChannelPeer(prev_ch_id);
                     var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
-                    debug("Sending "+fail_msg+ " to "+prev_peer.getPubKey());
+                    debug(()->"Sending "+fail_msg+ " to "+prev_peer.getPubKey());
                     sendToPeer(prev_peer, fail_msg, uvNetwork);
                     receivedHTLC.remove(hash);
                 } // I offered, but did not receive the htlc, I'm initial sender?
@@ -685,7 +678,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         if (fees>=0) {
             // TODO: check fees here...
-            debug("Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
+            debug(()->"Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
         }
         else {
            throw new IllegalStateException("Negative fees value for forwading "+msg);
@@ -714,7 +707,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             return;
         }
 
-        debug("Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
+        debug(()->"Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
         int cltv = payload.getOutgoingCLTV();
@@ -725,7 +718,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
 
-        debug("Forwarding "+new_msg);
+        debug(()->"Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
         nodeStats.incrementForwardingSuccesses();
@@ -744,7 +737,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         throw new IllegalArgumentException(this.getPubKey()+" Has no channel with "+node_id);
     }
 
-    private synchronized boolean hasChannelWith(String nodeId) {
+    public synchronized boolean hasChannelWith(String nodeId) {
         for (UVChannel c:this.channels.values()) {
             if (c.getNode2PubKey().equals(nodeId) || c.getNode1PubKey().equals(nodeId)) {
                 return true;
@@ -807,7 +800,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         //TODO: the semantics of the related variable is tied to total openings, not the currently alive channels opened
         increaseChannelOpenings();
 
-        debug("Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
+        debug(()->"Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
         updateOnchainPending(getOnchainPending()+channel_size);
 
         //Both sides of the channel are forced by the other side to keep 1% of funds in the channel on their side. This is in order to ensure cheating always costs something (at least 1% of the channel balance).
@@ -870,18 +863,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // bolt: received funding_signed
         uvNetwork.getTimechain().addToMempool(funding_tx);
 
-
-        int target_block = uvNetwork.getTimechain().getCurrentBlockHeight()+acceptMessage.getMinimum_depth();
-
-        waitingFundings.put(funding_tx.getTxId(),new fundingConfirmation(target_block, funding_tx.getTxId(),peerPubKey));
+        // annotate also the current height, so to facilitate search into a limite block set
+        waitingTxConf.put(funding_tx,uvNetwork.getTimechain().getCurrentBlockHeight());
     }
 
     private void fundingChannelConfirmed(String peer_id, String tx_id) {
 
         // Abstractions:
-        // - No in-mempool waiting room after broadcasting (just wait the blocks...)
         // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
-        // Actually, even the peer should monitor onchain confirmation on its own, not trusting channel initiator
+        // - Actually, the peer should monitor onchain confirmation on its own, but no trust problem is modeledd in UV
 
         log("Confirmed funding tx "+tx_id);
 
@@ -1091,8 +1081,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public void runServices() {
 
         try {
-            // should run at least at blocktime period speed, but we can just check at very services tick
-            checkTimechainTxConfirmations();
 
             // handled as soon as possible, just check at very services tick
             processChannelsMsgQueue();
@@ -1100,13 +1088,17 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // handled as soon as possible, just check at very services tick
             processHTLCMsgQueue();
 
-            // to avoid spam and network congestion, gossid should spread less frequenctly
             long now = System.currentTimeMillis();
+            // should run around the same frequency of blocktime
+            if (now-last_mempool_check >=3*uvNetwork.getConfig().blocktime_ms) {
+                checkTimechainTxConfirmations();
+                last_mempool_check = now;
+            }
+            // to avoid spam and network congestion, gossid should spread less frequenctly
             if (now - last_gossip_flush >= uvNetwork.getConfig().gossip_flush_period_ms) {
                 processGossip();  // or flushGossip()
                 last_gossip_flush = now;
             }
-            //processGossip();
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1114,27 +1106,31 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     private synchronized void checkTimechainTxConfirmations() {
-        // TODO: this should not remove the wait record just after the target block
-        // but after 6 blocks from the first confirmation. How to check first conf:
-        // - check tx in mempool, if not present, assume in some block and increase a count at each new block height
+        int req_confirmations = uvNetwork.getConfig().minimum_depth;
 
-        if (!waitingFundings.isEmpty()) {
+        if (!waitingTxConf.isEmpty()) {
             final int current_block = uvNetwork.getTimechain().getCurrentBlockHeight();
-            var to_be_removed = new ArrayList<String>();
+            var to_be_removed = new ArrayList<UVTransaction>();
 
-            for (var tx: waitingFundings.values()) {
-                if (tx.target_block<=current_block) {
-                    fundingChannelConfirmed(tx.peer(),tx.tx_id());
-                    to_be_removed.add(tx.tx_id());
+            for (var tx: waitingTxConf.keySet()) {
+                var broadcast_height = waitingTxConf.get(tx);
+                // avoid checking for txs that are too recent
+                if (current_block-broadcast_height<req_confirmations) continue;
+                debug(()->"Checking confirmation of "+tx.getTxId()+ " starting from block "+broadcast_height);
+                var location = uvNetwork.getTimechain().findTxLocation(tx,broadcast_height);
+                if (!location.isEmpty() && current_block - location.get().height() >=req_confirmations) {
+                    String peerId;
+                    if (tx.getNode1Pub().equals(this.getPubKey())) peerId = tx.getNode2Pub();
+                    else peerId = tx.getNode1Pub();
+                    fundingChannelConfirmed(peerId,tx.getTxId());
+                    to_be_removed.add(tx);
                 }
             }
             for (var tx: to_be_removed) {
-                waitingFundings.remove(tx);
+                waitingTxConf.remove(tx);
             }
         }
-
     }
-
 
     private void processChannelsMsgQueue() {
 
@@ -1412,7 +1408,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
             this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
             this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
-            this.waitingFundings = new HashMap<>();
+            this.waitingTxConf = new HashMap<>();
         }
         catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
