@@ -827,6 +827,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             log("WARNING:Cannot accept channel, already pending accepted channel with "+initiator_id);
             return;
         }
+        if (this.hasChannelWith(initiator_id)) {
+            //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
+            log("Warning: cannot accept channel, already a channel with "+initiator_id);
+            return;
+        }
 
         if (initiator_id!=null) pendingAcceptedChannelPeers.add(initiator_id);
         else {
@@ -834,11 +839,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
 
-        if (this.hasChannelWith(initiator_id)) {
-            //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
-            log("Warning: cannot accept channel, already a channel with "+initiator_id);
-            return;
-        }
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvNetwork.getUVNode(initiator_id);
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
