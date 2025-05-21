@@ -648,7 +648,8 @@ public class UVNetwork implements LNetwork {
             var newChannelSize = (profile.getRandomSample("channel_sizes")/step)*step;
 
             if (node.getOnchainLiquidity()< newChannelSize) {
-                log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
+                if (getConfig().debug)
+                    log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
                 max_attempts--;
                 if (max_attempts==0)
                     log("WARNING: Exiting bootstrap due to max attempts reached...");

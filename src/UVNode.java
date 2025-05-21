@@ -251,7 +251,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public boolean checkPathPolicies(ArrayList<ChannelGraph.Edge> path) {
         for (ChannelGraph.Edge e : path) {
             if (e.policy() == null) {
-                log("WARNING: Invalid path, missing policy on edge " + e);
+                debug(()->"WARNING: Invalid path, missing policy on edge " + e);
                 return false;
             }
         }
@@ -848,23 +848,24 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
 
     private void channelAccepted(MsgAcceptChannel acceptMessage) {
+        // annotate the current height, so to facilitate search into a limite block set
+        final int broadcast_timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
 
-        log("Channel accepted by peer "+ peerPubKey+ " ("+temp_channel_id+")");
         var pseudo_hash = CryptoKit.bytesToHexString(CryptoKit.hash256(temp_channel_id));
 
         var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
         // TODO: pubkeys should be lexically ordered, not based on initiator
         int fees_per_byte = 1;
         var funding_tx = UVTransaction.createTx(pseudo_hash, UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
+        waitingTxConf.put(funding_tx,broadcast_timestamp);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created
         // bolt: received funding_signed
+        log("Channel accepted by "+ peerPubKey+ " ("+temp_channel_id+") Broadcasting funding tx: "+funding_tx.getTxId());
         uvNetwork.getTimechain().addToMempool(funding_tx);
 
-        // annotate also the current height, so to facilitate search into a limite block set
-        waitingTxConf.put(funding_tx,uvNetwork.getTimechain().getCurrentBlockHeight());
     }
 
     private void fundingChannelConfirmed(String peer_id, String tx_id) {
@@ -873,7 +874,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
         // - Actually, the peer should monitor onchain confirmation on its own, but no trust problem is modeledd in UV
 
-        log("Confirmed funding tx "+tx_id);
+        log("Confirmed funding tx: "+tx_id);
 
         var timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
         var request = sentChannelOpenings.get(peer_id);
@@ -1286,9 +1287,16 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         if (!pendingAcceptedChannelPeers.isEmpty()) {
-            System.out.println("pendingAcceptedChannelPeers");
+            System.out.println("pendingAcceptedChannelPeers:");
             for(var element : pendingAcceptedChannelPeers) {
                 System.out.println(element);
+            }
+        }
+        if (!waitingTxConf.isEmpty()) {
+            System.out.println("Waiting Tx Confirmations for:");
+            for(var element : waitingTxConf.keySet()) {
+                System.out.println(element);
+                System.out.printf("Broadcasted at: "+waitingTxConf.get(element));
             }
         }
     }
@@ -1304,6 +1312,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         queueSizeSum += pendingInvoices.size();
         queueSizeSum += pendingHTLC.size();
         queueSizeSum += pendingAcceptedChannelPeers.size();
+        queueSizeSum += waitingTxConf.size();
 
         return queueSizeSum;
     }
@@ -1317,7 +1326,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 && updateFailHTLCQueue.isEmpty()
                 && GossipMessageQueue.isEmpty()
                 && pendingHTLC.isEmpty()
-                && pendingAcceptedChannelPeers.isEmpty();
+                && pendingAcceptedChannelPeers.isEmpty()
+                && waitingTxConf.isEmpty();
     }
 
 

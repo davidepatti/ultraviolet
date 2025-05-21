@@ -121,11 +121,11 @@ public class UVTimechain implements Runnable, Serializable {
        blockChain.add(newBlock);
 
        if (!newBlock.txs().isEmpty()) {
-           StringBuilder sb = new StringBuilder("New Block Found "+newBlock.height()+", Transactions >>> ");
+           StringBuilder sb = new StringBuilder("New Block Found! "+newBlock.txs().size()+" Transactions >>> ");
            for (UVTransaction t: newBlock.txs()) {
-               sb.append(t.toString());
+               sb.append("\n").append(t.toString());
            }
-           sb.append(" <<<");
+           sb.append("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
            // Print congestion levels for each fee band
            sb.append("\nCongestion levels per fee band: ");
            for (Map.Entry<Integer, Long> entry : congestionLevelsByFeeBand.entrySet()) {

@@ -97,15 +97,12 @@ public class UVTransaction implements Serializable {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Tx{0x").append(CryptoKit.shortString(txId))
-          .append(", type: ").append(type);
-        if (type == Type.EXTERNAL_BLOB) {
-            sb.append(", size: ").append(size);
+        sb.append("Tx{").append(txId).append(", type: ").append(type);
+        if (type == Type.EXTERNAL_BLOB) { sb.append(", size: ").append(size); }
+        else {
+            sb.append(", amt:") .append(amount) .append(", node1:").append(node1_pub) .append(", node2:").append(node2_pub);
         }
-        sb.append(", amt:").append(amount)
-          .append(", node1:").append(node1_pub)
-          .append(", node2:").append(node2_pub)
-          .append(", fees:").append(fees_per_byte)
+          sb.append(", fees:").append(fees_per_byte)
           .append('}');
         return sb.toString();
     }
