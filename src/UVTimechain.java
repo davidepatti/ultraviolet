@@ -13,18 +13,24 @@ public class UVTimechain implements Runnable, Serializable {
     private static final int[] FEE_BYTE_BANDS = {5, 15, 35, 100, 200, 500, 1000, 2000};
     private int current_height;
     private final int blocktime;
-    private final Set<CountDownLatch> wait_blocks_latch = new HashSet<>();
-    private final PriorityQueue<UVTransaction> mempoolQueue = new PriorityQueue<>(Comparator.comparingDouble(UVTransaction::getFeesPerByte).reversed());
+    private final PriorityQueue<UVTransaction> mempoolQueue = new PriorityQueue<>(new FeeComparator());
     private final List<Block>  blockChain = new ArrayList<>();
-    boolean running = false;
+    boolean running;
 
     // Maps each fee band (upper bound) to the cumulative bytes of pending transactions within that band
     private final NavigableMap<Integer, Long> congestionLevelsByFeeBand = new TreeMap<>();
 
+    transient private final Set<CountDownLatch> wait_blocks_latch = new HashSet<>();
     transient private UVNetwork uvm;
 
-    public static final record Block(int height, List<UVTransaction> txs) implements Serializable { }
-    public static final record ChainLocation(int height, int tx_index) { }
+    public record Block(int height, List<UVTransaction> txs) implements Serializable { }
+    public record ChainLocation(int height, int tx_index) { }
+
+    private static class FeeComparator implements Comparator<UVTransaction>, Serializable {
+        @Override public int compare(UVTransaction a, UVTransaction b) {
+            return Double.compare(b.getFeesPerByte(), a.getFeesPerByte());
+        }
+    }
 
     public UVTimechain(int blocktime, UVNetwork uvNetwork) {
         current_height = 0;
