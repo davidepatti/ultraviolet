@@ -853,12 +853,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
 
-        var pseudo_hash = CryptoKit.bytesToHexString(CryptoKit.hash256(temp_channel_id));
 
         var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
         // TODO: pubkeys should be lexically ordered, not based on initiator
         int fees_per_byte = 1;
-        var funding_tx = UVTransaction.createTx(pseudo_hash, UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
+        var funding_tx = UVTransaction.createTx(UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
         waitingTxConf.put(funding_tx,broadcast_timestamp);
         // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
         // bolt: send funding_created

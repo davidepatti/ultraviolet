@@ -61,11 +61,13 @@ public class UVTransaction implements Serializable {
         this.fees_per_byte = fees_per_byte;
         this.size = size;
     }
-    public static UVTransaction createTx(String txId, Type type, int amount, String node1_pub, String node2_pub, int fees_per_byte) {
-        var tx = new UVTransaction(txId,type,amount,node1_pub,node2_pub,fees_per_byte,getTransactionSize(type));
-        return tx;
+    public static UVTransaction createTx(Type type, int amount, String node1_pub, String node2_pub, int fees_per_byte) {
+
+        return createTx(type,amount,node1_pub,node2_pub,fees_per_byte,getTransactionSize(type));
     }
-    public static UVTransaction createTx(String txId, Type type, int amount, String node1_pub, String node2_pub, int fees_per_byte,int size) {
+    public static UVTransaction createTx(Type type, int amount, String node1_pub, String node2_pub, int fees_per_byte,int size) {
+        String toBeHashed = type.toString() + amount + node1_pub + node2_pub + fees_per_byte+size;
+        var txId = CryptoKit.bytesToHexString(CryptoKit.hash256(toBeHashed.getBytes()));
         var tx = new UVTransaction(txId,type,amount,node1_pub,node2_pub,fees_per_byte,size);
         return tx;
     }
@@ -97,13 +99,12 @@ public class UVTransaction implements Serializable {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Tx{").append(txId).append(", type: ").append(type);
+        sb.append("txhash: ").append(txId).append(", type: ").append(type);
         if (type == Type.EXTERNAL_BLOB) { sb.append(", size: ").append(size); }
         else {
             sb.append(", amt:") .append(amount) .append(", node1:").append(node1_pub) .append(", node2:").append(node2_pub);
         }
-          sb.append(", fees:").append(fees_per_byte)
-          .append('}');
+          sb.append(", fees:").append(fees_per_byte);
         return sb.toString();
     }
 

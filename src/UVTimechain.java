@@ -58,7 +58,7 @@ public class UVTimechain implements Runnable, Serializable {
     }
 
     public synchronized void injectMempoolBlob(int feePerByte, int bytes) {
-        var blob_tx = UVTransaction.createTx("BLOB", UVTransaction.Type.EXTERNAL_BLOB,-1,"B1","B2",feePerByte,bytes);
+        var blob_tx = UVTransaction.createTx(UVTransaction.Type.EXTERNAL_BLOB,-1,"B1","B2",feePerByte,bytes);
         mempoolQueue.add(blob_tx);
     }
 
@@ -105,7 +105,7 @@ public class UVTimechain implements Runnable, Serializable {
                 int left_bytes = BLOCK_WEIGHT_LIMIT-currentBlockWeight;
                 if (!mempoolQueue.remove(tx))
                     throw new IllegalArgumentException("Removing non-existent tx from mempool: " + tx);
-                var new_tx = UVTransaction.createTx(tx.getTxId(),tx.getType(),tx.getAmount(),tx.getNode1Pub(),tx.getNode2Pub(),tx.getFeesPerByte(),left_bytes);
+                var new_tx = UVTransaction.createTx(tx.getType(),tx.getAmount(),tx.getNode1Pub(),tx.getNode2Pub(),tx.getFeesPerByte(),left_bytes);
                 mempoolQueue.add(new_tx);
                 break;
             }else {
