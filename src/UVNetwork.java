@@ -109,6 +109,13 @@ public class UVNetwork implements LNetwork {
         if (config.seed!=0) random.setSeed(config.seed);
 
         try {
+            File logFile = new File(uvConfig.logfile);
+            if (logFile.exists()) {
+                File previousLogFile = new File(logFile.getParent(), "previous." + logFile.getName());
+                if (!logFile.renameTo(previousLogFile)) {
+                    System.err.println("Warning: could not rename existing logfile to " + previousLogFile.getName());
+                }
+            }
             logfile = new FileWriter(uvConfig.logfile);
         } catch (IOException e) {
             log("Cannot open logfile for writing:"+ uvConfig.logfile);
