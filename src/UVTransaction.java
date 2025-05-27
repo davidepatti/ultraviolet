@@ -66,7 +66,10 @@ public class UVTransaction implements Serializable {
         return createTx(type,amount,node1_pub,node2_pub,fees_per_byte,getTransactionSize(type));
     }
     public static UVTransaction createTx(Type type, int amount, String node1_pub, String node2_pub, int fees_per_byte,int size) {
-        String toBeHashed = type.toString() + amount + node1_pub + node2_pub + fees_per_byte+size;
+        String toBeHashed = type.toString() + amount + node1_pub + node2_pub + fees_per_byte + size;
+        if (type == Type.EXTERNAL_BLOB) {
+            toBeHashed += java.util.UUID.randomUUID().toString();
+        }
         var txId = CryptoKit.bytesToHexString(CryptoKit.hash256(toBeHashed.getBytes()));
         var tx = new UVTransaction(txId,type,amount,node1_pub,node2_pub,fees_per_byte,size);
         return tx;
