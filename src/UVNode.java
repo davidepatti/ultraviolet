@@ -1220,11 +1220,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     public static String generateNodeLabelString() {
-        return String.format("%-10s %-30s %-20s %-15s", "Pubkey", "Alias", "Node Capacity", "Channels");
+        return String.format("%-10s %-30s %-20s %-15s %-10s", "Pubkey", "Alias", "Node Capacity", "Channels", "Node Profile");
     }
+
     @Override
     public String toString() {
-        return String.format("%-10s %-30s %-,20d %-15d", pubkey, alias, getNodeCapacity(), channels.size());
+        // assuming you have a `getNodeProfile()` method or `nodeProfile` field
+        return String.format("%-10s %-30s %-,20d %-15d %-10s", pubkey, alias, getNodeCapacity(), channels.size(), profile.getName());
     }
 
     /**
