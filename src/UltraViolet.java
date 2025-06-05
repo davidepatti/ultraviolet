@@ -396,7 +396,7 @@ public class UltraViolet {
             System.exit(-1);
         }
 
-        var uvm_client = new UltraViolet(new UVConfig(args[0]));
+        new UltraViolet(new UVConfig(args[0]));
     }
     private void testInvoiceRoutingCmd() {
 

@@ -1,6 +1,5 @@
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 /* a .properties file is used to initialize this class with a set of key/value pair, readable from other classes
 While some of them a hardcode into UV, user can add and define new keys/value pairs for new purposes, as they
 will be automatically loaded into the properties object and retrieved with:
@@ -30,7 +29,6 @@ public class UVConfig implements Serializable {
     final public int to_self_delay;
     final public int minimum_depth;
     final public int max_threads;
-    final public int seed;
     final public int blocktime_ms;
     final public int node_services_tick_ms;
     final public int gossip_flush_period_ms;
@@ -38,7 +36,7 @@ public class UVConfig implements Serializable {
     final public boolean debug;
 
 
-    private final Random random;
+    private int master_seed;
     @Serial
     private static final long serialVersionUID = 120678L;
 
@@ -88,11 +86,11 @@ public class UVConfig implements Serializable {
             return Objects.hash(name);
         }
 
-        public int getRandomSample(String key) {
+        public int getRandomSample(Random rng, String key) {
             try {
                 if (distributions.containsKey(key)) {
                     var samples = distributions.get(key);
-                    return samples[ThreadLocalRandom.current().nextInt(0, samples.length)];
+                    return samples[rng.nextInt(0, samples.length)];
                 }
                 else  throw new RuntimeException("Missing distribution key: " + key);
             } catch (Exception e) {
@@ -119,6 +117,9 @@ public class UVConfig implements Serializable {
         return profiles.get(profile_name);
     }
 
+    public int getMasterSeed() {
+        return master_seed;
+    }
 
     public UVConfig(String config_file) {
 
@@ -141,6 +142,8 @@ public class UVConfig implements Serializable {
                     profile.addAttribute(attribute,value);
                 }
             }
+            master_seed = Integer.parseInt(properties.getProperty("seed"));
+            var random = new Random(master_seed);
 
 
             // parse profiles to create samples distributions
@@ -154,8 +157,8 @@ public class UVConfig implements Serializable {
                 final int median_ppm_fee = profile.getIntAttribute("median_ppm_fee");
                 final int mean_ppm_fee = profile.getIntAttribute("mean_ppm_fee");
 
-                profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(100,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
-                profile.distributions.put("ppm_fees",DistributionGenerator.generateIntSamples(100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
+                profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(random,100,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
+                profile.distributions.put("ppm_fees",DistributionGenerator.generateIntSamples(random,100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
             }
 
         } catch (FileNotFoundException e) {
@@ -169,7 +172,6 @@ public class UVConfig implements Serializable {
                 IOException e) {
             throw new RuntimeException(e);
         }
-
         p2p_max_age = Integer.parseInt(properties.getProperty("p2p_max_age"));
         p2p_max_hops = Integer.parseInt(properties.getProperty("p2p_max_hops"));
         gossip_flush_size = Integer.parseInt(properties.getProperty("gossip_flush_size"));
@@ -185,11 +187,8 @@ public class UVConfig implements Serializable {
         bootstrap_time_mean = Double.parseDouble(properties.getProperty("bootstrap_time_mean"));
         logfile = properties.getProperty("logfile");
         debug = properties.getProperty("debug").equals("true");
-        seed = Integer.parseInt(properties.getProperty("seed"));
 
-        random = new Random(seed);
     }
-
 
     private ArrayList<String> getMultivalProperty(String key) {
 
@@ -211,25 +210,14 @@ public class UVConfig implements Serializable {
         return null;
     }
 
-    public ArrayList<Integer> getMultivalIntProperty(String key) {
-        var values = new ArrayList<Integer>();
-        for (String s: getMultivalProperty(key)) {
-            values.add(Integer.parseInt(s));
-        }
-        return values;
-    }
-
-    public synchronized String getMultivalRandomItem(String key) {
-        int index = random.nextInt(getMultivalProperty(key).size());
-        return getMultivalProperty(key).get(index);
-    }
-    public int getMultivalPropertyRandomIntItem(String key) {
-        return Integer.parseInt(getMultivalRandomItem(key));
+    public int getMultivalRandomItem(Random rng, String key) {
+        int index = rng.nextInt(getMultivalProperty(key).size());
+        return Integer.parseInt(getMultivalProperty(key).get(index));
     }
 
     // selects a profile according to some probabilistic criteria
-    public synchronized NodeProfile selectProfileBy(String attribute) {
-        double p = random.nextDouble();
+    public NodeProfile selectProfileBy(Random rng, String attribute) {
+        double p = rng.nextDouble();
         double cumulativeProbability = 0.0;
         for (String profileName: profiles.keySet()) {
 
@@ -255,12 +243,11 @@ public class UVConfig implements Serializable {
                 ", p2p_max_age=" + p2p_max_age +
                 ", bootstrap_nodes=" + bootstrap_nodes +
                 ", max_threads=" + max_threads +
-                ", seed=" + seed +
+                ", seed=" + master_seed +
                 ", blocktime_ms=" + blocktime_ms +
                 ", node_services_tick_ms=" + node_services_tick_ms +
                 ", gossip_flush_period_ms=" + gossip_flush_period_ms +
                 ", logfile='" + logfile + '\'' +
-                ", random=" + random +
                 '}';
     }
 }

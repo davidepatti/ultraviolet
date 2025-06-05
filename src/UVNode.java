@@ -24,6 +24,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private long last_gossip_flush = 0;
     private long last_mempool_check = 0;
     private int channel_openings = 0;
+    private Random local_rnd_generator;
 
     // serialized and restored manually, to avoid stack overflow
     transient private UVNetwork uvNetwork;
@@ -146,6 +147,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return alias;
     }
 
+
+    public void setLocalRndGenerator(Random local_rnd_generator) {
+        this.local_rnd_generator = local_rnd_generator;
+    }
+
+    public Random getLocalRndGenerator() {
+        return local_rnd_generator;
+    }
+
     /**
      * @param channel_id
      * @return
@@ -178,7 +188,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     public UVChannel getRandomChannel() {
-        var some_channel_id = (String) channels.keySet().toArray()[ThreadLocalRandom.current().nextInt(channels.size())];
+        var some_channel_id = (String) channels.keySet().toArray()[local_rnd_generator.nextInt(channels.size())];
         return channels.get(some_channel_id);
     }
     /**
@@ -230,7 +240,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             secret = (long) msg.hashCode();
         }
         else {
-            secret = ThreadLocalRandom.current().nextInt();
+            secret = local_rnd_generator.nextInt();
         }
         R = BigInteger.valueOf(secret).toByteArray();
         var H = CryptoKit.bytesToHexString(CryptoKit.sha256(R));
@@ -887,9 +897,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         channels.put(channel_id,newChannel);
 
         // in millisats
-        int base_fee = uvNetwork.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
+        int base_fee = uvNetwork.getConfig().getMultivalRandomItem(local_rnd_generator,"base_fee_set");
 
-        int fee_ppm = getProfile().getRandomSample("ppm_fees");
+        int fee_ppm = this.profile.getRandomSample(local_rnd_generator,"ppm_fees");
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
         // local update
@@ -921,8 +931,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         pendingAcceptedChannelPeers.remove(newChannel.getInitiator());
 
         // setting a random policy
-        int base_fee = uvNetwork.getConfig().getMultivalPropertyRandomIntItem("base_fee_set");
-        int fee_ppm = getProfile().getRandomSample("ppm_fees");
+        int base_fee = uvNetwork.getConfig().getMultivalRandomItem(local_rnd_generator,"base_fee_set");
+        int fee_ppm = this.profile.getRandomSample(local_rnd_generator,"ppm_fees");
         // TODO: set some delta cltv
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
