@@ -386,7 +386,7 @@ public class UVNetwork implements LNetwork {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getId();
+            var some_channel_id = some_node.getRandomChannel().getChannelId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
             log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
@@ -821,11 +821,11 @@ public class UVNetwork implements LNetwork {
                     int delta = current_local_liquidity-target_local;
                     if (delta> 0) {
                         if (delta>min_delta)
-                            node.pushSats(channel.getChannel_id(), delta);
+                            node.pushSats(channel.getChannelId(), delta);
                     }
                     else {
                         UVNode peer = getUVNode(channel.getNonInitiator());
-                        peer.pushSats(channel.getChannel_id(), -delta);
+                        peer.pushSats(channel.getChannelId(), -delta);
                     }
                 }
             }
@@ -848,11 +848,11 @@ public class UVNetwork implements LNetwork {
                     if (target_local>channel.getReserve()) {
                         if (delta> 0) {
                             if (delta>min_delta)
-                                node.pushSats(channel.getChannel_id(), delta);
+                                node.pushSats(channel.getChannelId(), delta);
                         }
                         else {
                             UVNode peer = getUVNode(channel.getNonInitiator());
-                            peer.pushSats(channel.getChannel_id(), -delta);
+                            peer.pushSats(channel.getChannelId(), -delta);
                         }
                     }
                 }

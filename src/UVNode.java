@@ -206,7 +206,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int balance = 0;
 
         for (UVChannel c : channels.values()) {
-            var peer_id = getChannelPeer(c.getChannel_id()).getPubKey();
+            var peer_id = getChannelPeer(c.getChannelId()).getPubKey();
             balance += c.getBalance(peer_id);
         }
         return balance;
@@ -503,7 +503,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             var path_channel = uvNetwork.getChannelFromNodes(source,dest);
             if (path_channel.isPresent()) {
                 var channel = path_channel.get();
-                var hopPayload = new OnionLayer.Payload(channel.getId(),amount+cumulatedFees,out_cltv,null);
+                var hopPayload = new OnionLayer.Payload(channel.getChannelId(),amount+cumulatedFees,out_cltv,null);
                 onionLayer = new OnionLayer(hopPayload,onionLayer);
 
                 // the fees in the carol->dina channel will be put in the Bob payload in the next loop
@@ -521,12 +521,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
-        debug(()->"Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getId());
+        debug(()->"Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getChannelId());
         if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
 
             failure_reason.put(invoice.getHash(),"missing local liquidity");
             // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
-            log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getId());
+            log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getChannelId());
             return;
         }
 
@@ -712,12 +712,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         if (!forwardingChannel.reservePending(this.getPubKey(), amt_forward)) {
             var reason = "temporary_channel_failure";
-            log("Not enough local liquidity to forward " + amt_forward + " in channel " + forwardingChannel.getId());
+            log("Not enough local liquidity to forward " + amt_forward + " in channel " + forwardingChannel.getChannelId());
             failHTLC(msg, reason);
             return;
         }
 
-        debug(()->"Reserved liquidity on "+forwardingChannel.getId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getId()).getPubKey());
+        debug(()->"Reserved liquidity on "+forwardingChannel.getChannelId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getChannelId()).getPubKey());
 
         // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
         int cltv = payload.getOutgoingCLTV();
@@ -726,14 +726,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var onion_packet = msg.getOnionPacket().getInnerLayer();
         var payhash = msg.getPayment_hash();
 
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
 
         debug(()->"Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
         pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
         nodeStats.incrementForwardingSuccesses();
 
-        var next_channel_peer = getChannelPeer(forwardingChannel.getId());
+        var next_channel_peer = getChannelPeer(forwardingChannel.getChannelId());
         sendToPeer(next_channel_peer,new_msg, uvNetwork);
     }
 
@@ -741,7 +741,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         for (UVChannel c:this.channels.values()) {
             if (c.getNode2PubKey().equals(node_id) || c.getNode1PubKey().equals(node_id)) {
-                    return c.getId();
+                    return c.getChannelId();
             }
         }
         throw new IllegalArgumentException(this.getPubKey()+" Has no channel with "+node_id);
@@ -772,11 +772,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      * - it does not check actual onchain balances
      */
     public void configureChannel(UVChannel channel) {
-        channels.put(channel.getId(),channel);
+        channels.put(channel.getChannelId(),channel);
     }
 
     private String generateTempChannelId(String peerPubKey) {
-        return "tmp_id" + getPubKey() + "_" + peerPubKey;
+        return "tmp_" + getPubKey() + "_" + peerPubKey;
     }
 
     /**
@@ -880,7 +880,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private void fundingChannelConfirmed(String peer_id, String tx_id) {
 
         // Abstractions:
-        // - This function is called by channel inititor, which will alert peer with BOLT funding_locked message:
+        // - This function is called on channel inititor, which will alert peer with BOLT funding_locked message:
         // - Actually, the peer should monitor onchain confirmation on its own, but no trust problem is modeledd in UV
 
         log("Confirmed funding tx: "+tx_id);
@@ -893,7 +893,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         updateOnChainBalance(getOnChainBalance()- request.getFunding());
         updateOnchainPending(getOnchainPending()-request.getFunding());
 
-        var channel_id = newChannel.getChannel_id();
+        var channel_id = newChannel.getChannelId();
         channels.put(channel_id,newChannel);
 
         // in millisats
@@ -926,7 +926,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     public void fundingLocked(UVChannel newChannel) {
 
-        log("Received funding_locked for "+newChannel.getId());
+        log("Received funding_locked for "+newChannel.getChannelId());
 
         pendingAcceptedChannelPeers.remove(newChannel.getInitiator());
 
@@ -937,18 +937,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
 
         newChannel.setPolicy(getPubKey(),newPolicy);
-        channels.put(newChannel.getId(), newChannel);
+        channels.put(newChannel.getChannelId(), newChannel);
 
         channelGraph.addLNChannel(newChannel);
-        channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getId());
+        channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getChannelId());
 
         var timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
         // here sender is set as current node, all the other peers should receive the update
         String sender = this.getPubKey();
-        var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getId(),timestamp,0,newPolicy);
+        var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getChannelId(),timestamp,0,newPolicy);
 
         // sender is set as the channel initiator, so that it's excluded from broadcasting
-        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getChannelId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
         broadcastToPeers(newChannel.getInitiator(), message_ann);
         broadcastToPeers(sender,msg_update);
     }
@@ -1401,7 +1401,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             int num_channels = s.readInt();
             for (int i=0;i<num_channels;i++) {
                 UVChannel c = (UVChannel)s.readObject();
-                channels.put(c.getId(),c);
+                channels.put(c.getChannelId(),c);
             }
             int num_peers = s.readInt();
             for (int i=0;i<num_peers;i++) {

@@ -42,12 +42,12 @@ public class ChannelGraph implements Serializable  {
      */
     public synchronized void addLNChannel(LNChannel channel) {
 
-        final String id = channel.getId();
+        final String id = channel.getChannelId();
         var node1pub = channel.getNode1PubKey();
         var node2pub = channel.getNode2PubKey();
 
         if (this.hasChannel(id)) {
-            System.out.println(" WARNING: skipping addChannel on "+root_node+ ", existing edge for channel "+channel.getId());
+            System.out.println(" WARNING: skipping addChannel on "+root_node+ ", existing edge for channel "+channel.getChannelId());
             return;
             //System.exit(-1);
         }

@@ -381,7 +381,7 @@ public class UltraViolet {
         System.out.println("---------------------------------------------------------------------");
 
         for (var channel: node.getChannels().values()) {
-            int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
+            int outbound = (int)(node.getOutboundFraction(channel.getChannelId())*100);
             System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
         }
 
