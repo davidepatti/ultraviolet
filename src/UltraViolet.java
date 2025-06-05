@@ -248,6 +248,22 @@ public class UltraViolet {
             fwCsv.write(csvReport);
             fwCsv.close();
             System.out.println("Written " + filenameCsv);
+
+            // For "all" report, similar to showNodesAndChannels
+            var filenameAll = new StringBuilder(prefix).append("_all.").append(sdf.format(new Date())).append(".txt");
+            StringBuilder allReport = new StringBuilder();
+            var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
+            for (UVNode n : ln) {
+                allReport.append("--------------------------------------------\n");
+                allReport.append(UVNode.generateNodeLabelString()).append('\n');
+                allReport.append(n.toString()).append('\n');
+                allReport.append(UVChannel.generateLabels()).append('\n');
+                n.getChannels().values().forEach(c -> allReport.append(c).append('\n'));
+            }
+            var fwAll = new FileWriter(filenameAll.toString());
+            fwAll.write(allReport.toString());
+            fwAll.close();
+            System.out.println("Written " + filenameAll);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
