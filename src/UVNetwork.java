@@ -701,7 +701,7 @@ public class UVNetwork implements LNetwork {
             var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
 
             while (!ok_node) {
-                var n = random.nextInt(pubkeys_list.size());
+                var n = thread_rng.nextInt(pubkeys_list.size());
                 var some_random_key = pubkeys_list.get(n);
                 if (node.hasChannelWith(some_random_key)) {
                     max_attempts--;
