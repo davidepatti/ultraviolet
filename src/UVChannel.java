@@ -79,7 +79,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             node2 = initiator;
             init_direction = false;
         }
-        String channel_id = "id_"+node1 +"_"+node2;
+        String channel_id = "ch_"+initiator +"_"+peer;
         return new UVChannel(channel_id,node1,node2,fundingSatoshis,channelReserveSatoshis,pushMsat,init_direction);
     }
 
