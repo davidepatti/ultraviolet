@@ -199,19 +199,20 @@ public class UVNetwork implements LNetwork {
 
 
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
-        for (int n=0;n<uvConfig.bootstrap_nodes;n++) {
-            var profile = uvConfig.selectProfileBy(random,"prob");
-            int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
-            int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
-            int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
-            var node = new UVNode(this,"pk"+n, createAlias(),funding,profile);
-            uvnodes.put(node.getPubKey(),node);
-        }
 
-        int last_issue_block = 0;
         try {
-            int current_index = 0;
-            for (var node : uvnodes.values()) {
+            int last_issue_block = 0;
+
+            for (int current_index=0;current_index<uvConfig.bootstrap_nodes;current_index++) {
+
+                var profile = uvConfig.selectProfileBy(random,"prob");
+                int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
+                int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
+                int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
+
+                var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
+                uvnodes.put(node.getPubKey(),node);
+
                 int wait_for_next = boot_times[current_index] - last_issue_block;
                 if (wait_for_next > 0) {
                     waitForBlocks(wait_for_next);
@@ -222,7 +223,6 @@ public class UVNetwork implements LNetwork {
                 bootstraps_running++;
                 bootstrapExecutor.submit(() -> bootstrapNode(node));
                 last_issue_block = getTimechain().getCurrentBlockHeight();
-                current_index++;
                 pubkeys_list.add(node.getPubKey());
             }
 
@@ -231,7 +231,6 @@ public class UVNetwork implements LNetwork {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // handle interruption
-            //throw new RuntimeException(e);
         }
         finally {
             print_log("BOOTSTRAP: shutting down threads...");
