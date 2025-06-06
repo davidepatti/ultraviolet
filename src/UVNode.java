@@ -883,7 +883,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // - This function is called on channel inititor, which will alert peer with BOLT funding_locked message:
         // - Actually, the peer should monitor onchain confirmation on its own, but no trust problem is modeledd in UV
 
-        log("Confirmed funding tx: "+tx_id);
 
         var timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
         var request = sentChannelOpenings.get(peer_id);
@@ -915,6 +914,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
         var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
 
+        log("Confirmed funding tx: "+tx_id + " for new channel: "+channel_id);
         uvNetwork.getUVNode(peer_id).fundingLocked(newChannel);
         broadcastToPeers(from,msg_announcement);
         broadcastToPeers(from,msg_update);
