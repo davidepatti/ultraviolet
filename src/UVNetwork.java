@@ -681,7 +681,7 @@ public class UVNetwork implements LNetwork {
             waitForBlocks(1);
 
             if (node.getOnchainLiquidity() <= min_ch_size) {
-                log("WARNING:Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
+                log("Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
                 break; // exit while loop
             }
 
@@ -696,28 +696,24 @@ public class UVNetwork implements LNetwork {
                 continue;
             }
 
-            boolean ok_node = false;
+            boolean opened = false;
+            int peer_retries = 50;
             var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
 
-            while (!ok_node) {
+            while (!opened && peer_retries-- >0 ) {
                 var n = thread_rng.nextInt(pubkeys_list.size());
                 var some_random_key = pubkeys_list.get(n);
                 if (node.hasChannelWith(some_random_key)) {
-                    max_attempts--;
-                    if (max_attempts==0) {
-                        log("WARNING: Exiting bootstrap due to max attempts reached...");
-                        break;
-                    }
                     continue;
                 }
                 var some_node = uvnodes.get(some_random_key);
 
                 if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
                     node.openChannel(some_random_key,newChannelSize);
-                    ok_node = true;
+                    opened = true;
                 }
             }
-
+            if (!opened) max_attempts--;
         } // while
 
         bootstraps_running--;
