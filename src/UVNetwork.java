@@ -700,7 +700,7 @@ public class UVNetwork implements LNetwork {
             int peer_retries = 50;
             var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
 
-            while (!opened && peer_retries-- >0 ) {
+            while (peer_retries-- >0 && !opened ) {
                 var n = thread_rng.nextInt(pubkeys_list.size());
                 var some_random_key = pubkeys_list.get(n);
                 if (node.hasChannelWith(some_random_key)) {
