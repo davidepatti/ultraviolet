@@ -1235,7 +1235,20 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     @Override
     public int compareTo(UVNode uvNode) {
-        return this.getPubKey().compareTo(uvNode.getPubKey());
+        String pk1 = this.getPubKey();
+        String pk2 = uvNode.getPubKey();
+        // Pattern: pk + integer
+        if (pk1.startsWith("pk") && pk2.startsWith("pk")) {
+            try {
+                int n1 = Integer.parseInt(pk1.substring(2));
+                int n2 = Integer.parseInt(pk2.substring(2));
+                return Integer.compare(n1, n2);
+            } catch (NumberFormatException e) {
+                return pk1.compareTo(pk2);
+                // fallback to string comparison if parsing fails
+            }
+        }
+        return pk1.compareTo(pk2);
     }
 
     @Override
