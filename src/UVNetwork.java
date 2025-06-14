@@ -19,7 +19,6 @@ public class UVNetwork implements LNetwork {
 
     private ArrayList<String> pubkeys_list;
 
-    private final Random random;
     private UVTimechain uvTimechain;
 
     private boolean bootstrap_started = false;
@@ -43,6 +42,27 @@ public class UVNetwork implements LNetwork {
     private int p2p_thread_pool_size;
     private int bootstraps_running;
     private int bootstraps_ended;
+
+    private Random random;
+    private long masterSeed;  // e.g. passed in via UVConfig
+    private final ThreadLocal<Random> threadRng =
+            ThreadLocal.withInitial(() -> {
+                String threadName = Thread.currentThread().getName();
+                // derive a numeric seed component from the thread name (e.g., parsing suffix or using hashCode)
+                long nameHash;
+                String[] parts = threadName.split("-");
+                if (parts.length > 1) {
+                    try {
+                        nameHash = Long.parseLong(parts[parts.length - 1]);
+                    } catch (NumberFormatException e) {
+                        nameHash = threadName.hashCode();
+                    }
+                } else {
+                    nameHash = threadName.hashCode();
+                }
+                long seed = masterSeed ^ nameHash;
+                return new Random(seed);
+            });
 
 
     private void adjustThreadPoolSizes() {
@@ -92,7 +112,7 @@ public class UVNetwork implements LNetwork {
         }
     }
 
-    public synchronized String createAlias() {
+    public String createAlias() {
         if (aliasNames.isEmpty()) return "no alias";
         var i = random.nextInt(0,aliasNames.size());
         String alias = aliasNames.get(i);
@@ -105,8 +125,8 @@ public class UVNetwork implements LNetwork {
      */
     public UVNetwork(UVConfig config) {
         this.uvConfig = config;
-        random = new Random();
-        if (config.seed!=0) random.setSeed(config.seed);
+        masterSeed = config.getMasterSeed();
+        this.random = new Random(masterSeed);
 
         try {
             File logFile = new File(uvConfig.logfile);
@@ -165,7 +185,7 @@ public class UVNetwork implements LNetwork {
         int min_val = 1;
         int max_val = uvConfig.bootstrap_blocks;
 
-        int[] boot_times = DistributionGenerator.generateIntSamples(n_samples,min_val,max_val,median_start_time,mean_start_time);
+        int[] boot_times = DistributionGenerator.generateIntSamples(random,n_samples,min_val,max_val,median_start_time,mean_start_time);
 
         Arrays.sort(boot_times);
 
@@ -179,27 +199,30 @@ public class UVNetwork implements LNetwork {
 
 
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
-        for (int n=0;n<uvConfig.bootstrap_nodes;n++) {
-            var profile = uvConfig.selectProfileBy("prob");
-            int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
-            int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
-            int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
-            var node = new UVNode(this,"pk"+n, createAlias(),funding,profile);
-            uvnodes.put(node.getPubKey(),node);
-        }
 
-        int last_issue_block = 0;
         try {
-            int current_index = 0;
-            for (var node:uvnodes.values()) {
-                int wait_for_next =boot_times[current_index]-last_issue_block;
-                if (wait_for_next>0) {
+            int last_issue_block = 0;
+
+            for (int current_index=0;current_index<uvConfig.bootstrap_nodes;current_index++) {
+
+                var profile = uvConfig.selectProfileBy(random,"prob");
+                int max_capacity = profile.getIntAttribute("max_funding")/(int)1e3;
+                int min_capacity = profile.getIntAttribute("min_funding") /(int)1e3;
+                int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
+
+                var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
+                uvnodes.put(node.getPubKey(),node);
+
+                int wait_for_next = boot_times[current_index] - last_issue_block;
+                if (wait_for_next > 0) {
                     waitForBlocks(wait_for_next);
+                } else {
+                    // Wait at least 1 block even if wait_for_next == 0, to serialize starts
+                    waitForBlocks(1);
                 }
                 bootstraps_running++;
-                bootstrapExecutor.submit(()->bootstrapNode(node));
+                bootstrapExecutor.submit(() -> bootstrapNode(node));
                 last_issue_block = getTimechain().getCurrentBlockHeight();
-                current_index++;
                 pubkeys_list.add(node.getPubKey());
             }
 
@@ -208,7 +231,6 @@ public class UVNetwork implements LNetwork {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); // handle interruption
-            //throw new RuntimeException(e);
         }
         finally {
             print_log("BOOTSTRAP: shutting down threads...");
@@ -363,7 +385,7 @@ public class UVNetwork implements LNetwork {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getId();
+            var some_channel_id = some_node.getRandomChannel().getChannelId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
             log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
@@ -545,6 +567,8 @@ public class UVNetwork implements LNetwork {
             f.writeInt(uvnodes.size());
 
             for (UVNode n: uvnodes.values()) f.writeObject(n);
+            print_log("Saving random generator...");
+            f.writeObject(random);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -579,10 +603,14 @@ public class UVNetwork implements LNetwork {
                 uvnodes.put(n.getPubKey(),n);
             }
 
+            print_log("Load random generator");
+            this.random = (Random)s.readObject();
+
             // must restore channel partners, can be done only after all nodes have been restored in UVM
             for (UVNode n: uvnodes.values()) {
                 n.restorePersistentData();
             }
+
             refreshPubkeyList();
             bootstrap_completed = true;
 
@@ -627,10 +655,15 @@ public class UVNetwork implements LNetwork {
     }
 
     public void bootstrapNode(UVNode node) {
+        // get a deterministic thread-related seed to create the Random
+        Random thread_rng = threadRng.get();
+
+        node.setLocalRndGenerator(thread_rng);
+
         final var profile = node.getProfile();
         final int max_channels = profile.getIntAttribute("max_channels");
         final int min_channels = profile.getIntAttribute("min_channels");
-        final int target_channel_openings = ThreadLocalRandom.current().nextInt(max_channels+1-min_channels)+min_channels;
+        final int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
         log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
         node.setP2PServices(true);
@@ -648,11 +681,11 @@ public class UVNetwork implements LNetwork {
             waitForBlocks(1);
 
             if (node.getOnchainLiquidity() <= min_ch_size) {
-                log("WARNING:Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
+                log("Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
                 break; // exit while loop
             }
 
-            var newChannelSize = (profile.getRandomSample("channel_sizes")/step)*step;
+            var newChannelSize = (profile.getRandomSample(thread_rng,"channel_sizes")/step)*step;
 
             if (node.getOnchainLiquidity()< newChannelSize) {
                 if (getConfig().debug)
@@ -663,28 +696,24 @@ public class UVNetwork implements LNetwork {
                 continue;
             }
 
-            boolean ok_node = false;
-            var target_profile = uvConfig.selectProfileBy("hubness");
+            boolean opened = false;
+            int peer_retries = 50;
+            var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
 
-            while (!ok_node) {
-                var n = random.nextInt(pubkeys_list.size());
+            while (peer_retries-- >0 && !opened ) {
+                var n = thread_rng.nextInt(pubkeys_list.size());
                 var some_random_key = pubkeys_list.get(n);
                 if (node.hasChannelWith(some_random_key)) {
-                    max_attempts--;
-                    if (max_attempts==0) {
-                        log("WARNING: Exiting bootstrap due to max attempts reached...");
-                        break;
-                    }
                     continue;
                 }
                 var some_node = uvnodes.get(some_random_key);
 
                 if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
                     node.openChannel(some_random_key,newChannelSize);
-                    ok_node = true;
+                    opened = true;
                 }
             }
-
+            if (!opened) max_attempts--;
         } // while
 
         bootstraps_running--;
@@ -787,11 +816,11 @@ public class UVNetwork implements LNetwork {
                     int delta = current_local_liquidity-target_local;
                     if (delta> 0) {
                         if (delta>min_delta)
-                            node.pushSats(channel.getChannel_id(), delta);
+                            node.pushSats(channel.getChannelId(), delta);
                     }
                     else {
                         UVNode peer = getUVNode(channel.getNonInitiator());
-                        peer.pushSats(channel.getChannel_id(), -delta);
+                        peer.pushSats(channel.getChannelId(), -delta);
                     }
                 }
             }
@@ -814,11 +843,11 @@ public class UVNetwork implements LNetwork {
                     if (target_local>channel.getReserve()) {
                         if (delta> 0) {
                             if (delta>min_delta)
-                                node.pushSats(channel.getChannel_id(), delta);
+                                node.pushSats(channel.getChannelId(), delta);
                         }
                         else {
                             UVNode peer = getUVNode(channel.getNonInitiator());
-                            peer.pushSats(channel.getChannel_id(), -delta);
+                            peer.pushSats(channel.getChannelId(), -delta);
                         }
                     }
                 }

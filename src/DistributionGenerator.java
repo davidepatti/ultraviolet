@@ -3,10 +3,8 @@ import java.util.Random;
 
 public class DistributionGenerator {
 
-    private static final Random random = new Random();
-
     // Generates initial samples within specified bounds and median
-    private static double[] generateUniformSamplesWithMedian(int size, double lowerLimit, double upperLimit, double median) {
+    private static double[] generateUniformSamplesWithMedian(Random random, int size, double lowerLimit, double upperLimit, double median) {
         double[] samples = new double[size];
         // Fill first half with values below median
         for (int i = 0; i < size / 2; i++) {
@@ -56,14 +54,14 @@ public class DistributionGenerator {
         return samples;
     }
 
-    public static double[] generateDoubleSamples(int size, int lower_limit, int upper_limit, double median, double mean) {
+    public static double[] generateDoubleSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {
 
-        double[] samples = generateUniformSamplesWithMedian(size, lower_limit, upper_limit, median);
+        double[] samples = generateUniformSamplesWithMedian(random, size, lower_limit, upper_limit, median);
         return adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
     }
     @SuppressWarnings("DataFlowIssue")
-    public static int[] generateIntSamples(int size, int lower_limit, int upper_limit, double median, double mean) {
-        double[] samples = generateUniformSamplesWithMedian(size, lower_limit, upper_limit, median);
+    public static int[] generateIntSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {
+        double[] samples = generateUniformSamplesWithMedian(random, size, lower_limit, upper_limit, median);
         //noinspection DataFlowIssue
         samples = adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
         // Convert double[] to int[]
@@ -76,8 +74,9 @@ public class DistributionGenerator {
 
     public static void main(String[] args) {
         int size = 100;
+        Random random = new Random();
         //double[] samples = generateDoubleSamples(size,0,500,200,100);
-        int[] samples = generateIntSamples(size,50,100,60,80);
+        int[] samples = generateIntSamples(random, size, 50, 100, 60, 80);
 
         // Sorting to check the results
         Arrays.sort(samples);

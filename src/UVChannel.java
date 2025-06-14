@@ -79,11 +79,11 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             node2 = initiator;
             init_direction = false;
         }
-        String channel_id = "id_"+node1 +"_"+node2;
+        String channel_id = "ch_"+initiator +"_"+peer;
         return new UVChannel(channel_id,node1,node2,fundingSatoshis,channelReserveSatoshis,pushMsat,init_direction);
     }
 
-    public String getChannel_id() {
+    public String getChannelId() {
         return channel_id;
     }
 
@@ -109,11 +109,6 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public void setPolicy(String pubkey, Policy policy) {
         var node = resolveNode(pubkey);
         node.setPolicy(policy);
-    }
-
-    @Override
-    public String getId() {
-        return this.channel_id;
     }
 
     @Override
@@ -179,7 +174,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     public synchronized void newCommitment(int node1Balance, int node2Balance) {
 
         if (node1Balance+node2Balance != this.getCapacity()) {
-            throw new IllegalArgumentException("Channel "+this.getId()+": Wrong balances in commitment:"+node1Balance+"+"+node2Balance+"!= "+getCapacity());
+            throw new IllegalArgumentException("Channel "+this.getChannelId()+": Wrong balances in commitment:"+node1Balance+"+"+node2Balance+"!= "+getCapacity());
         }
         node1.balance = node1Balance;
         node2.balance = node2Balance;
@@ -207,7 +202,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
      * @return
      */
     public int compareTo(LNChannel channel) {
-        return this.getId().compareTo(channel.getId());
+        return this.getChannelId().compareTo(channel.getChannelId());
     }
 
 

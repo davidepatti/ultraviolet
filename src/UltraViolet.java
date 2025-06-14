@@ -248,6 +248,22 @@ public class UltraViolet {
             fwCsv.write(csvReport);
             fwCsv.close();
             System.out.println("Written " + filenameCsv);
+
+            // For "all" report, similar to showNodesAndChannels
+            var filenameAll = new StringBuilder(prefix).append("_all.").append(sdf.format(new Date())).append(".txt");
+            StringBuilder allReport = new StringBuilder();
+            var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
+            for (UVNode n : ln) {
+                allReport.append("--------------------------------------------\n");
+                allReport.append(UVNode.generateNodeLabelString()).append('\n');
+                allReport.append(n.toString()).append('\n');
+                allReport.append(UVChannel.generateLabels()).append('\n');
+                n.getChannels().values().forEach(c -> allReport.append(c).append('\n'));
+            }
+            var fwAll = new FileWriter(filenameAll.toString());
+            fwAll.write(allReport.toString());
+            fwAll.close();
+            System.out.println("Written " + filenameAll);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -365,7 +381,7 @@ public class UltraViolet {
         System.out.println("---------------------------------------------------------------------");
 
         for (var channel: node.getChannels().values()) {
-            int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
+            int outbound = (int)(node.getOutboundFraction(channel.getChannelId())*100);
             System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
         }
 
@@ -396,7 +412,7 @@ public class UltraViolet {
             System.exit(-1);
         }
 
-        var uvm_client = new UltraViolet(new UVConfig(args[0]));
+        new UltraViolet(new UVConfig(args[0]));
     }
     private void testInvoiceRoutingCmd() {
 

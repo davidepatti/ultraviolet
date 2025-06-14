@@ -31,7 +31,7 @@ public interface LNChannel {
         }
     }
 
-    String getId();
+    String getChannelId();
     String getNode1PubKey();
     String getNode2PubKey();
     int getCapacity();
