@@ -147,7 +147,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         return node.balance;
     }
     /**
-     * Evaluate the current liquidity on channel peer side, considering the reserve to be mantained and the pending transactions
+     * Evaluate the current liquidity on channel peer side, considering the reserve to be maintained and the pending transactions
      * @return the amount of sats that could actually be received from peer
      */
     public synchronized int getLiquidity(String pubkey) {
