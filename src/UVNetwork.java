@@ -173,7 +173,7 @@ public class UVNetwork implements LNetwork {
 
         log("UVM: deploying nodes, configuration: "+ uvConfig);
 
-        setTimechainRunning(true);
+        setTimechainStatus(true);
         startP2PNetwork();
 
         // given n node, we can expect a peak of 2*n threads during bootstrap, since each node with start its p2p services thread
@@ -268,7 +268,7 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    public void waitForEmptyQueues(int check_period) {
+   private void waitForEmptyQueues(int check_period) {
 
         int warning_timeout = 10000; // 10 sec
         boolean enable_warning = false;
@@ -549,9 +549,22 @@ public class UVNetwork implements LNetwork {
 
         print_log("Checking queues before saving...");
         waitForEmptyQueues(1000);
-        print_log("Done");
-        print_log("Stopping timechain");
-        setTimechainRunning(false);
+        print_log("Stopping timechain...");
+        setTimechainStatus(false);
+
+        // when stopping the timechain, the while loop could still be completing
+        // another final iteration, triggering tictocNextBlock that generates
+        // a concurrent modification exception when saving the object
+
+        while (getTimechain().isThreadAlive()) {
+            print_log("Waiting timchain thread to stop...");
+            try {
+                Thread.sleep(uvConfig.blocktime_ms);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         stopP2PNetwork();
 
         var file = new File(filename);
@@ -581,8 +594,8 @@ public class UVNetwork implements LNetwork {
      * @return False if is not possible to read the file
      */
     public boolean loadStatus(String file) {
-        if (isTimechainRunning()) {
-            setTimechainRunning(false);
+        if (getTimechainStatus()) {
+            setTimechainStatus(false);
             stopP2PNetwork();
         }
         uvnodes.clear();
@@ -624,24 +637,27 @@ public class UVNetwork implements LNetwork {
         return true;
     }
 
-    public synchronized boolean isTimechainRunning() {
-        return getTimechain().isRunning();
+    // notice that status refer to the condition to which the tc is set to be
+    // but actual thread and block generation could still be in progress
+    public synchronized boolean getTimechainStatus() {
+        return getTimechain().getStatus();
     }
 
-    public synchronized void setTimechainRunning(boolean running) {
-        if (isTimechainRunning()==running) {
-            print_log("Warning: status of timechain is already "+running);
-        }
-        else
-            getTimechain().setRunning(running);
-
-        while (isTimechainRunning()!=running) {
-            print_log("Waiting UVTimechain to update status to "+running);
+    public synchronized void setTimechainStatus(boolean status) {
+        if (getTimechainStatus()==status) {
+            print_log("Warning: status of timechain is already "+status);
+            return;
         }
 
-        if (running) print_log("Starting timechain!");
+        getTimechain().setStatus(status);
+
+        while (getTimechainStatus()!=status) {
+            print_log("Waiting UVTimechain to update status to "+status);
+        }
+
+        if (status) print_log("Timechain set to start!");
         else
-            print_log("Stopping timechain!");
+            print_log("Timechain set to stop!");
     }
 
     private void waitForBlocks(int blocks) {
@@ -716,10 +732,10 @@ public class UVNetwork implements LNetwork {
             if (!opened) max_attempts--;
         } // while
 
+        log("BOOTSTRAP: Completed on "+node.getPubKey());
         bootstraps_running--;
         bootstraps_ended++;
         getBootstrapLatch().countDown();
-        log("BOOTSTRAP: Completed on "+node.getPubKey());
     }
 
     public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {

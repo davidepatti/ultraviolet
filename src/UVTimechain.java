@@ -15,7 +15,8 @@ public class UVTimechain implements Runnable, Serializable {
     private final int blocktime;
     private final PriorityQueue<UVTransaction> mempoolQueue = new PriorityQueue<>(new FeeComparator());
     private final List<Block>  blockChain = new ArrayList<>();
-    boolean running;
+    boolean status;
+    private volatile boolean threadAlive = false;
 
     // Maps each fee band (upper bound) to the cumulative bytes of pending transactions within that band
     private final NavigableMap<Integer, Long> congestionLevelsByFeeBand = new TreeMap<>();
@@ -35,7 +36,7 @@ public class UVTimechain implements Runnable, Serializable {
     public UVTimechain(int blocktime, UVNetwork uvNetwork) {
         current_height = 0;
         this.blocktime = blocktime;
-        this.running = false;
+        this.status = false;
         this.uvm = uvNetwork;
 
         // Initialize congestion levels map with zero bytes for each fee band
@@ -168,46 +169,48 @@ public class UVTimechain implements Runnable, Serializable {
         return new_latch;
     }
 
-    public synchronized void setRunning(boolean running_status) {
+    public synchronized void setStatus(boolean status) {
         // not running --> running, must start the thread
-        if (running_status && !isRunning()) {
-                Thread timechainThread = new Thread(this, "Timechain");
-                this.running = true;
-                timechainThread.start();
+        if (status && !getStatus()) {
+            this.status = true;
+            Thread timechainThread = new Thread(this, "Timechain");
+            timechainThread.start();
         }
         else  // just update the status if required
-            this.running = running_status;
+            this.status = status;
     }
 
-    public synchronized boolean isRunning() {
-        return this.running;
+    public synchronized boolean getStatus() {
+        return this.status;
+    }
+
+    public boolean isThreadAlive() {
+        return threadAlive;
     }
 
     @Override
     public void run(){
+        threadAlive = true;
         log("Starting timechain thread...");
-        while (isRunning()) {
+        while (getStatus()) {
             try {
                 Thread.sleep(blocktime);
                 synchronized (wait_blocks_latch) {
-                    for (CountDownLatch t: wait_blocks_latch) {
-                        t.countDown();
-                    }
+                    for (CountDownLatch t: wait_blocks_latch)  t.countDown();
                     wait_blocks_latch.removeIf(t -> t.getCount() == 0);
                 }
             } catch (InterruptedException e) {
+                threadAlive = false;
                 throw new RuntimeException(e);
             }
             tictocNextBlock();
         }
+        threadAlive = false;
         log("Exiting timechain thread...");
     }
 
     @Override
     public String toString() {
-        return "Timechain{" +
-                "current_height=" + current_height +
-                ", blocktime=" + blocktime +
-                '}';
+        return "Timechain{" + "current_height=" + current_height + ", blocktime=" + blocktime + '}';
     }
 }

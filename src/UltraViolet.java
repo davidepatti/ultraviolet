@@ -89,7 +89,7 @@ public class UltraViolet {
             menuItems.forEach(System.out::println);
             System.out.println("__________________________________________________");
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
-            if (!networkManager.getTimechain().isRunning()) System.out.println(" (NOT RUNNING)");
+            if (!networkManager.getTimechain().getStatus()) System.out.println(" (NOT RUNNING)");
             else System.out.println(" Running...");
 
             System.out.print("\n -> ");
@@ -148,13 +148,13 @@ public class UltraViolet {
             System.out.println("ERROR: must execute bootstrap or load/import a network!");
             return;
         }
-        if (!networkManager.isTimechainRunning()) {
+        if (!networkManager.getTimechainStatus()) {
             System.out.println("Starting Timechain, check " + networkManager.getConfig().logfile);
-            networkManager.setTimechainRunning(true);
+            networkManager.setTimechainStatus(true);
             networkManager.startP2PNetwork();
         } else {
             System.out.print("Waiting for Timechain services to stop...");
-            networkManager.setTimechainRunning(false);
+            networkManager.setTimechainStatus(false);
             networkManager.stopP2PNetwork();
         }
     }
@@ -282,7 +282,7 @@ public class UltraViolet {
             System.out.println("Bootstrap not completed, cannot generate events!");
             return;
         }
-        if (!networkManager.isTimechainRunning()) {
+        if (!networkManager.getTimechainStatus()) {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
