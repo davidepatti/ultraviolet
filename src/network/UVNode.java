@@ -6,6 +6,8 @@ import misc.CryptoKit;
 import protocol.*;
 import stats.*;
 import misc.*;
+import topology.PathFinder;
+import topology.PathFinderFactory;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -16,10 +18,6 @@ import java.util.function.Supplier;
 public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     private final UVConfig.NodeProfile profile;
-    transient GlobalStats.NodeStats nodeStats = new GlobalStats.NodeStats();
-
-    // temporary store for an invoice failure reason
-    transient private Map<String,String> failure_reason = new HashMap<>();
 
     @Serial
     private static final long serialVersionUID = 120675L;
@@ -33,12 +31,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private int channel_openings = 0;
     private Random local_rnd_generator;
 
-    // serialized and restored manually, to avoid stack overflow
     transient private UVNetwork uvNetwork;
-    transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ChannelGraph channelGraph;
+    transient private PathFinder pathFinder;
+    transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ConcurrentHashMap<String, UVNode> peers = new ConcurrentHashMap<>();
     transient private boolean p2pIsRunning = false;
+
+    // p2p and messages
     transient private ArrayList<String> saved_peers_id;
     transient public ScheduledFuture<?> p2pHandler;
     transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
@@ -57,6 +57,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     // associate a tx with its broadcast height
     transient private HashMap<UVTransaction,Integer> waitingTxConf = new HashMap<>();
 
+    transient GlobalStats.NodeStats nodeStats = new GlobalStats.NodeStats();
+    // temporary store for an invoice failure reason
+    transient private Map<String,String> failure_reason = new HashMap<>();
     /**
      * Create a lightning node instance attaching it to some Ultraviolet Manager
      *
@@ -70,8 +73,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.alias = alias;
         updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
+        pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS);
         this.profile = profile;
     }
+
+    public void setPathFinder(PathFinder pathFinder) {
+        this.pathFinder = pathFinder;
+    }
+
+    public List<List<ChannelGraph.Edge>> findPaths(String start, String end, boolean stopFirst) {
+        return pathFinder.findPaths(this.channelGraph, start,end,stopFirst);
+    }
+
     public GlobalStats.NodeStats getNodeStats() {
         return nodeStats;
     }
@@ -257,7 +270,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    private boolean checkPathCapacity(ArrayList<ChannelGraph.Edge> path, int amount) {
+    private boolean checkPathCapacity(List<ChannelGraph.Edge> path, int amount) {
 
         for (ChannelGraph.Edge e : path) {
             if (e.capacity() < amount) return false;
@@ -265,7 +278,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    public boolean checkPathPolicies(ArrayList<ChannelGraph.Edge> path) {
+    public boolean checkPathPolicies(List<ChannelGraph.Edge> path) {
         for (ChannelGraph.Edge e : path) {
             if (e.policy() == null) {
                 debug(()->"WARNING: Invalid path, missing policy on edge " + e);
@@ -275,7 +288,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    public boolean checkOutboundPathLiquidity(ArrayList<ChannelGraph.Edge> path, int amount) {
+    public boolean checkOutboundPathLiquidity(List<ChannelGraph.Edge> path, int amount) {
 
         var firstChannelId = getMyChannelWith(path.get(path.size() - 1).destination());
         var firstChannel = channels.get(firstChannelId);
@@ -300,7 +313,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
 
-    private int getPathFees(ArrayList<ChannelGraph.Edge> path, int amount) {
+    private int getPathFees(List<ChannelGraph.Edge> path, int amount) {
         int fees = 0;
 
         for (ChannelGraph.Edge e : path) {
@@ -332,8 +345,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         String logMessage;
 
-        var totalPaths = this.getChannelGraph().findPath(this.getPubKey(),invoice.getDestination(),false);
-        var candidatePaths = new ArrayList<ArrayList<ChannelGraph.Edge>>();
+        var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),false);
+        List<List<ChannelGraph.Edge>> candidatePaths = new ArrayList<>();
 
         for (var path : totalPaths) {
 
@@ -481,7 +494,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      *
      */
 
-    private synchronized void routeInvoiceOnPath(LNInvoice invoice, ArrayList<ChannelGraph.Edge> path) {
+    private synchronized void routeInvoiceOnPath(LNInvoice invoice, List<ChannelGraph.Edge> path) {
         log("Routing on path:"+ChannelGraph.pathString(path));
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
