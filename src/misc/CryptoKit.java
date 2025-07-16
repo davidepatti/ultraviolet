@@ -1,4 +1,4 @@
-package utils;
+package misc;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;

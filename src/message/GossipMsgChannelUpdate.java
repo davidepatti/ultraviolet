@@ -1,3 +1,7 @@
+package message;
+
+import network.LNChannel;
+
 public class GossipMsgChannelUpdate extends GossipMsg {
 
     private final String channel_id;

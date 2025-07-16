@@ -1,3 +1,5 @@
+package message;
+
 public class GossipMsgChannelAnnouncement extends GossipMsg {
 
     private final String short_channel_id;

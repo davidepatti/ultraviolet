@@ -1,6 +1,13 @@
+package network;
+
+import message.P2PMessage;
+import misc.UVConfig;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import protocol.UVTimechain;
+import stats.*;
+import protocol.*;
 
 import java.io.*;
 import java.time.Duration;
@@ -44,7 +51,7 @@ public class UVNetwork implements LNetwork {
     private int bootstraps_ended;
 
     private Random random;
-    private long masterSeed;  // e.g. passed in via UVConfig
+    private long masterSeed;  // e.g. passed in via misc.UVConfig
     private final ThreadLocal<Random> threadRng =
             ThreadLocal.withInitial(() -> {
                 String threadName = Thread.currentThread().getName();
@@ -338,7 +345,7 @@ public class UVNetwork implements LNetwork {
 
     /**
      * Select a random node in the network using the list of the currently known pubkeys
-     * @return a UVNode instance of the selected node
+     * @return a network.UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
         var n = random.nextInt(pubkeys_list.size());
@@ -652,7 +659,7 @@ public class UVNetwork implements LNetwork {
         getTimechain().setStatus(status);
 
         while (getTimechainStatus()!=status) {
-            print_log("Waiting UVTimechain to update status to "+status);
+            print_log("Waiting protocol.UVTimechain to update status to "+status);
         }
 
         if (status) print_log("Timechain set to start!");

@@ -1,3 +1,5 @@
+package message;
+
 import java.io.Serializable;
 
 public class MsgOpenChannel extends P2PMessage implements Serializable {
@@ -36,7 +38,7 @@ public class MsgOpenChannel extends P2PMessage implements Serializable {
 
 
     public MsgOpenChannel(String temp_channel_id, int funding, int reserve, int push_msat, int to_self_delay, String funding_pubkey) {
-        super(Type.OPEN_CHANNEL);
+        super(P2PMessage.Type.OPEN_CHANNEL);
         this.temporary_channel_id = temp_channel_id;
         this.funding_satoshis = funding;
         this.channel_reserve_satoshis = reserve;
@@ -47,7 +49,7 @@ public class MsgOpenChannel extends P2PMessage implements Serializable {
 
     @Override
     public String toString() {
-        return "MsgOpenChannel{" +
+        return "message.MsgOpenChannel{" +
                 "temp_id='" + temporary_channel_id + '\'' +
                 ", funding_sat=" + funding_satoshis +
                 ", push_msat=" + push_msat +

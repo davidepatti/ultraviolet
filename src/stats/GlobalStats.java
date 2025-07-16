@@ -1,3 +1,7 @@
+package stats;
+
+import network.*;
+
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -177,7 +181,7 @@ public class GlobalStats {
         return -Math.log(1 - u) / lambda;
     }
 
-    static class NodeStats implements Serializable{
+    public static class NodeStats implements Serializable{
 
         // this refers to the invoices processed
         public final ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();

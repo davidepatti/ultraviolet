@@ -1,3 +1,9 @@
+package network;
+
+import message.P2PMessage;
+import network.LNChannel;
+import network.UVNode;
+
 import java.util.Optional;
 
 public interface LNetwork {

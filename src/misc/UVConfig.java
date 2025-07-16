@@ -1,3 +1,7 @@
+package misc;
+
+import stats.DistributionGenerator;
+
 import java.io.*;
 import java.util.*;
 /* a .properties file is used to initialize this class with a set of key/value pair, readable from other classes
@@ -158,7 +162,7 @@ public class UVConfig implements Serializable {
                 final int mean_ppm_fee = profile.getIntAttribute("mean_ppm_fee");
 
                 profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(random,100,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
-                profile.distributions.put("ppm_fees",DistributionGenerator.generateIntSamples(random,100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
+                profile.distributions.put("ppm_fees", DistributionGenerator.generateIntSamples(random,100,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
             }
 
         } catch (FileNotFoundException e) {
@@ -236,7 +240,7 @@ public class UVConfig implements Serializable {
 
     @Override
     public String toString() {
-        return "UVConfig{" +
+        return "misc.UVConfig{" +
                 "profiles=" + profiles +
                 ", properties=" + properties +
                 ", p2p_max_hops=" + p2p_max_hops +

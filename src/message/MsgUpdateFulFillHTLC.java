@@ -1,3 +1,5 @@
+package message;
+
 public class MsgUpdateFulFillHTLC extends P2PMessage {
     private final String channel_id;
     private final int id;
@@ -6,7 +8,7 @@ public class MsgUpdateFulFillHTLC extends P2PMessage {
 
     public MsgUpdateFulFillHTLC(String channel_id, int id, long preimage) {
 
-        super(Type.UPDATE_FULFILL_HTLC);
+        super(P2PMessage.Type.UPDATE_FULFILL_HTLC);
         this.channel_id = channel_id;
         this.id = id;
         this.payment_preimage = preimage;
@@ -26,7 +28,7 @@ public class MsgUpdateFulFillHTLC extends P2PMessage {
 
     @Override
     public String toString() {
-        return "MsgUpdateFulFillHTLC{" +
+        return "message.MsgUpdateFulFillHTLC{" +
                 "ch_id:'" + channel_id + '\'' +
                 ", id:" + id +
                 ", preimage:'" + payment_preimage + '\'' +

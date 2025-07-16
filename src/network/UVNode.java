@@ -1,4 +1,11 @@
-import utils.CryptoKit;
+package network;
+
+import message.*;
+import topology.ChannelGraph;
+import misc.CryptoKit;
+import protocol.*;
+import stats.*;
+import misc.*;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -231,7 +238,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      * @return
      */
     @Override
-    public LNInvoice generateInvoice(int amount,String msg, boolean determininistic ) {
+    public LNInvoice generateInvoice(int amount, String msg, boolean determininistic ) {
         // determining secret based on message, useful for testing
         // Must use properly generated msg, since same strings would lead to same invoice hash
         byte[] R;
@@ -469,7 +476,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     /**
      * This method is responsible for routing an invoice through a specific path in the Lightning Network.
      *
-     * The method expects an LNInvoice instance and an ArrayList of ChannelGraph.Edge objects
+     * The method expects an protocol.LNInvoice instance and an ArrayList of topology.ChannelGraph.Edge objects
      * which represent the path for routing the payment in the Lightning Network.
      *
      */
@@ -1399,7 +1406,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
     }
     /**
-     * Read custom serialization of UVNode: num channels + sequence of channels object
+     * Read custom serialization of network.UVNode: num channels + sequence of channels object
      * Notice that internal UVNodes are restored separately to avoid stack overflow
      * @param s
      */
@@ -1425,7 +1432,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
             //noinspection unchecked
             generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
-            //invoiceReports = (ArrayList<GlobalStats.InvoiceReport>) s.readObject();
+            //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
             nodeStats = (GlobalStats.NodeStats) s.readObject();
             payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
             channelGraph = (ChannelGraph) s.readObject();
