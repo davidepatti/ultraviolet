@@ -1,3 +1,5 @@
+package message;
+
 import java.io.Serializable;
 
 public class MsgAcceptChannel extends P2PMessage implements Serializable {
@@ -19,7 +21,7 @@ public class MsgAcceptChannel extends P2PMessage implements Serializable {
     }
 
     public MsgAcceptChannel(String temporary_channel_id, int minimum_depth, int to_self_delay, String funding_pubkey) {
-        super(Type.ACCEPT_CHANNEL);
+        super(P2PMessage.Type.ACCEPT_CHANNEL);
         this.temporary_channel_id = temporary_channel_id;
         this.to_self_delay = to_self_delay;
         this.funding_pubkey = funding_pubkey;
@@ -28,7 +30,7 @@ public class MsgAcceptChannel extends P2PMessage implements Serializable {
 
     @Override
     public String toString() {
-        return "MsgAcceptChannel{" +
+        return "message.MsgAcceptChannel{" +
                 "to_self_delay=" + to_self_delay +
                 ", temporary_channel_id='" + temporary_channel_id + '\'' +
                 ", funding_pubkey='" + funding_pubkey + '\'' +

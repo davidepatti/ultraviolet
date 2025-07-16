@@ -1,3 +1,8 @@
+import misc.UVConfig;
+import network.*;
+import stats.*;
+import topology.*;
+
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -221,7 +226,7 @@ public class UltraViolet {
         String labels = GlobalStats.NodeStats.generateStatsHeader();
         StringBuilder r = new StringBuilder(labels).append('\n');
         for (var n : networkManager.getSortedNodeListByPubkey()) {
-            r.append(n.nodeStats.generateStatsCSV(n)).append("\n");
+            r.append(n.getNodeStats().generateStatsCSV(n)).append("\n");
         }
         var csvReport = r.toString();
         System.out.print("Enter description prefix:");
@@ -468,9 +473,25 @@ public class UltraViolet {
         boolean stopfirst = choice.equals("1");
 
         var paths = networkManager.searchNode(start).getChannelGraph().findPath(start,destination,stopfirst);
+        var paths2 = networkManager.searchNode(start).getChannelGraph().findPathMultiParentBFS(start,destination,stopfirst);
+        var paths3 = networkManager.searchNode(start).getChannelGraph().findPathUniformCost(start,destination,stopfirst);
 
         if (!paths.isEmpty()) {
             for (ArrayList<ChannelGraph.Edge> path: paths) {
+                System.out.println(ChannelGraph.pathString(path));
+            }
+        }
+        else System.out.println("NO PATH FOUND");
+        System.out.println("multiparent:---------------------------");
+        if (!paths2.isEmpty()) {
+            for (ArrayList<ChannelGraph.Edge> path: paths2) {
+                System.out.println(ChannelGraph.pathString(path));
+            }
+        }
+        else System.out.println("NO PATH FOUND");
+        System.out.println("uniform:---------------------------");
+        if (!paths2.isEmpty()) {
+            for (ArrayList<ChannelGraph.Edge> path: paths2) {
                 System.out.println(ChannelGraph.pathString(path));
             }
         }

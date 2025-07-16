@@ -1,3 +1,5 @@
+package message;
+
 import java.io.Serializable;
 
 public abstract class GossipMsg extends P2PMessage implements Serializable {

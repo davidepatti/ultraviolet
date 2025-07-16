@@ -1,3 +1,5 @@
+package protocol;
+
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,7 +47,7 @@ public class LNInvoice implements Serializable {
 
     @Override
     public String toString() {
-        return "LNInvoice{" + "H='" + H + '\'' + ", amt=" + amount + ", dst='" + destination + '\'' + ", msg=" + message + '}';
+        return "protocol.LNInvoice{" + "H='" + H + '\'' + ", amt=" + amount + ", dst='" + destination + '\'' + ", msg=" + message + '}';
     }
 
     @Override

@@ -1,3 +1,8 @@
+package topology;
+
+import network.*;
+import message.*;
+
 import java.io.*;
 import java.util.*;
 
@@ -28,6 +33,9 @@ public class ChannelGraph implements Serializable  {
             return "("+source + "->"+ destination + ")["+capacity +"]("+policy+")";
         }
 
+        public double weight() {
+            return 1.0;
+        }
     }
 
 
@@ -104,7 +112,133 @@ public class ChannelGraph implements Serializable  {
         return count;
     }
 
-    protected synchronized ArrayList<ArrayList<Edge>> findPath(String start, String end, boolean stopfirst)
+    /**
+     * Returns ONE cheapest-fee path (or all equal-cost ties if stopfirst = false).
+     * Simply swaps the FIFO queue for a min-priority queue keyed by cost.
+     */
+    public ArrayList<ArrayList<Edge>> findPathUniformCost(String start,
+                                                          String end,
+                                                          boolean stopfirst) {
+
+        /* ---------- priority queue node ---------- */
+        record Node(String vertex, double cost) {}
+        var queue = new PriorityQueue<Node>(Comparator.comparingDouble(Node::cost));
+
+        /* best known cost to each vertex */
+        var bestCost     = new HashMap<String, Double>();
+        var last_parent  = new HashMap<String, Edge>();
+
+        bestCost.put(start, 0.0);
+        queue.add(new Node(start, 0.0));
+
+        var paths = new ArrayList<ArrayList<Edge>>();
+
+        while (!queue.isEmpty()) {
+            var cur = queue.poll();
+            String u       = cur.vertex();
+            double costU   = cur.cost();
+
+            if (costU > bestCost.get(u)) continue;   // outdated queue entry
+
+            if (u.equals(end)) {                     // destination dequeued → optimal
+                var path = new ArrayList<Edge>();
+                for (Edge e = last_parent.get(u); e != null; e = last_parent.get(e.source()))
+                    path.add(e);
+                paths.add(path);
+                if (stopfirst) return paths;         // return only the best path
+            }
+
+            for (Edge e : adj_map.getOrDefault(u, Set.<Edge>of())) {
+                String v       = e.destination();
+                double altCost = costU + e.weight();
+
+                if (altCost < bestCost.getOrDefault(v, Double.POSITIVE_INFINITY)) {
+                    bestCost.put(v, altCost);
+                    last_parent.put(v, e);
+                    queue.add(new Node(v, altCost));
+                }
+            /* equal-cost tie → keep additional parent so we can reconstruct
+               multiple optimum paths when stopfirst == false */
+                else if (altCost == bestCost.getOrDefault(v, Double.POSITIVE_INFINITY)
+                        && !last_parent.containsKey(v)) {
+                    last_parent.put(v, e);
+                }
+            }
+        }
+        return paths;          // may be empty if end unreachable
+    }
+
+
+    /**
+     * All minimum-hop paths (ties included) from start to end.
+     * Depth = number of edges; weights are ignored.
+     */
+    public ArrayList<ArrayList<Edge>> findPathMultiParentBFS(String start,
+                                                             String end,
+                                                             boolean stopfirst) {
+
+        /* frontier ordered by hop depth exactly as before */
+        var queue = new LinkedList<String>();
+
+        /* depth map instead of visited-set */
+        var depth  = new HashMap<String, Integer>();
+        depth.put(start, 0);
+
+        /* parents[v] = list of incoming edges that reach v with minimum depth */
+        var parents = new HashMap<String, ArrayList<Edge>>();
+
+        queue.add(start);
+
+        while (!queue.isEmpty()) {
+            var u = queue.poll();
+            int d = depth.get(u);
+
+            for (Edge e : adj_map.getOrDefault(u, Set.<Edge>of())) {
+                String v = e.destination();
+
+                /* first time we reach v → record depth & parent, enqueue */
+                if (!depth.containsKey(v)) {
+                    depth.put(v, d + 1);
+                    parents.computeIfAbsent(v, k -> new ArrayList<>()).add(e);
+                    queue.add(v);
+                }
+                /* reached again at the SAME depth → additional shortest parent */
+                else if (depth.get(v) == d + 1) {
+                    parents.get(v).add(e);
+                }
+            }
+        }
+
+        /* ---------- reconstruct every shortest path ---------- */
+        var paths = new ArrayList<ArrayList<Edge>>();
+        if (!depth.containsKey(end)) return paths;      // unreachable
+
+        buildPaths(end, parents, new ArrayList<>(), paths);
+
+        if (stopfirst && !paths.isEmpty())
+            return new ArrayList<>(List.of(paths.get(0))); // only the first one
+        return paths;
+    }
+
+    /* DFS back-tracking, collects paths reversed (end → start) */
+    private void buildPaths(String v,
+                            Map<String, ArrayList<Edge>> parents,
+                            ArrayList<Edge> partial,
+                            ArrayList<ArrayList<Edge>> out) {
+        var plist = parents.get(v);
+        if (plist == null) {               // reached the start
+            out.add(new ArrayList<>(partial));
+            return;
+        }
+        for (Edge e : plist) {
+            partial.add(e);
+            buildPaths(e.source(), parents, partial, out);
+            partial.remove(partial.size() - 1);
+        }
+    }
+
+
+    public synchronized ArrayList<ArrayList<Edge>> findPath(String start, String end, boolean stopfirst)
     {
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
@@ -152,36 +286,6 @@ public class ChannelGraph implements Serializable  {
         }
         return paths;
     }
-
-    /**
-    public void DFS_path_util(String current_node, String end_node, HashSet<String> visited) {
-        visited.add(current_node);
-        if (DEBUG)
-            System.out.println(">>> Considering:" + current_node + " ");
-
-        if (DEBUG)
-            if (current_node.equals(end_node)) System.out.println("FOUND!");
-
-        for (var n : adj_map.get(current_node)) {
-            if (DEBUG)
-                System.out.println("\t-> Looking " + current_node + "-->" + n);
-            if (!visited.contains(n)) {
-                DFS_path_util(n, end_node, visited);
-            }
-        }
-        if (DEBUG)
-            System.out.println(">>> FINISH "+current_node+ " ");
-    }
-
-    public boolean DFSFindPath(LNode start_node,LNode end_node) {
-        var visited = new HashSet<String>();
-        if (DEBUG)
-            System.out.println("Starting from "+start_node.getPubKey()+" destination "+end_node.getPubKey());
-        DFS_path_util(start_node.getPubKey(),end_node.getPubKey(),visited);
-        return  false;
-    }
-
-     */
 
 
     @Serial

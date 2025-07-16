@@ -1,3 +1,5 @@
+package message;
+
 public class MsgUpdateFailHTLC extends P2PMessage {
     private final String channel_id;
     private final int id;
@@ -6,7 +8,7 @@ public class MsgUpdateFailHTLC extends P2PMessage {
 
     public MsgUpdateFailHTLC(String channel_id, int id, String reason) {
 
-        super(Type.UPDATE_FAIL_HTLC);
+        super(P2PMessage.Type.UPDATE_FAIL_HTLC);
         this.channel_id = channel_id;
         this.id = id;
         this.reason = reason;
@@ -26,6 +28,6 @@ public class MsgUpdateFailHTLC extends P2PMessage {
 
     @Override
     public String toString() {
-        return "MsgUpdateFailHTLC{" + "ch_id:'" + channel_id + '\'' + ", id:" + id + ", reason:'" + reason + '\'' + '}';
+        return "message.MsgUpdateFailHTLC{" + "ch_id:'" + channel_id + '\'' + ", id:" + id + ", reason:'" + reason + '\'' + '}';
     }
 }

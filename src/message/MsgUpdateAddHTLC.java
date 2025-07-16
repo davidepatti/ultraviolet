@@ -1,4 +1,6 @@
-import utils.CryptoKit;
+package message;
+
+import misc.CryptoKit;
 
 public class MsgUpdateAddHTLC extends P2PMessage {
     private final String channel_id;
@@ -11,7 +13,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
 
     public MsgUpdateAddHTLC(String channel_id, int id, int amount, String hash, int cltv_expiry, OnionLayer onion_packet) {
 
-        super(Type.UPDATE_ADD_HTLC);
+        super(P2PMessage.Type.UPDATE_ADD_HTLC);
         this.channel_id = channel_id;
         this.id = id;
         this.amount = amount;
@@ -49,7 +51,7 @@ public class MsgUpdateAddHTLC extends P2PMessage {
 
     @Override
     public String toString() {
-        return "MsgUpdateAddHTLC{" +
+        return "message.MsgUpdateAddHTLC{" +
                 "ch:'" + channel_id + '\'' +
                 ", id:" + id +
                 ", amt:" + amount +
