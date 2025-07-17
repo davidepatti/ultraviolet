@@ -17,7 +17,7 @@ import java.util.*;
  * -------------------------------------------------------------------------*/
 public class UniformCost implements PathFinder{
     @Override
-    public List<List<ChannelGraph.Edge>> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
 
             /* PQ node = (vertex, accumulated-cost)                               */
             record Node(String v, double g) {}
@@ -69,7 +69,7 @@ public class UniformCost implements PathFinder{
             }
 
             /* ---------- back-track to enumerate every optimal path ------------ */
-            List<List<ChannelGraph.Edge>> paths = new ArrayList<>();
+            List<Path> paths = new ArrayList<>();
             if (!bestCost.containsKey(end)) return paths;       // unreachable
 
             buildPaths(end, parents, new ArrayList<>(), paths);
@@ -80,10 +80,10 @@ public class UniformCost implements PathFinder{
         }
 
         /* Depth-first back-tracking: builds paths reversed (end → start).        */
-        private void buildPaths(String v, Map<String, List<ChannelGraph.Edge>> parents, List<ChannelGraph.Edge> partial, List<List<ChannelGraph.Edge>> out) {
+        private void buildPaths(String v, Map<String, List<ChannelGraph.Edge>> parents, List<ChannelGraph.Edge> partial, List<Path> out) {
             var plist = parents.get(v);
             if (plist == null) {                 // reached the source
-                out.add(new ArrayList<>(partial));
+                out.add(new Path(partial));
                 return;
             }
             for (ChannelGraph.Edge e : plist) {

@@ -20,7 +20,7 @@ import java.util.*;
  * -------------------------------------------------------------------------*/
 public class MultiParentBFS implements PathFinder {
     @Override
-    public List<List<ChannelGraph.Edge>> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
         /* frontier ordered by hop depth exactly as before */
         var queue = new LinkedList<String>();
 
@@ -54,7 +54,7 @@ public class MultiParentBFS implements PathFinder {
         }
 
         /* ---------- reconstruct every shortest path ---------- */
-        List<List<ChannelGraph.Edge>> paths = new ArrayList<>();
+        List<Path> paths = new ArrayList<>();
         if (!depth.containsKey(end)) return paths;      // unreachable
 
         buildPaths(end, parents, new ArrayList<>(), paths);
@@ -67,10 +67,10 @@ public class MultiParentBFS implements PathFinder {
     private void buildPaths(String v,
                             Map<String, ArrayList<ChannelGraph.Edge>> parents,
                             List<ChannelGraph.Edge> partial,
-                            List<List<ChannelGraph.Edge>> out) {
+                            List<Path> out) {
         var plist = parents.get(v);
         if (plist == null) {               // reached the start
-            out.add(new ArrayList<>(partial));
+            out.add(new Path(partial));
             return;
         }
         for (ChannelGraph.Edge e : plist) {

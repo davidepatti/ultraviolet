@@ -21,11 +21,11 @@ import java.util.List;
 
 public class BFS implements PathFinder {
     @Override
-    public List<List<ChannelGraph.Edge>> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
 
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
-        List<List<ChannelGraph.Edge>> paths = new ArrayList<>();
+        List<Path> paths = new ArrayList<>();
 
         var last_parent = new HashMap<String, ChannelGraph.Edge>();
         last_parent.put("ROOT",null);
@@ -43,15 +43,15 @@ public class BFS implements PathFinder {
             for (ChannelGraph.Edge e :list_edges) {
                 if (e.destination().equals(end))  {
                     nfound++;
-                    List<ChannelGraph.Edge> path = new ArrayList<>();
-                    path.add(e);
+                    List<ChannelGraph.Edge> edges = new ArrayList<>();
+                    edges.add(e);
 
                     ChannelGraph.Edge current = last_parent.get(e.source());
                     while (current!=null) {
-                        path.add(current);
+                        edges.add(current);
                         current = last_parent.get(current.source());
                     }
-                    paths.add(path);
+                    paths.add(new Path(edges));
                     if (stopFirst) return paths;
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());

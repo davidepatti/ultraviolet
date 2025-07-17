@@ -487,22 +487,22 @@ public class UltraViolet {
 
         System.out.println(" -- bfs --------------------------------------");
         if (!paths_bfs.isEmpty()) {
-            for (List<ChannelGraph.Edge> path: paths_bfs) {
-                System.out.println(ChannelGraph.pathString(path));
+            for (Path path: paths_bfs) {
+                System.out.println(path);
             }
         }
         else System.out.println("NO PATH FOUND");
         System.out.println(" ----- mp -----------------------------------");
         if (!paths_mp.isEmpty()) {
-            for (List<ChannelGraph.Edge> path: paths_mp) {
-                System.out.println(ChannelGraph.pathString(path));
+            for (Path path: paths_mp) {
+                System.out.println(path);
             }
         }
         else System.out.println("NO PATH FOUND");
         System.out.println(" ----- uc -----------------------------------");
         if (!paths_uc.isEmpty()) {
-            for (List<ChannelGraph.Edge> path: paths_uc) {
-                System.out.println(ChannelGraph.pathString(path));
+            for (Path path: paths_uc) {
+                System.out.println(path);
             }
         }
         else System.out.println("NO PATH FOUND");

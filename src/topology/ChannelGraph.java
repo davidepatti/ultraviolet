@@ -22,17 +22,6 @@ public class ChannelGraph implements Serializable  {
         return adj_map;
     }
 
-    public static String pathString(List<Edge> path) {
-        StringBuilder s = new StringBuilder("(");
-
-        for (int i = path.size();i>0;i--) {
-            var e = path.get(i-1);
-            s.append(e.source()).append("->");
-        }
-        s.append(path.get(0).destination()).append(")");
-        return s.toString();
-    }
-
     public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
         @Override
         public String toString() {
@@ -40,7 +29,7 @@ public class ChannelGraph implements Serializable  {
         }
 
         public double weight() {
-            return 1.0;
+            return Math.random();
         }
     }
 

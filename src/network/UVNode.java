@@ -6,6 +6,7 @@ import misc.CryptoKit;
 import protocol.*;
 import stats.*;
 import misc.*;
+import topology.Path;
 import topology.PathFinder;
 import topology.PathFinderFactory;
 
@@ -81,7 +82,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.pathFinder = pathFinder;
     }
 
-    public List<List<ChannelGraph.Edge>> findPaths(String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(String start, String end, boolean stopFirst) {
         return pathFinder.findPaths(this.channelGraph, start,end,stopFirst);
     }
 
@@ -270,16 +271,16 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return invoice;
     }
 
-    private boolean checkPathCapacity(List<ChannelGraph.Edge> path, int amount) {
+    private boolean checkPathCapacity(Path path, int amount) {
 
-        for (ChannelGraph.Edge e : path) {
+        for (ChannelGraph.Edge e : path.edges()) {
             if (e.capacity() < amount) return false;
         }
         return true;
     }
 
-    public boolean checkPathPolicies(List<ChannelGraph.Edge> path) {
-        for (ChannelGraph.Edge e : path) {
+    public boolean checkPathPolicies(Path path) {
+        for (ChannelGraph.Edge e : path.edges()) {
             if (e.policy() == null) {
                 debug(()->"WARNING: Invalid path, missing policy on edge " + e);
                 return false;
@@ -288,11 +289,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return true;
     }
 
-    public boolean checkOutboundPathLiquidity(List<ChannelGraph.Edge> path, int amount) {
+    public boolean checkOutboundPathLiquidity(Path path, int amount) {
 
-        var firstChannelId = getMyChannelWith(path.get(path.size() - 1).destination());
+        var firstChannelId = getMyChannelWith(path.getEnd());
         var firstChannel = channels.get(firstChannelId);
-        debug(()->"Checking outbound path liquidity (amt:" + amount + ")" + ChannelGraph.pathString(path) + " for first channel " + firstChannel);
+        debug(()->"Checking outbound path liquidity (amt:" + amount + ")" + (path) + " for first channel " + firstChannel);
 
         // this is the only liquidity check that can be performed in advance
         var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
@@ -313,10 +314,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
 
-    private int getPathFees(List<ChannelGraph.Edge> path, int amount) {
+    private int getPathFees(Path path, int amount) {
         int fees = 0;
 
-        for (ChannelGraph.Edge e : path) {
+        for (ChannelGraph.Edge e : path.edges()) {
             fees += computeFees(amount, e.policy().getBaseFee(), e.policy().getFeePpm());
         }
         return fees;
@@ -346,7 +347,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         String logMessage;
 
         var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),false);
-        List<List<ChannelGraph.Edge>> candidatePaths = new ArrayList<>();
+        List<Path> candidatePaths = new ArrayList<>();
 
         for (var path : totalPaths) {
 
@@ -358,7 +359,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
 
             if (!checkPathCapacity(path, invoice.getAmount())) {
-                debug(()->"Discarding path: missing capacity" + ChannelGraph.pathString(path));
+                debug(()->"Discarding path: missing capacity" + (path));
                 to_discard = true;
                 miss_capacity++;
             }
@@ -366,13 +367,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // please notice that this does not exclude further missing local liquidy events
             // that will happen at the momennt of actual reservation, and will be accoutned in another place
             if (!checkOutboundPathLiquidity(path, invoice.getAmount())) {
-                debug(()->"Discarding path: missing liquidity on local channel" + ChannelGraph.pathString(path));
+                debug(()->"Discarding path: missing liquidity on local channel" +(path));
                 to_discard = true;
                 miss_local_liquidity++;
             }
 
             if (getPathFees(path, invoice.getAmount()) > max_fees) {
-                debug(()->"Discarding path: missing max fees " + ChannelGraph.pathString(path));
+                debug(()->"Discarding path: missing max fees " + (path));
                 to_discard = true;
                 miss_max_fees++;
             }
@@ -392,7 +393,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             var s = new StringBuilder();
             s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(hash);
             for (var path : candidatePaths)
-                s.append('\n').append(ChannelGraph.pathString(path));
+                s.append('\n').append(path);
             log(s.toString());
             if (showui) System.out.println(s);
 
@@ -494,8 +495,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      *
      */
 
-    private synchronized void routeInvoiceOnPath(LNInvoice invoice, List<ChannelGraph.Edge> path) {
-        log("Routing on path:"+ChannelGraph.pathString(path));
+    private synchronized void routeInvoiceOnPath(LNInvoice invoice, Path path) {
+        log("Routing on path:"+ path);
         // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
 
         final int amount = invoice.getAmount();
@@ -514,9 +515,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
         // Carol will take the forwarding fees specified in the payload for Bob, which will instruct Bob about the HTLC to be sent to Carol
         // don't need to create the last path segment onion for local node htlc
-        for (int n=0;n<path.size()-1;n++) {
-            var source = path.get(n).source();
-            var dest = path.get(n).destination();
+        for (int n=0;n<path.edges().size()-1;n++) {
+            var source = path.edges().get(n).source();
+            var dest = path.edges().get(n).destination();
 
             // TODO UVMODEL: used only by node, should be a service from the node itself ?
             // point to clarify: it is used for searching own nodes or in general ?
@@ -536,8 +537,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
         }
 
-        var first_hop = path.get(path.size()-1).destination();
-        var channel_id = path.get(path.size()-1).id();
+        var first_hop = path.getEnd();
+        var channel_id = path.edges().get(path.edges().size()-1).id();
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
@@ -1450,6 +1451,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
             channelGraph = (ChannelGraph) s.readObject();
 
+            setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
 
             this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
             this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
