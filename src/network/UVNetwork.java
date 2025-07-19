@@ -237,6 +237,7 @@ public class UVNetwork implements LNetwork {
             bootstrap_latch.await();
 
         } catch (InterruptedException e) {
+            System.out.println("Interrupt Exception!");
             Thread.currentThread().interrupt(); // handle interruption
         }
         finally {
