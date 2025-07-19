@@ -21,8 +21,9 @@ import java.util.List;
 
 public class BFS implements PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
 
+        int found = 0;
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
         List<Path> paths = new ArrayList<>();
@@ -52,7 +53,8 @@ public class BFS implements PathFinder {
                         current = last_parent.get(current.source());
                     }
                     paths.add(new Path(edges));
-                    if (stopFirst) return paths;
+                    found++;
+                    if (found == topk) return paths;
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());
                     continue;

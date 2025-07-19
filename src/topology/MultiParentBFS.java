@@ -20,9 +20,10 @@ import java.util.*;
  * -------------------------------------------------------------------------*/
 public class MultiParentBFS implements PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
         /* frontier ordered by hop depth exactly as before */
         var queue = new LinkedList<String>();
+        int found = 0;
 
         /* depth map instead of visited-set */
         var depth  = new HashMap<String, Integer>();
@@ -59,8 +60,6 @@ public class MultiParentBFS implements PathFinder {
 
         buildPaths(end, parents, new ArrayList<>(), paths);
 
-        if (stopFirst && !paths.isEmpty())
-            return new ArrayList<>(List.of(paths.get(0))); // only the first one
         return paths;
     }
     /* DFS back-tracking, collects paths reversed (end → start) */
