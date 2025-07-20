@@ -237,6 +237,7 @@ public class UVNetwork implements LNetwork {
             bootstrap_latch.await();
 
         } catch (InterruptedException e) {
+            System.out.println("Interrupted Bootstrap Exception!");
             Thread.currentThread().interrupt(); // handle interruption
         }
         finally {
@@ -524,7 +525,7 @@ public class UVNetwork implements LNetwork {
     public GlobalStats getStats() {
         return stats;
     }
-    public CountDownLatch getBootstrapLatch() {
+    private CountDownLatch getBootstrapLatch() {
         return bootstrap_latch;
     }
 
@@ -740,10 +741,15 @@ public class UVNetwork implements LNetwork {
         } // while
 
         log("BOOTSTRAP: Completed on "+node.getPubKey());
+        decreaseBootStrapCount();
+    }
+
+    private synchronized void decreaseBootStrapCount() {
         bootstraps_running--;
         bootstraps_ended++;
         getBootstrapLatch().countDown();
     }
+
 
     public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
         if (!isBootstrapCompleted()) {

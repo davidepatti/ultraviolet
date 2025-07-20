@@ -29,7 +29,7 @@ public class ChannelGraph implements Serializable  {
         }
 
         public double weight() {
-            return policy.getFeePpm()+policy.getBaseFee();
+            return policy.getFeePpm()+policy.getBaseFee()+ policy().getCLTVDelta();
             //return 1.0;
         }
     }
