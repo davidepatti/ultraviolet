@@ -6,13 +6,17 @@ import java.util.*;
  * Uniform-cost queue  –  “mini-Dijkstra”
  *
  * -------------------------------------------------------------------------*/
+    /**
+     * A lightweight uniform-cost search ("mini-Dijkstra") over a {@link ChannelGraph}.
+     * Expands the cheapest frontier first (sum of edge policy base fee + fee ppm + CLTV delta)
+     * to collect up to {@code topk} lowest-cost simple paths from {@code start} to {@code end}.
+     * Paths longer than 6 hops are pruned; vertices already on the partial path are skipped to avoid cycles.
+     */
 public class MiniDijkstra implements PathFinder{
 
     private double weight(ChannelGraph.Edge e, List<ChannelGraph.Edge> p) {
         //return 1.0;
-        //return e.policy().getBaseFee()+e.policy().getFeePpm(); //+e.policy().getCLTVDelta();
-        double val =  e.policy().getFeePpm()+e.policy().getBaseFee();
-        return val;
+        return e.policy().getBaseFee()+e.policy().getFeePpm()+e.policy().getCLTVDelta();
     }
 
     @Override
@@ -28,6 +32,7 @@ public class MiniDijkstra implements PathFinder{
 
         while (!queue.isEmpty() && paths.size() < topk) {
             var cur = queue.poll();
+            if (cur.path().size()>6) continue;
 
             if (cur.vertex().equals(end)) {            // found one of the k best
                 // Path expects edges in reverse (end→start) order; we currently hold start→end.
@@ -35,7 +40,6 @@ public class MiniDijkstra implements PathFinder{
                 Collections.reverse(edgeList);
                 var found = new Path(edgeList);
                 paths.add(found);
-                System.out.println("Found "+found);
                 continue;                              // do not expand it further
             }
 
@@ -67,7 +71,6 @@ public class MiniDijkstra implements PathFinder{
     private boolean pathContainsVertex(List<ChannelGraph.Edge> path, String v) {
         for (ChannelGraph.Edge e : path) {
             if (e.source().equals(v) || e.destination().equals(v)) {
-                System.out.println("Loop "+e+ " with "+ v);
                 return true;
             }
         }
