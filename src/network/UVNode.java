@@ -86,6 +86,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return pathFinder.findPaths(this.channelGraph, start,end,topk);
     }
 
+    public PathFinder getPathFinder() {
+        return pathFinder;
+    }
+
     public GlobalStats.NodeStats getNodeStats() {
         return nodeStats;
     }

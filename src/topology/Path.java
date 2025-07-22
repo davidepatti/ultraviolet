@@ -27,15 +27,6 @@ public final class Path {
         return edges.isEmpty() ? null : edges.get(edges.size() - 1).destination();
     }
 
-    /** Optional: total weight / fee / latency, computed lazily or cached. */
-    public double totalCost() {
-        double cost = 0.0;
-        for( var e : edges) {
-            cost+=e.weight();
-        }
-        return cost;
-    }
-
     @Override public String toString() {
         StringBuilder s = new StringBuilder("(");
 

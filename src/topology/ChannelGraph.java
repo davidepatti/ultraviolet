@@ -8,7 +8,7 @@ import java.util.*;
 
 public class ChannelGraph implements Serializable  {
 
-    public static PathFinder uniformCostPathFinder = new UniformCost();
+    public static PathFinder uniformCostPathFinder = new MiniDijkstra();
 
     private final String root_node;
     private final HashSet<String> channelSet = new HashSet<>();
@@ -18,7 +18,7 @@ public class ChannelGraph implements Serializable  {
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
     transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
-    public Map<String, Set<Edge>> getAdj_map() {
+    public Map<String, Set<Edge>> getAdjMap() {
         return adj_map;
     }
 
@@ -26,11 +26,6 @@ public class ChannelGraph implements Serializable  {
         @Override
         public String toString() {
             return "("+source + "->"+ destination + ")["+capacity +"]("+policy+")";
-        }
-
-        public double weight() {
-            return policy.getFeePpm()+policy.getBaseFee()+ policy().getCLTVDelta();
-            //return 1.0;
         }
     }
 

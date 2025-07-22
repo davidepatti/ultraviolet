@@ -479,28 +479,28 @@ public class UltraViolet {
         System.out.println(" -- bfs --------------------------------------");
         if (!paths_bfs.isEmpty()) {
             for (Path path: paths_bfs) {
-                System.out.println(path + " COST: "+path.totalCost());
+                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
             }
         }
         else System.out.println("NO PATH FOUND");
 
-        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.MULTI_PARENT_BFS));
+        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.SHORTEST_HOP));
         var paths_mp = startNode.findPaths(start,destination,20);
         System.out.println(" ----- mp -----------------------------------");
         if (!paths_mp.isEmpty()) {
             for (Path path: paths_mp) {
-                System.out.println(path + " COST: "+path.totalCost());
+                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
             }
         }
         else System.out.println("NO PATH FOUND");
 
-        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.UNIFORM_COST));
+        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.MINI_DIJKSTRA));
         var paths_uc = startNode.findPaths(start,destination,20);
 
-        System.out.println(" ----- uc -----------------------------------");
+        System.out.println(" ----- mini dijkstra -----------------------------------");
         if (!paths_uc.isEmpty()) {
             for (Path path: paths_uc) {
-                System.out.println(path + " COST: "+path.totalCost());
+                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
             }
         }
         else System.out.println("NO PATH FOUND");
