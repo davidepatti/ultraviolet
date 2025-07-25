@@ -474,36 +474,18 @@ public class UltraViolet {
 
         var startNode = networkManager.searchNode(start);
 
-        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
-        var paths_bfs = startNode.findPaths(start,destination,20);
-        System.out.println(" -- bfs --------------------------------------");
-        if (!paths_bfs.isEmpty()) {
-            for (Path path: paths_bfs) {
-                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
+        for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
+            startNode.setPathFinder(PathFinderFactory.of(strategy));
+            var paths = startNode.findPaths(start, destination, 20);
+            System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
+            if (!paths.isEmpty()) {
+                for (Path path : paths) {
+                    System.out.println(path + " COST: " + startNode.getPathFinder().totalCost(path));
+                }
+            } else {
+                System.out.println("NO PATH FOUND");
             }
         }
-        else System.out.println("NO PATH FOUND");
-
-        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.SHORTEST_HOP));
-        var paths_mp = startNode.findPaths(start,destination,20);
-        System.out.println(" ----- mp -----------------------------------");
-        if (!paths_mp.isEmpty()) {
-            for (Path path: paths_mp) {
-                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
-            }
-        }
-        else System.out.println("NO PATH FOUND");
-
-        startNode.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.MINI_DIJKSTRA));
-        var paths_uc = startNode.findPaths(start,destination,20);
-
-        System.out.println(" ----- mini dijkstra -----------------------------------");
-        if (!paths_uc.isEmpty()) {
-            for (Path path: paths_uc) {
-                System.out.println(path + " COST: "+ startNode.getPathFinder().totalCost(path));
-            }
-        }
-        else System.out.println("NO PATH FOUND");
     }
 
     private void showGraphCommand(String node_id) {
