@@ -23,7 +23,6 @@ public class ShortestHop implements PathFinder {
     public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
         /* frontier ordered by hop depth exactly as before */
         var queue = new LinkedList<String>();
-        int found = 0;
 
         /* depth map instead of visited-set */
         var depth  = new HashMap<String, Integer>();
