@@ -18,9 +18,9 @@ import java.util.*;
  *            longer than the hop minimum, it will not appear.  Memory
  *            grows with the number of same-depth parents.
  * -------------------------------------------------------------------------*/
-public class MultiParentBFS implements PathFinder {
+public class ShortestHop implements PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
         /* frontier ordered by hop depth exactly as before */
         var queue = new LinkedList<String>();
 
@@ -37,7 +37,7 @@ public class MultiParentBFS implements PathFinder {
             var u = queue.poll();
             int d = depth.get(u);
 
-            for (ChannelGraph.Edge e : g.getAdj_map().getOrDefault(u, Set.<ChannelGraph.Edge>of())) {
+            for (ChannelGraph.Edge e : g.getAdjMap().getOrDefault(u, Set.<ChannelGraph.Edge>of())) {
                 String v = e.destination();
 
                 /* first time we reach v → record depth & parent, enqueue */
@@ -59,10 +59,14 @@ public class MultiParentBFS implements PathFinder {
 
         buildPaths(end, parents, new ArrayList<>(), paths);
 
-        if (stopFirst && !paths.isEmpty())
-            return new ArrayList<>(List.of(paths.get(0))); // only the first one
         return paths;
     }
+
+    @Override
+    public double totalCost(Path p) {
+        return p.edges().size();
+    }
+
     /* DFS back-tracking, collects paths reversed (end → start) */
     private void buildPaths(String v,
                             Map<String, ArrayList<ChannelGraph.Edge>> parents,

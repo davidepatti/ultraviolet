@@ -21,8 +21,9 @@ import java.util.List;
 
 public class BFS implements PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, boolean stopFirst) {
+    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
 
+        int found = 0;
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
         List<Path> paths = new ArrayList<>();
@@ -38,7 +39,7 @@ public class BFS implements PathFinder {
         while (!queue_vertex.isEmpty()) {
             var current_vertex = queue_vertex.poll();
 
-            var list_edges =g.getAdj_map().get(current_vertex);
+            var list_edges =g.getAdjMap().get(current_vertex);
 
             for (ChannelGraph.Edge e :list_edges) {
                 if (e.destination().equals(end))  {
@@ -52,14 +53,15 @@ public class BFS implements PathFinder {
                         current = last_parent.get(current.source());
                     }
                     paths.add(new Path(edges));
-                    if (stopFirst) return paths;
+                    found++;
+                    if (found == topk) return paths;
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());
                     continue;
                 }
                 if (!visited_vertex.contains(e.destination())) {
                     // check whether destination has been pruned, being empty
-                    if (g.getAdj_map().get(e.destination())!=null) {
+                    if (g.getAdjMap().get(e.destination())!=null) {
                         last_parent.put(e.destination(),e);
                         visited_vertex.add(e.destination());
                         queue_vertex.add(e.destination());
@@ -68,5 +70,10 @@ public class BFS implements PathFinder {
             }
         }
         return paths;
+    }
+
+    @Override
+    public double totalCost(Path p) {
+        return p.edges().size();
     }
 }

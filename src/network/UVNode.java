@@ -82,8 +82,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.pathFinder = pathFinder;
     }
 
-    public List<Path> findPaths(String start, String end, boolean stopFirst) {
-        return pathFinder.findPaths(this.channelGraph, start,end,stopFirst);
+    public List<Path> findPaths(String start, String end, int topk) {
+        return pathFinder.findPaths(this.channelGraph, start,end,topk);
+    }
+
+    public PathFinder getPathFinder() {
+        return pathFinder;
     }
 
     public GlobalStats.NodeStats getNodeStats() {
@@ -346,7 +350,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         String logMessage;
 
-        var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),false);
+        var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),1000);
         List<Path> candidatePaths = new ArrayList<>();
 
         for (var path : totalPaths) {
