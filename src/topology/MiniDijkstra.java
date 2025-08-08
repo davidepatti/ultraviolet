@@ -10,10 +10,11 @@ import java.util.*;
      * A lightweight uniform-cost search ("mini-Dijkstra") over a {@link ChannelGraph}.
      * Expands the cheapest frontier first
      * to collect up to {@code topk} lowest-cost simple paths from {@code start} to {@code end}.
-     * Paths longer than 6 hops are pruned; vertices already on the partial path are skipped to avoid cycles.
+     * Paths longer than max hops are pruned; vertices already on the partial path are skipped to avoid cycles.
      */
 public class MiniDijkstra implements PathFinder{
 
+    public final int max_hops = 6;
     public double weight(ChannelGraph.Edge e, Path p) {
         return 1.0;
     }
@@ -32,7 +33,7 @@ public class MiniDijkstra implements PathFinder{
 
         while (!queue.isEmpty() && paths.size() < topk) {
             var currentCandidate = queue.poll();
-            if (currentCandidate.path().getSize()>6) continue;
+            if (currentCandidate.path().getSize()>max_hops) continue;
 
             if (currentCandidate.vertex().equals(end)) {            // found one of the k best
                 // Path expects edges in reverse (end→start) order; we currently hold start→end.
@@ -64,6 +65,7 @@ public class MiniDijkstra implements PathFinder{
         for (ChannelGraph.Edge e : p.edges()) {
             totalCost += weight(e, p);
         }
+
         return totalCost;
     }
 
