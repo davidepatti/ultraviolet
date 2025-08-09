@@ -820,10 +820,9 @@ public class UVNetwork implements LNetwork {
         print_log("Waiting for queues to flush...");
         // the wait interval is just a reasonable value of ms between checks
         waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
-        print_log("DONE !!");
         Instant end_gen = Instant.now();
         Duration timeElapsed = Duration.between(start_gen, end_gen);
-        System.out.println("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
+        print_log( "DONE. Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
         invoiceExecutor.shutdown();
     }
 
