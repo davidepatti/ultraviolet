@@ -291,9 +291,9 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.print(String.format(
+        System.out.printf(
             "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
-            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES));
+            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES);
         double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
 
         int n_blocks;
@@ -378,7 +378,7 @@ public class UltraViolet {
         }
         var node = networkManager.searchNode(pubkey);
         System.out.println("---------------------------------------------------------------------");
-        UVNode.generateNodeLabelString();
+        System.out.println(UVNode.generateNodeLabelString());
         System.out.println(node);
 
         System.out.println("---------------------------------------------------------------------");

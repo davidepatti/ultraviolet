@@ -196,7 +196,7 @@ public class UVConfig implements Serializable {
 
     private ArrayList<String> getMultivalProperty(String key) {
 
-        String value = "";
+        String value;
         try {
             if (!properties.containsKey(key))
                 throw new RuntimeException("Parameter " + key + " not found!");

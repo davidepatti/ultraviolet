@@ -1,7 +1,5 @@
 package topology;
 
-import java.util.List;
-
 public class LNDPathFinder extends MiniDijkstra{
     @Override
     public double weight(ChannelGraph.Edge edge, Path path) {

@@ -2,7 +2,6 @@ package network;
 
 import message.*;
 import topology.ChannelGraph;
-import misc.CryptoKit;
 import protocol.*;
 import stats.*;
 import misc.*;
@@ -262,7 +261,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         byte[] R;
         long secret;
         if (determininistic) {
-            secret = (long) msg.hashCode();
+            secret = msg.hashCode();
         }
         else {
             secret = local_rnd_generator.nextInt();
@@ -1125,7 +1124,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
             long now = System.currentTimeMillis();
             // should run around the same frequency of blocktime
-            if (now-last_mempool_check >=3*uvNetwork.getConfig().blocktime_ms) {
+            if (now-last_mempool_check >= 3L *uvNetwork.getConfig().blocktime_ms) {
                 checkTimechainTxConfirmations();
                 last_mempool_check = now;
             }
@@ -1153,7 +1152,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 if (current_block-broadcast_height<req_confirmations) continue;
                 debug(()->"Checking confirmation of "+tx.getTxId()+ " starting from block "+broadcast_height);
                 var location = uvNetwork.getTimechain().findTxLocation(tx,broadcast_height);
-                if (!location.isEmpty() && current_block - location.get().height() >=req_confirmations) {
+                if (location.isPresent() && current_block - location.get().height() >=req_confirmations) {
                     String peerId;
                     if (tx.getNode1Pub().equals(this.getPubKey())) peerId = tx.getNode2Pub();
                     else peerId = tx.getNode1Pub();

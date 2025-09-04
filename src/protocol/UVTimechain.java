@@ -6,7 +6,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.Comparator;
 
 public class UVTimechain implements Runnable, Serializable {
 
@@ -25,7 +24,7 @@ public class UVTimechain implements Runnable, Serializable {
     // Maps each fee band (upper bound) to the cumulative bytes of pending transactions within that band
     private final NavigableMap<Integer, Long> congestionLevelsByFeeBand = new TreeMap<>();
 
-    transient private Set<CountDownLatch> wait_blocks_latch = new HashSet<>();
+    transient private final Set<CountDownLatch> wait_blocks_latch;
     transient private UVNetwork uvm;
 
     public record Block(int height, List<UVTransaction> txs) implements Serializable { }
@@ -42,6 +41,7 @@ public class UVTimechain implements Runnable, Serializable {
         this.blocktime = blocktime;
         this.status = false;
         this.uvm = uvNetwork;
+        wait_blocks_latch = new HashSet<>();
 
         // Initialize congestion levels map with zero bytes for each fee band
         for (int threshold : FEE_BYTE_BANDS) {
@@ -51,7 +51,6 @@ public class UVTimechain implements Runnable, Serializable {
 
     public void setUVM(UVNetwork uvm) {
         this.uvm = uvm;
-        wait_blocks_latch = new HashSet<>();
     }
 
     /* mempool management*/

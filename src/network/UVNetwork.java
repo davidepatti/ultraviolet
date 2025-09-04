@@ -5,7 +5,6 @@ import misc.UVConfig;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import protocol.UVTimechain;
 import stats.*;
 import protocol.*;
 
@@ -289,9 +288,9 @@ public class UVNetwork implements LNetwork {
                 if (!node.areQueuesEmpty())  {
                     System.out.println("** Waiting to empty queues on "+node.getPubKey());
                     if (enable_warning)  {
-                        System.out.printf("-->");
+                        System.out.print("-->");
                         node.showQueuesStatus();
-                        System.out.printf("------------------------------------------");
+                        System.out.print("------------------------------------------");
                     }
                     queues_empty = false;
                 }
