@@ -808,22 +808,22 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      *
      * @param peerPubKey the target node partner to open the channel
      */
-    public synchronized void openChannel(String peerPubKey, int channel_size) {
+    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
         if (peerPubKey.equals(this.getPubKey())) {
             log("WARNING:Cancelling openChannel, the peer selected is the node itself!");
-            return;
+            return false;
         }
         if (hasChannelWith(peerPubKey)) {
             log("WARNING:Cancelling openChannel, channel already present with peer "+peerPubKey);
-            return;
+            return false;
         }
         if (hasOpeningRequestWith(peerPubKey)) {
             log("WARNING:Cancelling openChannel, opening request already present with peer "+peerPubKey);
-            return;
+            return false;
         }
         if (hasPendingAcceptedChannelWith(peerPubKey)) {
             log("WARNING: Cancelling openChannel, pending accepted channel already present with peer "+peerPubKey);
-            return;
+            return false;
         }
 
         var peer = uvNetwork.getUVNode(peerPubKey);
@@ -843,6 +843,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, reserve, 0, uvNetwork.getConfig().to_self_delay, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request, uvNetwork);
+        return true;
     }
     /**
      * @param openRequest
@@ -863,7 +864,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
         if (this.hasChannelWith(initiator_id)) {
             //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
-            log("Warning: cannot accept channel, already a channel with "+initiator_id);
+            log("Warning: Cannot accept channel, already a channel with "+initiator_id);
             return;
         }
 
@@ -875,6 +876,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvNetwork.getUVNode(initiator_id);
+
+        if (channel_peer == null) {
+            throw  new RuntimeException("FATAL: from node  "+this.getPubKey()+ " when acceptChannel, uvNetwork has no node for initiator_id " + initiator_id );
+        }
+
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
         var acceptance = new MsgAcceptChannel(temporary_channel_id, uvNetwork.getConfig().minimum_depth, uvNetwork.getConfig().to_self_delay,this.getPubKey());
         sendToPeer(channel_peer,acceptance, uvNetwork);
