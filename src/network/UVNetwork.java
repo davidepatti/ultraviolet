@@ -11,6 +11,7 @@ import protocol.*;
 import java.io.*;
 import java.time.Duration;
 import java.time.Instant;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,6 +52,8 @@ public class UVNetwork implements LNetwork {
 
     private Random random;
     private long masterSeed;  // e.g. passed in via misc.UVConfig
+    private String bootstrapSessionId;
+    private BufferedWriter criticalLogWriter;
     private final ThreadLocal<Random> threadRng =
             ThreadLocal.withInitial(() -> {
                 String threadName = Thread.currentThread().getName();
@@ -133,6 +136,8 @@ public class UVNetwork implements LNetwork {
         this.uvConfig = config;
         masterSeed = config.getMasterSeed();
         this.random = new Random(masterSeed);
+        this.bootstrapSessionId = null;
+        this.criticalLogWriter = null;
 
         try {
             File logFile = new File(uvConfig.logfile);
@@ -168,6 +173,7 @@ public class UVNetwork implements LNetwork {
 
         Thread.currentThread().setName("Bootstrap");
         var startTime = new Date();
+        bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(startTime);
         print_log(startTime +": Bootstrapping network from scratch...");
 
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
@@ -267,6 +273,7 @@ public class UVNetwork implements LNetwork {
             }
             print_log("(Pruned null entries: "+pruned+") DONE!");
 
+            closeCriticalLog();
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
             print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
@@ -546,6 +553,68 @@ public class UVNetwork implements LNetwork {
     public void print_log(String s) {
         System.out.println(s);
         log(s);
+    }
+
+    private synchronized void openCriticalLogIfNeeded() {
+        if (criticalLogWriter != null) {
+            return;
+        }
+        try {
+            // Derive the critical log file name from the main logfile path, using the bootstrap session id
+            File baseLogFile = new File(uvConfig.logfile);
+            File parentDir = baseLogFile.getParentFile();
+            String baseName = baseLogFile.getName();
+            String criticalName = baseName + ".critical_" + (bootstrapSessionId != null ? bootstrapSessionId : "unknown");
+            File criticalFile = (parentDir != null) ? new File(parentDir, criticalName) : new File(criticalName);
+            criticalLogWriter = new BufferedWriter(new FileWriter(criticalFile, true));
+        } catch (IOException e) {
+            // Fall back to standard logging if critical log cannot be opened
+            print_log("ERROR: cannot open critical log file: " + e.getMessage());
+        }
+    }
+
+    private synchronized void closeCriticalLog() {
+        if (criticalLogWriter != null) {
+            try {
+                criticalLogWriter.close();
+            } catch (IOException e) {
+                print_log("ERROR: cannot close critical log file: " + e.getMessage());
+            } finally {
+                criticalLogWriter = null;
+            }
+        }
+    }
+
+    /**
+     * Report a critical situation related to the current bootstrap session.
+     * The message is appended to a dedicated critical log file whose name
+     * includes the bootstrap session identifier (e.g. YYYYMMDDHHMMSS).
+     * The file is created lazily only when this method is first invoked.
+     */
+    public void reportCritical(String message) {
+        if (message == null) {
+            return;
+        }
+
+        System.out.println("***CRITICAL LOG MESSAGE*** (check report)");
+
+        synchronized (this) {
+            // Ensure we have some session id; if bootstrap has not set it, derive one now
+            if (bootstrapSessionId == null) {
+                bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+            }
+            openCriticalLogIfNeeded();
+            if (criticalLogWriter == null) {
+                return; // if opening failed, do not proceed
+            }
+            try {
+                criticalLogWriter.write(message);
+                criticalLogWriter.newLine();
+                criticalLogWriter.flush();
+            } catch (IOException e) {
+                print_log("ERROR: cannot write to critical log file: " + e.getMessage());
+            }
+        }
     }
 
     public void saveStatus(String filename) {
