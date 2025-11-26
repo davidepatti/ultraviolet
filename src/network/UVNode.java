@@ -870,7 +870,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         if (initiator_id!=null) pendingAcceptedChannelPeers.add(initiator_id);
         else {
-            throw new RuntimeException("initiator_id null in acceptChannel of node "+getPubKey()+" for "+openRequest);
+            uvNetwork.reportCritical("CRITICAL: initiator_id null in acceptChannel of node "+getPubKey()+" for "+openRequest);
+            return;
         }
 
 
@@ -878,7 +879,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var channel_peer = uvNetwork.getUVNode(initiator_id);
 
         if (channel_peer == null) {
-            throw  new RuntimeException("FATAL: from node  "+this.getPubKey()+ " when acceptChannel, uvNetwork has no node for initiator_id " + initiator_id );
+            uvNetwork.reportCritical("CRITICAL: from node  "+this.getPubKey()+ " when acceptChannel, uvNetwork has no node for initiator_id " + initiator_id );
+            return;
         }
 
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
