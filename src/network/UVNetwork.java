@@ -40,7 +40,7 @@ public class UVNetwork implements LNetwork {
     public UVConfig getConfig() {
         return uvConfig;
     }
-    private static FileWriter logfile;
+    private static BufferedWriter logfile;
 
     private ScheduledExecutorService p2pExecutor;
 
@@ -140,14 +140,14 @@ public class UVNetwork implements LNetwork {
         this.criticalLogWriter = null;
 
         try {
-            File logFile = new File(uvConfig.logfile);
-            if (logFile.exists()) {
-                File previousLogFile = new File(logFile.getParent(), "previous." + logFile.getName());
-                if (!logFile.renameTo(previousLogFile)) {
+            File previousLog = new File(uvConfig.logfile);
+            if (previousLog.exists()) {
+                File previousLogFile = new File(previousLog.getParent(), "previous." + previousLog.getName());
+                if (!previousLog.renameTo(previousLogFile)) {
                     System.err.println("Warning: could not rename existing logfile to " + previousLogFile.getName());
                 }
             }
-            logfile = new FileWriter(uvConfig.logfile);
+            logfile = new BufferedWriter(new FileWriter(uvConfig.logfile));
         } catch (IOException e) {
             log("Cannot open logfile for writing:"+ uvConfig.logfile);
             throw new RuntimeException(e);
@@ -544,7 +544,6 @@ public class UVNetwork implements LNetwork {
         try {
 
             logfile.write("\n[block "+ uvTimechain.getCurrentBlockHeight()+"]:"+s);
-            logfile.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -749,6 +748,7 @@ public class UVNetwork implements LNetwork {
     public void bootstrapNode(UVNode node) {
 
         try {
+            logfile.flush();
             // get a deterministic thread-related seed to create the Random
             Random thread_rng = threadRng.get();
 
@@ -822,6 +822,7 @@ public class UVNetwork implements LNetwork {
             } // while
 
             log("BOOTSTRAP: Completed on "+node.getPubKey());
+            logfile.flush();
             decreaseBootStrapCount();
         } catch (Throwable t) {
             log("BOOTSTRAP ERROR on "+node.getPubKey()+": "+t);
