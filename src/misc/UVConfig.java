@@ -163,7 +163,6 @@ public class UVConfig implements Serializable {
 
                 profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(random,1000,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
                 profile.distributions.put("ppm_fees", DistributionGenerator.generateIntSamples(random,1000,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
-                System.out.println(profile.distributions.get("ppm_fees"));
             }
 
         } catch (FileNotFoundException e) {
@@ -197,7 +196,7 @@ public class UVConfig implements Serializable {
 
     private ArrayList<String> getMultivalProperty(String key) {
 
-        String value = "";
+        String value;
         try {
             if (!properties.containsKey(key))
                 throw new RuntimeException("Parameter " + key + " not found!");

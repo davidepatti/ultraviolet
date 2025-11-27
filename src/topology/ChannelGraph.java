@@ -8,8 +8,6 @@ import java.util.*;
 
 public class ChannelGraph implements Serializable  {
 
-    public static PathFinder uniformCostPathFinder = new MiniDijkstra();
-
     private final String root_node;
     private final HashSet<String> channelSet = new HashSet<>();
     @Serial

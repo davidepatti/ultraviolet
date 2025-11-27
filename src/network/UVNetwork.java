@@ -5,13 +5,13 @@ import misc.UVConfig;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import protocol.UVTimechain;
 import stats.*;
 import protocol.*;
 
 import java.io.*;
 import java.time.Duration;
 import java.time.Instant;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,7 +24,7 @@ public class UVNetwork implements LNetwork {
     private CountDownLatch bootstrap_latch;
     private final HashMap<String, UVNode> uvnodes;
 
-    private ArrayList<String> pubkeys_list;
+    private List<String> pubkeys_list;
 
     private UVTimechain uvTimechain;
 
@@ -52,6 +52,8 @@ public class UVNetwork implements LNetwork {
 
     private Random random;
     private long masterSeed;  // e.g. passed in via misc.UVConfig
+    private String bootstrapSessionId;
+    private BufferedWriter criticalLogWriter;
     private final ThreadLocal<Random> threadRng =
             ThreadLocal.withInitial(() -> {
                 String threadName = Thread.currentThread().getName();
@@ -134,6 +136,8 @@ public class UVNetwork implements LNetwork {
         this.uvConfig = config;
         masterSeed = config.getMasterSeed();
         this.random = new Random(masterSeed);
+        this.bootstrapSessionId = null;
+        this.criticalLogWriter = null;
 
         try {
             File logFile = new File(uvConfig.logfile);
@@ -169,6 +173,7 @@ public class UVNetwork implements LNetwork {
 
         Thread.currentThread().setName("Bootstrap");
         var startTime = new Date();
+        bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(startTime);
         print_log(startTime +": Bootstrapping network from scratch...");
 
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
@@ -218,19 +223,19 @@ public class UVNetwork implements LNetwork {
                 int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
 
                 var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
-                uvnodes.put(node.getPubKey(),node);
 
-                int wait_for_next = boot_times[current_index] - last_issue_block;
-                if (wait_for_next > 0) {
-                    waitForBlocks(wait_for_next);
-                } else {
-                    // Wait at least 1 block even if wait_for_next == 0, to serialize starts
-                    waitForBlocks(1);
+                synchronized (pubkeys_list) {
+                    uvnodes.put(node.getPubKey(),node);
+                    bootstraps_running++;
+                    pubkeys_list.add(node.getPubKey());
                 }
-                bootstraps_running++;
-                bootstrapExecutor.submit(() -> bootstrapNode(node));
+
+                int to_wait = boot_times[current_index] - last_issue_block;
+                // Wait at least 1 block even if to_wait == 0, to serialize starts
+                waitForBlocks(Math.max(to_wait,1));
                 last_issue_block = getTimechain().getCurrentBlockHeight();
-                pubkeys_list.add(node.getPubKey());
+
+                bootstrapExecutor.submit(() -> bootstrapNode(node));
             }
 
             print_log("BOOTSTRAP: Launch complete, waiting for "+bootstrap_latch.getCount()+" threads to finish...");
@@ -268,6 +273,7 @@ public class UVNetwork implements LNetwork {
             }
             print_log("(Pruned null entries: "+pruned+") DONE!");
 
+            closeCriticalLog();
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
             print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
@@ -289,9 +295,9 @@ public class UVNetwork implements LNetwork {
                 if (!node.areQueuesEmpty())  {
                     System.out.println("** Waiting to empty queues on "+node.getPubKey());
                     if (enable_warning)  {
-                        System.out.printf("-->");
+                        System.out.print("-->");
                         node.showQueuesStatus();
-                        System.out.printf("------------------------------------------");
+                        System.out.print("------------------------------------------");
                     }
                     queues_empty = false;
                 }
@@ -549,6 +555,68 @@ public class UVNetwork implements LNetwork {
         log(s);
     }
 
+    private synchronized void openCriticalLogIfNeeded() {
+        if (criticalLogWriter != null) {
+            return;
+        }
+        try {
+            // Derive the critical log file name from the main logfile path, using the bootstrap session id
+            File baseLogFile = new File(uvConfig.logfile);
+            File parentDir = baseLogFile.getParentFile();
+            String baseName = baseLogFile.getName();
+            String criticalName = baseName + ".critical_" + (bootstrapSessionId != null ? bootstrapSessionId : "unknown");
+            File criticalFile = (parentDir != null) ? new File(parentDir, criticalName) : new File(criticalName);
+            criticalLogWriter = new BufferedWriter(new FileWriter(criticalFile, true));
+        } catch (IOException e) {
+            // Fall back to standard logging if critical log cannot be opened
+            print_log("ERROR: cannot open critical log file: " + e.getMessage());
+        }
+    }
+
+    private synchronized void closeCriticalLog() {
+        if (criticalLogWriter != null) {
+            try {
+                criticalLogWriter.close();
+            } catch (IOException e) {
+                print_log("ERROR: cannot close critical log file: " + e.getMessage());
+            } finally {
+                criticalLogWriter = null;
+            }
+        }
+    }
+
+    /**
+     * Report a critical situation related to the current bootstrap session.
+     * The message is appended to a dedicated critical log file whose name
+     * includes the bootstrap session identifier (e.g. YYYYMMDDHHMMSS).
+     * The file is created lazily only when this method is first invoked.
+     */
+    public void reportCritical(String message) {
+        if (message == null) {
+            return;
+        }
+
+        System.out.println("***CRITICAL LOG MESSAGE*** (check report)");
+
+        synchronized (this) {
+            // Ensure we have some session id; if bootstrap has not set it, derive one now
+            if (bootstrapSessionId == null) {
+                bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+            }
+            openCriticalLogIfNeeded();
+            if (criticalLogWriter == null) {
+                return; // if opening failed, do not proceed
+            }
+            try {
+                criticalLogWriter.write(message);
+                criticalLogWriter.newLine();
+                criticalLogWriter.flush();
+            } catch (IOException e) {
+                print_log("ERROR: cannot write to critical log file: " + e.getMessage());
+            }
+        }
+    }
+
     public void saveStatus(String filename) {
         if (isBootstrapStarted() && !isBootstrapCompleted())  {
             print_log("Bootstrap incomplete, cannot save");
@@ -614,7 +682,7 @@ public class UVNetwork implements LNetwork {
             this.uvConfig = (UVConfig)s.readObject();
             print_log("Loading timechain status...");
             this.uvTimechain = (UVTimechain)s.readObject();
-            this.uvTimechain.setUVM(this);
+            this.uvTimechain.initialize(this);
 
             print_log("Loading UVNodes...");
             int num_nodes = s.readInt();
@@ -679,69 +747,89 @@ public class UVNetwork implements LNetwork {
     }
 
     public void bootstrapNode(UVNode node) {
-        // get a deterministic thread-related seed to create the Random
-        Random thread_rng = threadRng.get();
 
-        node.setLocalRndGenerator(thread_rng);
+        try {
+            // get a deterministic thread-related seed to create the Random
+            Random thread_rng = threadRng.get();
 
-        final var profile = node.getProfile();
-        final int max_channels = profile.getIntAttribute("max_channels");
-        final int min_channels = profile.getIntAttribute("min_channels");
-        final int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
-        log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
+            node.setLocalRndGenerator(thread_rng);
 
-        node.setP2PServices(true);
-        node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
-        // TODO: should be this an config value?
-        int max_attempts = 200;
+            final var profile = node.getProfile();
+            final int max_channels = profile.getIntAttribute("max_channels");
+            final int min_channels = profile.getIntAttribute("min_channels");
+            final int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
+            log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
-        final int min_ch_size = profile.getIntAttribute("min_channel_size");
-        // we don't want granularity in channel sizes to be less than 100k
-        // ...unless smaller channels are allowed
-        int step = Math.min(100000,min_ch_size);
+            node.setP2PServices(true);
+            node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
 
-        while (max_attempts>0 && node.getChannelOpenings() < target_channel_openings) {
-            // not mandatory, just to have different block timings in openings
-            waitForBlocks(1);
+            final int min_ch_size = profile.getIntAttribute("min_channel_size");
+            // we don't want granularity in channel sizes to be less than 100k
+            // ...unless smaller channels are allowed
+            int step = Math.min(100000,min_ch_size);
 
-            if (node.getOnchainLiquidity() <= min_ch_size) {
-                log("Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
-                break; // exit while loop
-            }
+            // TODO: should be this an config value?
+            int max_attempts = 5*target_channel_openings;
 
-            var newChannelSize = (profile.getRandomSample(thread_rng,"channel_sizes")/step)*step;
+            while (max_attempts-- >0 && node.getChannelOpenings() < target_channel_openings) {
+                if (max_attempts==0) log("WARNING: Exiting bootstrap due to max attempts reached...");
+                // not mandatory, just to have different block timings in openings
+                waitForBlocks(1);
 
-            if (node.getOnchainLiquidity()< newChannelSize) {
-                if (getConfig().debug)
-                    log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
-                max_attempts--;
-                if (max_attempts==0)
-                    log("WARNING: Exiting bootstrap due to max attempts reached...");
-                continue;
-            }
+                if (node.getOnchainLiquidity() <= min_ch_size) {
+                    log("Exiting bootstrap on node "+node.getPubKey()+" due to insufficient onchain liquidity for min channel size "+min_ch_size);
+                    break; // exit while loop
+                }
 
-            boolean opened = false;
-            int peer_retries = 50;
-            var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
+                var newChannelSize = (profile.getRandomSample(thread_rng,"channel_sizes")/step)*step;
 
-            while (peer_retries-- >0 && !opened ) {
-                var n = thread_rng.nextInt(pubkeys_list.size());
-                var some_random_key = pubkeys_list.get(n);
-                if (node.hasChannelWith(some_random_key)) {
+                if (node.getOnchainLiquidity()< newChannelSize) {
+                    if (getConfig().debug)
+                        log(node.getPubKey()+":Discarding attempt for channel size "+newChannelSize+": insufficient liquidity ("+node.getOnchainLiquidity()+")");
                     continue;
                 }
-                var some_node = uvnodes.get(some_random_key);
 
-                if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
-                    node.openChannel(some_random_key,newChannelSize);
-                    opened = true;
+                boolean opened = false;
+                int peer_retries = 50;
+                var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
+
+                // once the channel and target profiles are defined, try to open a channel...
+                while (peer_retries-- >0 && !opened ) {
+                    String some_random_key;
+                    UVNode some_node;
+
+                    synchronized (pubkeys_list) {
+                        var n = thread_rng.nextInt(pubkeys_list.size());
+                        some_random_key = pubkeys_list.get(n);
+                        if (some_random_key==null)  continue;
+                        some_node = uvnodes.get(some_random_key);
+                    }
+
+                    if (some_node == null) {
+                        System.out.println("*************  WARNING: NULLL value for key "+some_random_key);
+                        // This should now be extremely rare / symptomatic of something else.
+                        // Keeping a defensive check is cheap, though.
+                        continue;
+                    }
+                    if (node.hasChannelWith(some_random_key)) {
+                        continue;
+                    }
+
+                    if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
+                        opened = node.openChannel(some_random_key,newChannelSize);
+                    }
                 }
-            }
-            if (!opened) max_attempts--;
-        } // while
+            } // while
 
-        log("BOOTSTRAP: Completed on "+node.getPubKey());
-        decreaseBootStrapCount();
+            log("BOOTSTRAP: Completed on "+node.getPubKey());
+            decreaseBootStrapCount();
+        } catch (Throwable t) {
+            log("BOOTSTRAP ERROR on "+node.getPubKey()+": "+t);
+            decreaseBootStrapCount();
+            t.printStackTrace();
+        } finally {
+            log("BOOTSTRAP: Completed on "+node.getPubKey()+" (finally block)");
+        }
     }
 
     private synchronized void decreaseBootStrapCount() {

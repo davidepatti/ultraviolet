@@ -2,7 +2,6 @@ package network;
 
 import message.*;
 import topology.ChannelGraph;
-import misc.CryptoKit;
 import protocol.*;
 import stats.*;
 import misc.*;
@@ -262,7 +261,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         byte[] R;
         long secret;
         if (determininistic) {
-            secret = (long) msg.hashCode();
+            secret = msg.hashCode();
         }
         else {
             secret = local_rnd_generator.nextInt();
@@ -809,22 +808,22 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      *
      * @param peerPubKey the target node partner to open the channel
      */
-    public synchronized void openChannel(String peerPubKey, int channel_size) {
+    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
         if (peerPubKey.equals(this.getPubKey())) {
             log("WARNING:Cancelling openChannel, the peer selected is the node itself!");
-            return;
+            return false;
         }
         if (hasChannelWith(peerPubKey)) {
             log("WARNING:Cancelling openChannel, channel already present with peer "+peerPubKey);
-            return;
+            return false;
         }
         if (hasOpeningRequestWith(peerPubKey)) {
             log("WARNING:Cancelling openChannel, opening request already present with peer "+peerPubKey);
-            return;
+            return false;
         }
         if (hasPendingAcceptedChannelWith(peerPubKey)) {
             log("WARNING: Cancelling openChannel, pending accepted channel already present with peer "+peerPubKey);
-            return;
+            return false;
         }
 
         var peer = uvNetwork.getUVNode(peerPubKey);
@@ -844,6 +843,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var msg_request = new MsgOpenChannel(tempChannelId,channel_size, reserve, 0, uvNetwork.getConfig().to_self_delay, this.pubkey);
         sentChannelOpenings.put(peerPubKey,msg_request);
         sendToPeer(peer, msg_request, uvNetwork);
+        return true;
     }
     /**
      * @param openRequest
@@ -864,18 +864,25 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
         if (this.hasChannelWith(initiator_id)) {
             //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
-            log("Warning: cannot accept channel, already a channel with "+initiator_id);
+            log("Warning: Cannot accept channel, already a channel with "+initiator_id);
             return;
         }
 
         if (initiator_id!=null) pendingAcceptedChannelPeers.add(initiator_id);
         else {
-            throw new RuntimeException("initiator_id null in acceptChannel of node "+getPubKey()+" for "+openRequest);
+            uvNetwork.reportCritical("CRITICAL: initiator_id null in acceptChannel of node "+getPubKey()+" for "+openRequest);
+            return;
         }
 
 
         log("Accepting channel "+ temporary_channel_id);
         var channel_peer = uvNetwork.getUVNode(initiator_id);
+
+        if (channel_peer == null) {
+            uvNetwork.reportCritical("CRITICAL: from node  "+this.getPubKey()+ " when acceptChannel, uvNetwork has no node for initiator_id " + initiator_id );
+            return;
+        }
+
         peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
         var acceptance = new MsgAcceptChannel(temporary_channel_id, uvNetwork.getConfig().minimum_depth, uvNetwork.getConfig().to_self_delay,this.getPubKey());
         sendToPeer(channel_peer,acceptance, uvNetwork);
@@ -1125,7 +1132,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
             long now = System.currentTimeMillis();
             // should run around the same frequency of blocktime
-            if (now-last_mempool_check >=3*uvNetwork.getConfig().blocktime_ms) {
+            if (now-last_mempool_check >= 3L *uvNetwork.getConfig().blocktime_ms) {
                 checkTimechainTxConfirmations();
                 last_mempool_check = now;
             }
@@ -1153,7 +1160,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 if (current_block-broadcast_height<req_confirmations) continue;
                 debug(()->"Checking confirmation of "+tx.getTxId()+ " starting from block "+broadcast_height);
                 var location = uvNetwork.getTimechain().findTxLocation(tx,broadcast_height);
-                if (!location.isEmpty() && current_block - location.get().height() >=req_confirmations) {
+                if (location.isPresent() && current_block - location.get().height() >=req_confirmations) {
                     String peerId;
                     if (tx.getNode1Pub().equals(this.getPubKey())) peerId = tx.getNode2Pub();
                     else peerId = tx.getNode1Pub();
