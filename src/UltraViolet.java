@@ -1,3 +1,8 @@
+import misc.UVConfig;
+import network.*;
+import stats.*;
+import topology.*;
+
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -89,7 +94,7 @@ public class UltraViolet {
             menuItems.forEach(System.out::println);
             System.out.println("__________________________________________________");
             System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
-            if (!networkManager.getTimechain().isRunning()) System.out.println(" (NOT RUNNING)");
+            if (!networkManager.getTimechain().getStatus()) System.out.println(" (NOT RUNNING)");
             else System.out.println(" Running...");
 
             System.out.print("\n -> ");
@@ -148,13 +153,13 @@ public class UltraViolet {
             System.out.println("ERROR: must execute bootstrap or load/import a network!");
             return;
         }
-        if (!networkManager.isTimechainRunning()) {
+        if (!networkManager.getTimechainStatus()) {
             System.out.println("Starting Timechain, check " + networkManager.getConfig().logfile);
-            networkManager.setTimechainRunning(true);
+            networkManager.setTimechainStatus(true);
             networkManager.startP2PNetwork();
         } else {
             System.out.print("Waiting for Timechain services to stop...");
-            networkManager.setTimechainRunning(false);
+            networkManager.setTimechainStatus(false);
             networkManager.stopP2PNetwork();
         }
     }
@@ -221,7 +226,7 @@ public class UltraViolet {
         String labels = GlobalStats.NodeStats.generateStatsHeader();
         StringBuilder r = new StringBuilder(labels).append('\n');
         for (var n : networkManager.getSortedNodeListByPubkey()) {
-            r.append(n.nodeStats.generateStatsCSV(n)).append("\n");
+            r.append(n.getNodeStats().generateStatsCSV(n)).append("\n");
         }
         var csvReport = r.toString();
         System.out.print("Enter description prefix:");
@@ -248,6 +253,22 @@ public class UltraViolet {
             fwCsv.write(csvReport);
             fwCsv.close();
             System.out.println("Written " + filenameCsv);
+
+            // For "all" report, similar to showNodesAndChannels
+            var filenameAll = new StringBuilder(prefix).append("_all.").append(sdf.format(new Date())).append(".txt");
+            StringBuilder allReport = new StringBuilder();
+            var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
+            for (UVNode n : ln) {
+                allReport.append("--------------------------------------------\n");
+                allReport.append(UVNode.generateNodeLabelString()).append('\n');
+                allReport.append(n.toString()).append('\n');
+                allReport.append(UVChannel.generateLabels()).append('\n');
+                n.getChannels().values().forEach(c -> allReport.append(c).append('\n'));
+            }
+            var fwAll = new FileWriter(filenameAll.toString());
+            fwAll.write(allReport.toString());
+            fwAll.close();
+            System.out.println("Written " + filenameAll);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -266,13 +287,13 @@ public class UltraViolet {
             System.out.println("Bootstrap not completed, cannot generate events!");
             return;
         }
-        if (!networkManager.isTimechainRunning()) {
+        if (!networkManager.getTimechainStatus()) {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.print(String.format(
+        System.out.printf(
             "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
-            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES));
+            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES);
         double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
 
         int n_blocks;
@@ -357,7 +378,7 @@ public class UltraViolet {
         }
         var node = networkManager.searchNode(pubkey);
         System.out.println("---------------------------------------------------------------------");
-        UVNode.generateNodeLabelString();
+        System.out.println(UVNode.generateNodeLabelString());
         System.out.println(node);
 
         System.out.println("---------------------------------------------------------------------");
@@ -365,7 +386,7 @@ public class UltraViolet {
         System.out.println("---------------------------------------------------------------------");
 
         for (var channel: node.getChannels().values()) {
-            int outbound = (int)(node.getOutboundFraction(channel.getChannel_id())*100);
+            int outbound = (int)(node.getOutboundFraction(channel.getChannelId())*100);
             System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
         }
 
@@ -396,7 +417,7 @@ public class UltraViolet {
             System.exit(-1);
         }
 
-        var uvm_client = new UltraViolet(new UVConfig(args[0]));
+        new UltraViolet(new UVConfig(args[0]));
     }
     private void testInvoiceRoutingCmd() {
 
@@ -451,14 +472,20 @@ public class UltraViolet {
         String choice = scanner.nextLine();
         boolean stopfirst = choice.equals("1");
 
-        var paths = networkManager.searchNode(start).getChannelGraph().findPath(start,destination,stopfirst);
+        var startNode = networkManager.searchNode(start);
 
-        if (!paths.isEmpty()) {
-            for (ArrayList<ChannelGraph.Edge> path: paths) {
-                System.out.println(ChannelGraph.pathString(path));
+        for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
+            startNode.setPathFinder(PathFinderFactory.of(strategy));
+            var paths = startNode.findPaths(start, destination, 20);
+            System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
+            if (!paths.isEmpty()) {
+                for (Path path : paths) {
+                    System.out.println(path + " COST: " + startNode.getPathFinder().totalCost(path));
+                }
+            } else {
+                System.out.println("NO PATH FOUND");
             }
         }
-        else System.out.println("NO PATH FOUND");
     }
 
     private void showGraphCommand(String node_id) {

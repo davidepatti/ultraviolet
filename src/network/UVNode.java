@@ -1,0 +1,1497 @@
+package network;
+
+import message.*;
+import topology.ChannelGraph;
+import protocol.*;
+import stats.*;
+import misc.*;
+import topology.Path;
+import topology.PathFinder;
+import topology.PathFinderFactory;
+
+import java.io.*;
+import java.math.BigInteger;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+
+public class UVNode implements LNode, Serializable,Comparable<UVNode> {
+
+    private final UVConfig.NodeProfile profile;
+
+    @Serial
+    private static final long serialVersionUID = 120675L;
+
+    private final String pubkey;
+    private final String alias;
+    private int onchainBalance;
+    private int onchainPending = 0;
+    private long last_gossip_flush = 0;
+    private long last_mempool_check = 0;
+    private int channel_openings = 0;
+    private Random local_rnd_generator;
+
+    transient private UVNetwork uvNetwork;
+    transient private ChannelGraph channelGraph;
+    transient private PathFinder pathFinder;
+    transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
+    transient private ConcurrentHashMap<String, UVNode> peers = new ConcurrentHashMap<>();
+    transient private boolean p2pIsRunning = false;
+
+    // p2p and messages
+    transient private ArrayList<String> saved_peers_id;
+    transient public ScheduledFuture<?> p2pHandler;
+    transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgUpdateAddHTLC> updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
+    transient private ConcurrentHashMap<Long, LNInvoice> generatedInvoices = new ConcurrentHashMap<>();
+    transient private ConcurrentHashMap<String, LNInvoice> pendingInvoices = new ConcurrentHashMap<>();
+    transient private HashMap<String, LNInvoice> payedInvoices = new HashMap<>();
+    transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
+    transient private ConcurrentHashMap<String, MsgUpdateAddHTLC> pendingHTLC = new ConcurrentHashMap<>();
+    transient private HashMap<String, MsgOpenChannel> sentChannelOpenings = new HashMap<>();
+    transient private Set<String> pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
+    // associate a tx with its broadcast height
+    transient private HashMap<UVTransaction,Integer> waitingTxConf = new HashMap<>();
+
+    transient GlobalStats.NodeStats nodeStats = new GlobalStats.NodeStats();
+    // temporary store for an invoice failure reason
+    transient private Map<String,String> failure_reason = new HashMap<>();
+    /**
+     * Create a lightning node instance attaching it to some Ultraviolet Manager
+     *
+     * @param pubkey  the public key to be used as node id
+     * @param alias   an alias
+     * @param funding initial onchain balance
+     */
+    public UVNode(UVNetwork network, String pubkey, String alias, int funding, UVConfig.NodeProfile profile) {
+        this.uvNetwork = network;
+        this.pubkey = pubkey;
+        this.alias = alias;
+        updateOnChainBalance(funding);
+        channelGraph = new ChannelGraph(pubkey);
+        pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS);
+        this.profile = profile;
+    }
+
+    public void setPathFinder(PathFinder pathFinder) {
+        this.pathFinder = pathFinder;
+    }
+
+    public List<Path> findPaths(String start, String end, int topk) {
+        return pathFinder.findPaths(this.channelGraph, start,end,topk);
+    }
+
+    public PathFinder getPathFinder() {
+        return pathFinder;
+    }
+
+    public GlobalStats.NodeStats getNodeStats() {
+        return nodeStats;
+    }
+
+    public UVConfig.NodeProfile getProfile() {
+        return profile;
+    }
+    public Queue<GossipMsg> getGossipMessageQueue() {
+        return GossipMessageQueue;
+    }
+    public synchronized int getChannelOpenings() {
+        return channel_openings;
+    }
+    public synchronized void increaseChannelOpenings() {
+        channel_openings++;
+    }
+    public Queue<MsgOpenChannel> getChannelsToAcceptQueue() {
+        return channelsToAcceptQueue;
+    }
+    public Queue<MsgAcceptChannel> getChannelsAcceptedQueue() {
+        return channelsAcceptedQueue;
+    }
+    public Queue<MsgUpdateAddHTLC> getUpdateAddHTLCQueue() {
+        return updateAddHTLCQueue;
+    }
+    public ConcurrentHashMap<Long, LNInvoice> getGeneratedInvoices() {
+        return generatedInvoices;
+    }
+    public HashMap<String, MsgUpdateAddHTLC> getReceivedHTLC() {
+        return receivedHTLC;
+    }
+    public HashMap<String, MsgOpenChannel> getSentChannelOpenings() {
+        return sentChannelOpenings;
+    }
+    public Queue<MsgUpdateFulFillHTLC> getUpdateFulFillHTLCQueue() {
+        return updateFulFillHTLCQueue;
+    }
+    public Queue<MsgUpdateFailHTLC> getUpdateFailHTLCQueue() {
+        return updateFailHTLCQueue;
+    }
+    public ConcurrentHashMap<String, LNInvoice> getPendingInvoices() {
+        return pendingInvoices;
+    }
+    public HashMap<String, LNInvoice> getPayedInvoices() {
+        return payedInvoices;
+    }
+    public ConcurrentHashMap<String, MsgUpdateAddHTLC> getPendingHTLC() {
+        return pendingHTLC;
+    }
+    public Set<String> getPendingAcceptedChannelPeers() {
+        return pendingAcceptedChannelPeers;
+    }
+
+    private void log(String s) {
+        uvNetwork.log(this.getPubKey() + ':' + s);
+    }
+    private void debug(Supplier<String> messageSupplier) {
+        if (uvNetwork.getConfig().debug) {
+            log("_DEBUG_" + messageSupplier.get());
+        }
+    }
+
+    public ArrayList<LNChannel> getLNChannelList() {
+        return new ArrayList<>(this.channels.values());
+    }
+    public ConcurrentHashMap<String, UVNode> getPeers() {
+        return peers;
+    }
+    public ChannelGraph getChannelGraph() {
+        return this.channelGraph;
+    }
+    public String getPubKey() {
+        return pubkey;
+    }
+    public ArrayList<GlobalStats.NodeStats.InvoiceReport> getInvoiceReports() {
+        return nodeStats.invoiceReports;
+    }
+    @Override
+    public String getAlias() {
+        return alias;
+    }
+
+
+    public void setLocalRndGenerator(Random local_rnd_generator) {
+        this.local_rnd_generator = local_rnd_generator;
+    }
+
+    public Random getLocalRndGenerator() {
+        return local_rnd_generator;
+    }
+
+    /**
+     * @param channel_id
+     * @return
+     */
+    private UVNode getChannelPeer(String channel_id) {
+        var channel = channels.get(channel_id);
+        if (this.getPubKey().equals(channel.getNode1PubKey()))
+            return uvNetwork.getUVNode(channel.getNode2PubKey());
+        else
+            return uvNetwork.getUVNode(channel.getNode1PubKey());
+    }
+
+    public synchronized int getOnChainBalance() {
+        return onchainBalance;
+    }
+    private synchronized void updateOnChainBalance(int new_balance) {
+        this.onchainBalance = new_balance;
+    }
+    public synchronized int getOnchainPending() {
+        return onchainPending;
+    }
+    private synchronized void updateOnchainPending(int pending) {
+        this.onchainPending = pending;
+    }
+    public synchronized int getOnchainLiquidity() {
+        return getOnChainBalance() - getOnchainPending();
+    }
+    public ConcurrentHashMap<String, UVChannel> getChannels() {
+        return channels;
+    }
+
+    public UVChannel getRandomChannel() {
+        var some_channel_id = (String) channels.keySet().toArray()[local_rnd_generator.nextInt(channels.size())];
+        return channels.get(some_channel_id);
+    }
+    /**
+     * @return the sum of all balances on node side
+     */
+    public int getLocalBalance() {
+        int balance = 0;
+
+        for (UVChannel c : channels.values()) {
+            balance += c.getBalance(this.getPubKey());
+        }
+        return balance;
+    }
+    public int getRemoteBalance() {
+        int balance = 0;
+
+        for (UVChannel c : channels.values()) {
+            var peer_id = getChannelPeer(c.getChannelId()).getPubKey();
+            balance += c.getBalance(peer_id);
+        }
+        return balance;
+    }
+
+    @Override
+    public int getNodeCapacity() {
+        int capacity  =0;
+        for (var ch: this.channels.values()) capacity+=ch.getCapacity();
+        return capacity;
+    }
+
+    /**
+     * @param uvm
+     */
+    public void setUVM(UVNetwork uvm) {
+        this.uvNetwork = uvm;
+    }
+
+    /**
+     * @param amount
+     * @return
+     */
+    @Override
+    public LNInvoice generateInvoice(int amount, String msg, boolean determininistic ) {
+        // determining secret based on message, useful for testing
+        // Must use properly generated msg, since same strings would lead to same invoice hash
+        byte[] R;
+        long secret;
+        if (determininistic) {
+            secret = msg.hashCode();
+        }
+        else {
+            secret = local_rnd_generator.nextInt();
+        }
+        R = BigInteger.valueOf(secret).toByteArray();
+        var H = CryptoKit.bytesToHexString(CryptoKit.sha256(R));
+        var invoice = new LNInvoice(H, amount, this.getPubKey(), msg);
+        if (generatedInvoices == null) generatedInvoices = new ConcurrentHashMap<>();
+        generatedInvoices.put(secret, invoice);
+        return invoice;
+    }
+
+    private boolean checkPathCapacity(Path path, int amount) {
+
+        for (ChannelGraph.Edge e : path.edges()) {
+            if (e.capacity() < amount) return false;
+        }
+        return true;
+    }
+
+    public boolean checkPathPolicies(Path path) {
+        for (ChannelGraph.Edge e : path.edges()) {
+            if (e.policy() == null) {
+                debug(()->"WARNING: Invalid path, missing policy on edge " + e);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public boolean checkOutboundPathLiquidity(Path path, int amount) {
+
+        var firstChannelId = getMyChannelWith(path.getEnd());
+        var firstChannel = channels.get(firstChannelId);
+        debug(()->"Checking outbound path liquidity (amt:" + amount + ")" + (path) + " for first channel " + firstChannel);
+
+        // this is the only liquidity check that can be performed in advance
+        var senderLiquidity = firstChannel.getLiquidity(this.getPubKey());
+
+        if (senderLiquidity < amount) {
+            debug(()->"Discarding route for missing liquidity in first channel " + firstChannel);
+            return false;
+        }
+
+        debug(()->"Liquidity ok for " + firstChannelId + " (required " + amount + " of " + senderLiquidity + ")");
+        return true;
+    }
+
+    private int computeFees(int amount, int base_fee_msat, int fee_ppm_rate) {
+        double fee_ppm = ((double) amount / 1e6) * fee_ppm_rate; // Ensure floating-point division
+        double base_fee = base_fee_msat / 1000.0;                // Convert msats to sats correctly
+        return (int) Math.ceil(fee_ppm + base_fee);              // Round up to avoid undercharging
+    }
+
+
+    private int getPathFees(Path path, int amount) {
+        int fees = 0;
+
+        for (ChannelGraph.Edge e : path.edges()) {
+            fees += computeFees(amount, e.policy().getBaseFee(), e.policy().getFeePpm());
+        }
+        return fees;
+    }
+
+    /**
+     * This function processes a given Lightning Network Invoice by routing through all possible valid candidate paths
+     * from sender's public key to invoice's destination and tries to route the payment. It also keeps the track of stats regarding
+     * invoicing process. Lastly, it removes the processed invoice from pending invoices, updates the failure reason, if failed,
+     * and logs a detailed report of the invoicing process.
+     *
+     * @param invoice The Lightning Network Invoice to be processed
+     * @param max_fees The maximum limit of fees that can be utilized for invoice processing
+     * @param showui A flag determining whether the routing details should be displayed in the console or not
+     */
+    public void processInvoice(LNInvoice invoice, int max_fees, boolean showui) {
+
+        log("Processing Invoice " + invoice);
+
+        // pathfinding stats
+        int miss_capacity = 0;
+        int miss_local_liquidity = 0;
+        int miss_max_fees = 0;
+        int miss_policy = 0;
+        int unknonw_reason = 0;
+
+        String logMessage;
+
+        var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),1000);
+        List<Path> candidatePaths = new ArrayList<>();
+
+        for (var path : totalPaths) {
+
+            var to_discard = false;
+
+            if (!checkPathPolicies(path)) {
+                miss_policy++;
+                continue;
+            }
+
+            if (!checkPathCapacity(path, invoice.getAmount())) {
+                debug(()->"Discarding path: missing capacity" + (path));
+                to_discard = true;
+                miss_capacity++;
+            }
+
+            // please notice that this does not exclude further missing local liquidy events
+            // that will happen at the momennt of actual reservation, and will be accoutned in another place
+            if (!checkOutboundPathLiquidity(path, invoice.getAmount())) {
+                debug(()->"Discarding path: missing liquidity on local channel" +(path));
+                to_discard = true;
+                miss_local_liquidity++;
+            }
+
+            if (getPathFees(path, invoice.getAmount()) > max_fees) {
+                debug(()->"Discarding path: missing max fees " + (path));
+                to_discard = true;
+                miss_max_fees++;
+            }
+
+            if (!to_discard)  candidatePaths.add(path);
+        }
+
+        boolean success_htlc = false;
+        int attempted_paths = 0;
+        int expiry_too_soon = 0;
+        int temporary_channel_failure = 0;
+
+        if (!candidatePaths.isEmpty()) {
+
+            final var hash = invoice.getHash();
+
+            var s = new StringBuilder();
+            s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(hash);
+            for (var path : candidatePaths)
+                s.append('\n').append(path);
+            log(s.toString());
+            if (showui) System.out.println(s);
+
+            //  conservative large delay set to the same as p2p queue updates
+            final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
+
+            pendingInvoices.put(hash, invoice);
+
+            for (var path : candidatePaths) {
+                attempted_paths++;
+                logMessage = "Trying path " + attempted_paths + " of " + candidatePaths.size() + " for invoice " + hash;
+                if (showui) System.out.println(logMessage);
+                log(logMessage);
+
+                routeInvoiceOnPath(invoice, path);
+                debug(()->"Waiting for pending HTLC "+invoice.getHash());
+
+                while (pendingHTLC.containsKey(hash)) {
+                    try {
+                        Thread.sleep(invoice_check_delay);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+                debug(()->"Cleared pending HTLC "+hash);
+
+                if (payedInvoices.containsKey(hash)) {
+                    String successMessage = " Successfully routed invoice " + hash;
+                    if (showui) System.out.println(successMessage);
+                    log(successMessage);
+
+                    success_htlc = true;
+                    break; // exit the for cycle of trying the paths...
+                } else {
+                    var reason = failure_reason.get(hash);
+
+                    if (reason==null) reason = "unknown";
+
+                    // TOFIX: reason should not be null
+                    switch (reason) {
+                        case "expiry_too_soon":
+                            expiry_too_soon++;
+                            break;
+                        case "temporary_channel_failure":
+                            temporary_channel_failure++;
+                            break;
+                        case "missing local liquidity":
+                            miss_local_liquidity++;
+                            break;
+                        default:
+                            debug(()->"No reason for failure of "+hash);
+                            unknonw_reason++;
+                            break;
+                    }
+                    logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
+                    log(logMessage);
+                    if (showui) System.out.println(logMessage);
+                }
+            }
+        }
+
+        if (!success_htlc) {
+            logMessage = "Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash();
+            log(logMessage);
+            if (showui) System.out.println(logMessage);
+        }
+
+        debug(()->"Removing pending invoice for "+invoice.getHash());
+
+        // the invoice, success or not, is not useful anymore
+        pendingInvoices.remove(invoice.getHash());
+        failure_reason.remove(invoice.getHash());
+
+        var report = new GlobalStats.NodeStats.InvoiceReport(
+                CryptoKit.shortString(invoice.getHash()),
+                this.getPubKey(),
+                invoice.getDestination(),
+                invoice.getAmount(),
+                totalPaths.size(),
+                candidatePaths.size(),
+                miss_policy,
+                miss_capacity,
+                miss_local_liquidity,
+                miss_max_fees,
+                attempted_paths,
+                temporary_channel_failure,
+                expiry_too_soon,
+                success_htlc);
+
+        nodeStats.invoiceReports.add(report);
+    }
+
+    /**
+     * This method is responsible for routing an invoice through a specific path in the Lightning Network.
+     *
+     * The method expects an protocol.LNInvoice instance and an ArrayList of topology.ChannelGraph.Edge objects
+     * which represent the path for routing the payment in the Lightning Network.
+     *
+     */
+
+    private synchronized void routeInvoiceOnPath(LNInvoice invoice, Path path) {
+        log("Routing on path:"+ path);
+        // if Alice is the sender, and Dina the receiver: paths = Dina, Carol, Bob, Alice
+
+        final int amount = invoice.getAmount();
+        final int baseBlockHeight = uvNetwork.getTimechain().getCurrentBlockHeight();
+        final var finalCLTV = baseBlockHeight+invoice.getMinFinalCltvExpiry();
+
+        // last layer is the only one with the secret
+        var firstHopPayload = new OnionLayer.Payload("00",amount,finalCLTV,invoice.getHash());
+        // this is the inner layer, for the final destination, so no further inner layer
+        var firstOnionLayer = new OnionLayer(firstHopPayload,null);
+
+        int cumulatedFees = 0;
+        var onionLayer = firstOnionLayer;
+        int out_cltv = finalCLTV;
+
+        // we start with the payload for Carol, which has no added fee to pay because Dina is the final hop
+        // Carol will take the forwarding fees specified in the payload for Bob, which will instruct Bob about the HTLC to be sent to Carol
+        // don't need to create the last path segment onion for local node htlc
+        for (int n=0;n<path.edges().size()-1;n++) {
+            var source = path.edges().get(n).source();
+            var dest = path.edges().get(n).destination();
+
+            // TODO UVMODEL: used only by node, should be a service from the node itself ?
+            // point to clarify: it is used for searching own nodes or in general ?
+            var path_channel = uvNetwork.getChannelFromNodes(source,dest);
+            if (path_channel.isPresent()) {
+                var channel = path_channel.get();
+                var hopPayload = new OnionLayer.Payload(channel.getChannelId(),amount+cumulatedFees,out_cltv,null);
+                onionLayer = new OnionLayer(hopPayload,onionLayer);
+
+                // the fees in the carol->dina channel will be put in the Bob payload in the next loop
+                // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
+                cumulatedFees += computeFees(amount,channel.getPolicy(source).getBaseFee(),channel.getPolicy(source).getFeePpm());
+                out_cltv += channel.getPolicy(source).getCLTVDelta();
+            }
+            else {
+                throw new IllegalStateException("ERROR: No channel from "+source+ " to "+dest);
+            }
+        }
+
+        var first_hop = path.getEnd();
+        var channel_id = path.edges().get(path.edges().size()-1).id();
+        var local_channel = channels.get(channel_id);
+        var amt_to_forward= invoice.getAmount()+cumulatedFees;
+
+        debug(()->"Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getChannelId());
+        if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
+
+            failure_reason.put(invoice.getHash(),"missing local liquidity");
+            // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
+            log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getChannelId());
+            return;
+        }
+
+        var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
+
+        sendToPeer(uvNetwork.getUVNode(first_hop),update_htcl, uvNetwork);
+        pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
+    }
+
+    /**
+     * This method processes a fulfilled Hash Time Locked Contract (HTLC) transaction.
+     */
+
+    private synchronized void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
+
+        var preimage = msg.getPayment_preimage();
+        var channel_id = msg.getChannel_id();
+        var computed_hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
+        var channel_peer_id = getChannelPeer(channel_id).getPubKey();
+        log("UpdateFulfillHTLC invoice hash " + computed_hash + " from "+channel_peer_id+ " via " + channel_id);
+
+        // As expected, I offered a HTLC with the same hash
+        if (pendingHTLC.containsKey(computed_hash)) {
+            var htlc = pendingHTLC.get(computed_hash);
+
+            channels.get(channel_id).removePending(this.getPubKey(),htlc.getAmount());
+
+            if (!pushSats(channel_id, htlc.getAmount())) {
+                throw new IllegalStateException("Cannot push "+htlc.getAmount()+ " from "+ this.getPubKey()+ " via "+channel_id);
+            }
+
+            // If I forwarded an incoming htlc, must also send back the fulfill message
+            if (receivedHTLC.containsKey(computed_hash)) {
+                var received_htlc = receivedHTLC.get(computed_hash);
+                var new_msg = new MsgUpdateFulFillHTLC(received_htlc.getChannel_id(),received_htlc.getId(),preimage);
+                sendToPeer(getChannelPeer(received_htlc.getChannel_id()),new_msg, uvNetwork);
+                receivedHTLC.remove(computed_hash);
+                // I successfully partecipated to some HTLC routing, my balances will change
+                nodeStats.incrementForwardeVolume(received_htlc.getAmount());
+            }
+            // I offered, but did not receive the htlc, I'm initial sender?
+            else {
+                if (pendingInvoices.containsKey(computed_hash)) {
+                    log("LN invoice for hash "+computed_hash+ " Completed!");
+                    payedInvoices.put(computed_hash,pendingInvoices.get(computed_hash));
+                    nodeStats.incrementInvoiceProcessingSuccessses();
+                    nodeStats.incrementInvoiceProcessingVolume(pendingInvoices.get(computed_hash).getAmount());
+                }
+                else {
+                    log("FATAL: Missing pending invoice for " + computed_hash);
+                    throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
+                }
+            }
+            pendingHTLC.remove(computed_hash);
+        }
+        else {
+            log("*FATAL*: Missing HTLC for fulfilling hash "+computed_hash);
+            throw new IllegalStateException("Node "+this.getPubKey()+": Missing HTLC for fulfilling hash "+computed_hash);
+        }
+    }
+    /**
+     * This function processes the failure of an HTLC (Hash Time-Locked Contract) update message.
+     * If the failure update message is found among the pending HTLCs, it removes the
+     * HTLC from the pendingHTLC map, updates the channel's list of pending HTLCs, and reduces the node's statistics of successful HTLCs. If the outgoing
+     */
+
+    private synchronized void processUpdateFailHTLC(final MsgUpdateFailHTLC msg) {
+        log("Processing: " + msg);
+        var ch_id = msg.getChannel_id();
+
+        for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
+
+            if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
+                final var hash = pending_msg.getPayment_hash();
+
+                pendingHTLC.remove(hash);
+                debug(()->"Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
+                channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
+
+                // I previouosly forwarded this HTLC, so I shoould send back the failure msg to the previous node
+                // no stats involved, the node is not responsible for the failure
+                if (receivedHTLC.containsKey(hash)) {
+                    var prev_htlc = receivedHTLC.get(hash);
+                    var prev_ch_id = prev_htlc.getChannel_id();
+                    var prev_peer = getChannelPeer(prev_ch_id);
+                    var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
+                    debug(()->"Sending "+fail_msg+ " to "+prev_peer.getPubKey());
+                    sendToPeer(prev_peer, fail_msg, uvNetwork);
+                    receivedHTLC.remove(hash);
+                } // I offered, but did not receive the htlc, I'm initial sender?
+                else {
+                    // The origin node can detect the sender of the error message by matching the hmac field with the computed HMAC.
+                    // https://github.com/lightning/bolts/blob/master/04-onion-routing.md#failure-messages
+
+                    // TODO: This could be abstracted in the future if necessary, by putting some field in the fail message
+
+                    // this set the reason of current HTLC routing attempt failure, so that we can make some invoice specific stats
+                    // however, no need to increase stats about invoice failures, the invoice could still succeed in another attempt...
+                    failure_reason.put(hash,msg.getReason());
+                    log("Original sender of "+msg+ " recognize failure due to "+msg.getReason());
+                }
+                return;
+            }
+        }
+
+        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending HTLC for "+msg);
+    }
+
+    private void failHTLC(final MsgUpdateAddHTLC msg, String reason) {
+        var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), reason);
+        nodeStats.incrementForwardingFailures(reason);
+        sendToPeer(getChannelPeer(msg.getChannel_id()), fail_msg, uvNetwork);
+    }
+
+    /**
+     * This method is responsible for handling HTLC messages in Lightning Network.
+     */
+    private synchronized void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
+
+        log("Processing: "+msg);
+        final var payload = msg.getOnionPacket().getPayload();
+        int currentBlock = uvNetwork.getTimechain().getCurrentBlockHeight();
+        int cltv_expiry = msg.getCLTVExpiry();
+        var incomingPeer = getChannelPeer(msg.getChannel_id());
+
+        // check if I'm the final destination
+        if (payload.getShortChannelId().equals("00")) {
+
+            final var secret = payload.getPayment_secret().get();
+
+            for (long s: generatedInvoices.keySet()) {
+                var preimage_bytes = BigInteger.valueOf(s).toByteArray();
+                var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(preimage_bytes));
+                if (hash.equals(secret)) {
+                    var own_invoice =  generatedInvoices.get(s);
+                    log("Received HTLC of own invoice "+own_invoice);
+
+                    if (currentBlock <= cltv_expiry) {
+                        var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
+                        sendToPeer(incomingPeer,to_send, uvNetwork);
+                    }
+                    else {
+                        log("Final node discarding late HTLC: expired in block "+cltv_expiry+ " hash:"+msg.getPayment_hash());
+                        var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
+                        sendToPeer(incomingPeer,fail_msg, uvNetwork);
+                    }
+                    return;
+                }
+            }
+            throw new IllegalStateException(" Received update_add_htlc, but no generated invoice was found!");
+        }
+
+        // I'm not the final destination, must forward the HTLC
+        final var forwardingChannel = channels.get(payload.getShortChannelId());
+        int amt_incoming = msg.getAmount();
+        int amt_forward = payload.getAmtToForward();
+
+        int fees = amt_incoming-amt_forward;
+
+        if (fees>=0) {
+            // TODO: check fees here...
+            debug(()->"Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
+        }
+        else {
+           throw new IllegalStateException("Negative fees value for forwading "+msg);
+        }
+
+        //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
+        // - once the cltv_expiry of an incoming HTLC has been reached,
+        // OR if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
+        // MUST fail that incoming HTLC (update_fail_htlc).
+
+        //TODO: expand with more failure cases (see antonop 263)
+
+        var cltv_expiry_delta = forwardingChannel.getPolicy(this.getPubKey()).getCLTVDelta();
+
+        if ((currentBlock > cltv_expiry) || (cltv_expiry - currentBlock) < cltv_expiry_delta) {
+            var reason = "expiry_too_soon";
+            log("Expired HTLC: cltv_expiry=" + cltv_expiry + ", out cltv_expiry_delta=" + cltv_expiry_delta + " , hash:" + msg.getPayment_hash());
+            failHTLC(msg, reason);
+            return;
+        }
+
+        if (!forwardingChannel.reservePending(this.getPubKey(), amt_forward)) {
+            var reason = "temporary_channel_failure";
+            log("Not enough local liquidity to forward " + amt_forward + " in channel " + forwardingChannel.getChannelId());
+            failHTLC(msg, reason);
+            return;
+        }
+
+        debug(()->"Reserved liquidity on "+forwardingChannel.getChannelId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getChannelId()).getPubKey());
+
+        // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
+        int cltv = payload.getOutgoingCLTV();
+
+        // fields that does not depend on payload, but message received
+        var onion_packet = msg.getOnionPacket().getInnerLayer();
+        var payhash = msg.getPayment_hash();
+
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
+
+        debug(()->"Forwarding "+new_msg);
+        receivedHTLC.put(msg.getPayment_hash(),msg);
+        pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
+        nodeStats.incrementForwardingSuccesses();
+
+        var next_channel_peer = getChannelPeer(forwardingChannel.getChannelId());
+        sendToPeer(next_channel_peer,new_msg, uvNetwork);
+    }
+
+    private String getMyChannelWith(String node_id) {
+
+        for (UVChannel c:this.channels.values()) {
+            if (c.getNode2PubKey().equals(node_id) || c.getNode1PubKey().equals(node_id)) {
+                    return c.getChannelId();
+            }
+        }
+        throw new IllegalArgumentException(this.getPubKey()+" Has no channel with "+node_id);
+    }
+
+    public synchronized boolean hasChannelWith(String nodeId) {
+        for (UVChannel c:this.channels.values()) {
+            if (c.getNode2PubKey().equals(nodeId) || c.getNode1PubKey().equals(nodeId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    private synchronized boolean hasPendingAcceptedChannelWith(String nodeId) {
+        return pendingAcceptedChannelPeers.contains(nodeId);
+    }
+
+    private synchronized boolean hasOpeningRequestWith(String nodeId) {
+        return sentChannelOpenings.containsKey(nodeId);
+    }
+
+    /**
+     * Configure a channel for the node, replacing any existing one with same key
+     * Mainly used for importing channels from a previously exported real topology, e.g. lncli describegraph
+     * As compared to openChannel method using in bootstrapping;
+     * - it does not create a new object
+     * - it does not involve any further p2p action: e.g., asking to the peer to acknowledge the opening, broadcasting, updating channel graph
+     * - it does not check actual onchain balances
+     */
+    public void configureChannel(UVChannel channel) {
+        channels.put(channel.getChannelId(),channel);
+    }
+
+    private String generateTempChannelId(String peerPubKey) {
+        return "tmp_" + getPubKey() + "_" + peerPubKey;
+    }
+
+    /**
+     * Mapped to LN protocol message: open_channel
+     *
+     * @param peerPubKey the target node partner to open the channel
+     */
+    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
+        if (peerPubKey.equals(this.getPubKey())) {
+            log("WARNING:Cancelling openChannel, the peer selected is the node itself!");
+            return false;
+        }
+        if (hasChannelWith(peerPubKey)) {
+            log("WARNING:Cancelling openChannel, channel already present with peer "+peerPubKey);
+            return false;
+        }
+        if (hasOpeningRequestWith(peerPubKey)) {
+            log("WARNING:Cancelling openChannel, opening request already present with peer "+peerPubKey);
+            return false;
+        }
+        if (hasPendingAcceptedChannelWith(peerPubKey)) {
+            log("WARNING: Cancelling openChannel, pending accepted channel already present with peer "+peerPubKey);
+            return false;
+        }
+
+        var peer = uvNetwork.getUVNode(peerPubKey);
+        peers.putIfAbsent(peer.getPubKey(),peer);
+        var tempChannelId = generateTempChannelId(peerPubKey);
+
+        log("Opening channel to "+peerPubKey+ " (temp_id: "+tempChannelId+", size:"+channel_size+")");
+        //TODO: the semantics of the related variable is tied to total openings, not the currently alive channels opened
+        increaseChannelOpenings();
+
+        debug(()->"Updating pending current: "+getOnchainPending()+" to "+(channel_size+getOnchainPending()));
+        updateOnchainPending(getOnchainPending()+channel_size);
+
+        //Both sides of the channel are forced by the other side to keep 1% of funds in the channel on their side. This is in order to ensure cheating always costs something (at least 1% of the channel balance).
+        double reserve_fraction = 0.01;
+        int reserve = (int)(reserve_fraction*channel_size);
+        var msg_request = new MsgOpenChannel(tempChannelId,channel_size, reserve, 0, uvNetwork.getConfig().to_self_delay, this.pubkey);
+        sentChannelOpenings.put(peerPubKey,msg_request);
+        sendToPeer(peer, msg_request, uvNetwork);
+        return true;
+    }
+    /**
+     * @param openRequest
+     */
+    private synchronized void acceptChannel(MsgOpenChannel openRequest) {
+        var temporary_channel_id = openRequest.getTemporary_channel_id();
+        var initiator_id = openRequest.getFunding_pubkey();
+
+
+        if (hasOpeningRequestWith(initiator_id)) {
+            log("WARNING:Cannot accept channel, already opening request with "+initiator_id);
+            return;
+        }
+
+        if (hasPendingAcceptedChannelWith(initiator_id)) {
+            log("WARNING:Cannot accept channel, already pending accepted channel with "+initiator_id);
+            return;
+        }
+        if (this.hasChannelWith(initiator_id)) {
+            //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
+            log("Warning: Cannot accept channel, already a channel with "+initiator_id);
+            return;
+        }
+
+        if (initiator_id!=null) pendingAcceptedChannelPeers.add(initiator_id);
+        else {
+            uvNetwork.reportCritical("CRITICAL: initiator_id null in acceptChannel of node "+getPubKey()+" for "+openRequest);
+            return;
+        }
+
+
+        log("Accepting channel "+ temporary_channel_id);
+        var channel_peer = uvNetwork.getUVNode(initiator_id);
+
+        if (channel_peer == null) {
+            uvNetwork.reportCritical("CRITICAL: from node  "+this.getPubKey()+ " when acceptChannel, uvNetwork has no node for initiator_id " + initiator_id );
+            return;
+        }
+
+        peers.putIfAbsent(channel_peer.getPubKey(),channel_peer);
+        var acceptance = new MsgAcceptChannel(temporary_channel_id, uvNetwork.getConfig().minimum_depth, uvNetwork.getConfig().to_self_delay,this.getPubKey());
+        sendToPeer(channel_peer,acceptance, uvNetwork);
+    }
+
+
+    private void channelAccepted(MsgAcceptChannel acceptMessage) {
+        // annotate the current height, so to facilitate search into a limite block set
+        final int broadcast_timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
+        var temp_channel_id = acceptMessage.getTemporary_channel_id();
+        var peerPubKey = acceptMessage.getFundingPubkey();
+
+
+        var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
+        // TODO: pubkeys should be lexically ordered, not based on initiator
+        int fees_per_byte = 1;
+        var funding_tx = UVTransaction.createTx(UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
+        waitingTxConf.put(funding_tx,broadcast_timestamp);
+        // No need to model the actual signatures with the two messages below, leaving placeholder for future extensions ;)
+        // bolt: send funding_created
+        // bolt: received funding_signed
+        log("Channel accepted by "+ peerPubKey+ " ("+temp_channel_id+") Broadcasting funding tx: "+funding_tx.getTxId());
+        uvNetwork.getTimechain().addToMempool(funding_tx);
+
+    }
+
+    private void fundingChannelConfirmed(String peer_id, String tx_id) {
+
+        // Abstractions:
+        // - This function is called on channel inititor, which will alert peer with BOLT funding_locked message:
+        // - Actually, the peer should monitor onchain confirmation on its own, but no trust problem is modeledd in UV
+
+
+        var timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
+        var request = sentChannelOpenings.get(peer_id);
+        sentChannelOpenings.remove(peer_id);
+        var newChannel = UVChannel.buildFromProposal(this.getPubKey(),peer_id,request.getFunding(),request.getChannelReserve(),request.getPushMSAT());
+
+        updateOnChainBalance(getOnChainBalance()- request.getFunding());
+        updateOnchainPending(getOnchainPending()-request.getFunding());
+
+        var channel_id = newChannel.getChannelId();
+        channels.put(channel_id,newChannel);
+
+        // in millisats
+        int base_fee = uvNetwork.getConfig().getMultivalRandomItem(local_rnd_generator,"base_fee_set");
+
+        int fee_ppm = this.profile.getRandomSample(local_rnd_generator,"ppm_fees");
+        var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
+
+        // local update
+        channels.get(channel_id).setPolicy(getPubKey(),newPolicy);
+        // why?
+        //channelGraph.updateChannel(msg_update);
+
+        channelGraph.addLNChannel(newChannel);
+
+        String from = this.getPubKey();
+        String signer = this.getPubKey();
+        // when funding tx is confirmed after minimim depth
+        var msg_update = new GossipMsgChannelUpdate(from,signer,channel_id,timestamp,0,newPolicy);
+        var msg_announcement = new GossipMsgChannelAnnouncement(from,channel_id,newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+
+        log("Confirmed funding tx: "+tx_id + " for new channel: "+channel_id);
+        uvNetwork.getUVNode(peer_id).fundingLocked(newChannel);
+        broadcastToPeers(from,msg_announcement);
+        broadcastToPeers(from,msg_update);
+    }
+
+    /**
+     *
+     * @param newChannel
+     */
+    public void fundingLocked(UVChannel newChannel) {
+
+        log("Received funding_locked for "+newChannel.getChannelId());
+
+        pendingAcceptedChannelPeers.remove(newChannel.getInitiator());
+
+        // setting a random policy
+        int base_fee = uvNetwork.getConfig().getMultivalRandomItem(local_rnd_generator,"base_fee_set");
+        int fee_ppm = this.profile.getRandomSample(local_rnd_generator,"ppm_fees");
+        // TODO: set some delta cltv
+        var newPolicy = new LNChannel.Policy(40,base_fee,fee_ppm);
+
+        newChannel.setPolicy(getPubKey(),newPolicy);
+        channels.put(newChannel.getChannelId(), newChannel);
+
+        channelGraph.addLNChannel(newChannel);
+        channelGraph.updateChannel(this.getPubKey(),newPolicy,newChannel.getChannelId());
+
+        var timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
+        // here sender is set as current node, all the other peers should receive the update
+        String sender = this.getPubKey();
+        var msg_update = new GossipMsgChannelUpdate(sender,this.getPubKey(),newChannel.getChannelId(),timestamp,0,newPolicy);
+
+        // sender is set as the channel initiator, so that it's excluded from broadcasting
+        var message_ann = new GossipMsgChannelAnnouncement(newChannel.getInitiator(),newChannel.getChannelId(),newChannel.getNode1PubKey(),newChannel.getNode2PubKey(),newChannel.getCapacity(),timestamp,0);
+        broadcastToPeers(newChannel.getInitiator(), message_ann);
+        broadcastToPeers(sender,msg_update);
+    }
+
+    /**
+     * Not broadcasted if too old or too many forwardings
+     * @param msg
+     */
+   private void broadcastToPeers(String fromID, GossipMsg msg) {
+
+       var current_age = uvNetwork.getTimechain().getCurrentBlockHeight() -msg.getTimeStamp();
+       if (current_age> uvNetwork.getConfig().p2p_max_age) return;
+       if (msg.getForwardings()>= uvNetwork.getConfig().p2p_max_hops)  return;
+
+       for (UVNode peer: peers.values()) {
+            if (peer.getPubKey().equals(fromID)) continue;
+            sendToPeer(peer,msg, uvNetwork);
+        }
+    }
+
+    private void sendToPeer(UVNode peer, P2PMessage msg, LNetwork network) {
+       //debug("Sending message "+msg+ " to "+peer.getPubKey());
+       //peer.deliverMessage(msg);
+       network.deliverMessage(peer,msg);
+    }
+
+    // packege private to be accessible from network manager
+    void deliverMessage(P2PMessage msg) {
+        //debug("Received "+msg);
+        switch (msg.getType()) {
+            case OPEN_CHANNEL -> {
+                var request = (MsgOpenChannel)msg;
+                channelsToAcceptQueue.add(request);
+            }
+            case ACCEPT_CHANNEL -> {
+                var acceptance = (MsgAcceptChannel)msg;
+                channelsAcceptedQueue.add(acceptance);
+            }
+            case UPDATE_ADD_HTLC -> {
+                var update_htlc = (MsgUpdateAddHTLC)msg;
+                updateAddHTLCQueue.add(update_htlc);
+            }
+            case UPDATE_FULFILL_HTLC -> {
+                var update_htlc = (MsgUpdateFulFillHTLC)msg;
+                updateFulFillHTLCQueue.add(update_htlc);
+            }
+            case UPDATE_FAIL_HTLC -> {
+                var htlc = (MsgUpdateFailHTLC)msg;
+                updateFailHTLCQueue.add(htlc);
+            }
+            // assuming all the other message type are gossip
+            default ->  {
+                var message = (GossipMsg) msg;
+                if (!GossipMessageQueue.contains(message)) {
+                    GossipMessageQueue.add(message);
+                }
+            }
+        }
+    }
+
+    public Queue<GossipMsg> getGossipMsgQueue() {
+        return this.GossipMessageQueue;
+    }
+
+    public synchronized void setP2PServices(boolean status) {
+       this.p2pIsRunning = status;
+    }
+
+    public synchronized boolean isP2PRunning() {
+        return p2pIsRunning;
+    }
+
+    /**
+     * Internal processing of the queue of p2p gossip messages
+     * A max number of messages is processed periodically to avoid execessive overloading
+     * Messages older than a given number of blocks are discarded
+     */
+    private void processGossip() {
+
+        int max_msg = uvNetwork.getConfig().gossip_flush_size;
+
+        while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
+            max_msg--;
+            GossipMsg msg = GossipMessageQueue.poll();
+
+            switch (msg.getType()) {
+                case CHANNEL_ANNOUNCE -> {
+                    var announce_msg = (GossipMsgChannelAnnouncement) msg.nextMsgToForward(this.getPubKey());
+                    var new_channel_id = announce_msg.getChannelId();
+                    if (!channelGraph.hasChannel(new_channel_id)) {
+                        // synchronized
+                        this.channelGraph.addAnnouncedChannel(announce_msg);
+                        broadcastToPeers(msg.getSender(),announce_msg);
+                    }
+
+                }
+                // TODO: 4 times per day, per channel (antonopoulos)
+                case CHANNEL_UPDATE -> {
+                    var message = (GossipMsgChannelUpdate) msg;
+                    // skip channel updates of own channels
+                    var updater_id = message.getSignerId();
+                    var channel_id = message.getChannelId();
+
+                    // sent from my channel partners, update related data
+                    if (channels.containsKey(channel_id)) {
+                        channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
+                        getChannelGraph().updateChannel(message);
+                        var next = message.nextMsgToForward(this.getPubKey());
+                        broadcastToPeers(message.getSender(),next);
+                    } // not my local channel, but I have an entry to be updated...
+                    else {
+                        //debug("Received update for non local channel ");
+                        if (getChannelGraph().hasChannel(channel_id)) {
+                            //debug("GOSSIP: Updating non-local channel "+channel_id);
+                            getChannelGraph().updateChannel(message);
+                            var next = message.nextMsgToForward(this.getPubKey());
+                            broadcastToPeers(message.getSender(),next);
+                        }
+                        else {
+                            //debug("GOSSIP: Skipping update for unknown channel "+channel_id);
+                        }
+                    }
+
+                    //https://github.com/lightning/bolts/blob/master/07-routing-gossip.md#the-channel_update-message
+                    /*
+                    The receiving node:
+                    if the short_channel_id does NOT match a previous channel_announcement, OR if the channel has been closed in the meantime:
+                    MUST ignore channel_updates that do NOT correspond to one of its own channels.
+                     */
+                }
+            }
+        }
+    }
+
+    /**
+     * All the services and actions that are periodically performed by the node
+     * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
+     * Starting from a base services_tick_period, different frequencies can be used
+     */
+    public void runServices() {
+
+        try {
+
+            // handled as soon as possible, just check at very services tick
+            processChannelsMsgQueue();
+
+            // handled as soon as possible, just check at very services tick
+            processHTLCMsgQueue();
+
+            long now = System.currentTimeMillis();
+            // should run around the same frequency of blocktime
+            if (now-last_mempool_check >= 3L *uvNetwork.getConfig().blocktime_ms) {
+                checkTimechainTxConfirmations();
+                last_mempool_check = now;
+            }
+            // to avoid spam and network congestion, gossid should spread less frequenctly
+            if (now - last_gossip_flush >= uvNetwork.getConfig().gossip_flush_period_ms) {
+                processGossip();  // or flushGossip()
+                last_gossip_flush = now;
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private synchronized void checkTimechainTxConfirmations() {
+        int req_confirmations = uvNetwork.getConfig().minimum_depth;
+
+        if (!waitingTxConf.isEmpty()) {
+            final int current_block = uvNetwork.getTimechain().getCurrentBlockHeight();
+            var to_be_removed = new ArrayList<UVTransaction>();
+
+            for (var tx: waitingTxConf.keySet()) {
+                var broadcast_height = waitingTxConf.get(tx);
+                // avoid checking for txs that are too recent
+                if (current_block-broadcast_height<req_confirmations) continue;
+                debug(()->"Checking confirmation of "+tx.getTxId()+ " starting from block "+broadcast_height);
+                var location = uvNetwork.getTimechain().findTxLocation(tx,broadcast_height);
+                if (location.isPresent() && current_block - location.get().height() >=req_confirmations) {
+                    String peerId;
+                    if (tx.getNode1Pub().equals(this.getPubKey())) peerId = tx.getNode2Pub();
+                    else peerId = tx.getNode1Pub();
+                    fundingChannelConfirmed(peerId,tx.getTxId());
+                    to_be_removed.add(tx);
+                }
+            }
+            for (var tx: to_be_removed) {
+                waitingTxConf.remove(tx);
+            }
+        }
+    }
+
+    private void processChannelsMsgQueue() {
+
+        // TODO: this is enough for sure, but maybe move to some config constansts
+        final int max = 20;
+        int n = 0;
+
+        while (!channelsAcceptedQueue.isEmpty() && n++ < max) {
+            var msg = channelsAcceptedQueue.poll();
+            channelAccepted(msg);
+        }
+        n = 0;
+
+        while (!channelsToAcceptQueue.isEmpty() && n++ < max ) {
+            var msg = channelsToAcceptQueue.poll();
+            acceptChannel(msg);
+        }
+    }
+
+    private void processHTLCMsgQueue() {
+        // TODO: this is enough for sure, but maybe move to some config constansts
+        final int max = 20;
+        int n = 0;
+
+        while (!updateAddHTLCQueue.isEmpty() && n++ < max ) {
+            var msg = updateAddHTLCQueue.poll();
+            try {
+                processUpdateAddHTLC(msg);
+            }
+            catch (Exception e) { e.printStackTrace(); }
+        }
+
+        n = 0;
+        while (!updateFulFillHTLCQueue.isEmpty() && n++ < max ) {
+            var msg = updateFulFillHTLCQueue.poll();
+            try {
+                processUpdateFulfillHTLC(msg);
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+        n = 0;
+        while (!updateFailHTLCQueue.isEmpty() && n++ < max ) {
+            var msg = updateFailHTLCQueue.poll();
+            try {
+                processUpdateFailHTLC(msg);
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+        // check for expired htlc
+    }
+
+    /**
+     * Move sat from local side to the other side of the channel, update balance accordingly
+     * @param channel_id
+     * @param amount amount to be moved in sats
+     * @return true if the channel update is successful
+     */
+    protected synchronized boolean pushSats(String channel_id, int amount) {
+
+        var channel = this.channels.get(channel_id);
+        String peer_id = getChannelPeer(channel_id).getPubKey();
+
+        var outbound_liquidity = channel.getLiquidity(this.getPubKey());
+        var local_balance = channel.getBalance(this.getPubKey());
+        var remote_balance = channel.getBalance(peer_id);
+
+        // actually available outbound liquidity = local_balance - 1% channel_reserve - pending
+        if (outbound_liquidity>=amount) {
+            if (channel.getNode1PubKey().equals(this.getPubKey()))
+                channel.newCommitment(local_balance-amount,remote_balance+amount);
+            else
+                channel.newCommitment(remote_balance+amount,local_balance-amount);
+        }
+        else {
+            log("pushSats: Insufficient outbound liquidity in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
+            return false;
+        }
+        return true;
+    }
+
+    public static String generateNodeLabelString() {
+        return String.format("%-10s %-30s %-20s %-15s %-10s", "Pubkey", "Alias", "Node Capacity", "Channels", "Node Profile");
+    }
+
+    @Override
+    public String toString() {
+        // assuming you have a `getNodeProfile()` method or `nodeProfile` field
+        return String.format("%-10s %-30s %-,20d %-15d %-10s", pubkey, alias, getNodeCapacity(), channels.size(), profile.getName());
+    }
+
+    /**
+     * @param uvNode 
+     * @return
+     */
+    @Override
+    public int compareTo(UVNode uvNode) {
+        String pk1 = this.getPubKey();
+        String pk2 = uvNode.getPubKey();
+        // Pattern: pk + integer
+        if (pk1.startsWith("pk") && pk2.startsWith("pk")) {
+            try {
+                int n1 = Integer.parseInt(pk1.substring(2));
+                int n2 = Integer.parseInt(pk2.substring(2));
+                return Integer.compare(n1, n2);
+            } catch (NumberFormatException e) {
+                return pk1.compareTo(pk2);
+                // fallback to string comparison if parsing fails
+            }
+        }
+        return pk1.compareTo(pk2);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        UVNode uvNode = (UVNode) o;
+
+        return pubkey.equals(uvNode.pubkey);
+    }
+
+    @Override
+    public int hashCode() {
+        return pubkey.hashCode();
+    }
+
+    private void printQueue(Queue<?> queue, String queueName) {
+        if (!queue.isEmpty()) {
+            System.out.println(queueName);
+            for (var element : queue) {
+                System.out.println(element);
+            }
+        }
+    }
+
+    public void showQueuesStatus() {
+
+        if (countNonEmptyQueues()==0) {
+            System.out.println("All node's queues are empty");
+            return;
+        }
+
+        printQueue(GossipMessageQueue, "GossipMessageQueue");
+        printQueue(channelsAcceptedQueue, "channelsAcceptedQueue");
+        printQueue(channelsToAcceptQueue, "channelsToAcceptQueue");
+        printQueue(updateAddHTLCQueue, "updateAddHTLCQueue");
+        printQueue(updateFulFillHTLCQueue, "updateFulFillHTLCQueue");
+        printQueue(updateFailHTLCQueue, "updateFailHTLCQueue");
+        int i = 0;
+        if (!pendingInvoices.values().isEmpty()) {
+            System.out.println("pendingInvoices.values()");
+            for(var value : pendingInvoices.values()) {
+                i++;
+                System.out.println(value);
+            }
+        }
+        if (i != pendingInvoices.size()) {
+            var s = "WARNING: For pendingInvoices .values() are " + i + " while .size() returns " + pendingInvoices.size();
+            log(s);
+            System.out.println(s);
+        }
+
+
+        if (!pendingHTLC.values().isEmpty()) {
+            System.out.println("pendingHTLC.values()");
+            for(var value : pendingHTLC.values()) {
+                System.out.println(value);
+            }
+        }
+
+        if (!pendingAcceptedChannelPeers.isEmpty()) {
+            System.out.println("pendingAcceptedChannelPeers:");
+            for(var element : pendingAcceptedChannelPeers) {
+                System.out.println(element);
+            }
+        }
+        if (!waitingTxConf.isEmpty()) {
+            System.out.println("Waiting Tx Confirmations for:");
+            for(var element : waitingTxConf.keySet()) {
+                System.out.println(element);
+                System.out.printf("Broadcasted at: "+waitingTxConf.get(element));
+            }
+        }
+    }
+    public int countNonEmptyQueues() {
+        int queueSizeSum = 0;
+
+        queueSizeSum += GossipMessageQueue.size();
+        queueSizeSum += channelsAcceptedQueue.size();
+        queueSizeSum += channelsToAcceptQueue.size();
+        queueSizeSum += updateAddHTLCQueue.size();
+        queueSizeSum += updateFulFillHTLCQueue.size();
+        queueSizeSum += updateFailHTLCQueue.size();
+        queueSizeSum += pendingInvoices.size();
+        queueSizeSum += pendingHTLC.size();
+        queueSizeSum += pendingAcceptedChannelPeers.size();
+        queueSizeSum += waitingTxConf.size();
+
+        return queueSizeSum;
+    }
+
+    public boolean areQueuesEmpty() {
+        return pendingInvoices.isEmpty()
+                && channelsAcceptedQueue.isEmpty()
+                && channelsToAcceptQueue.isEmpty()
+                && updateAddHTLCQueue.isEmpty()
+                && updateFulFillHTLCQueue.isEmpty()
+                && updateFailHTLCQueue.isEmpty()
+                && GossipMessageQueue.isEmpty()
+                && pendingHTLC.isEmpty()
+                && pendingAcceptedChannelPeers.isEmpty()
+                && waitingTxConf.isEmpty();
+    }
+
+
+    public double getOutboundFraction(String channel_id) {
+        var channel = channels.get(channel_id);
+        var channel_size = channel.getCapacity();
+        var local_balance = channel.getBalance(getPubKey());
+        return (double)local_balance/channel_size;
+    }
+
+    public double getOverallOutboundFraction() {
+        return (double)getLocalBalance()/getNodeCapacity();
+    }
+
+
+
+    /**
+     * Custom Serialized format: number of element / objects
+     * @param s The outputstream, as specified when choosing saving file
+     */
+    @Serial
+    private void writeObject(ObjectOutputStream s) {
+        try {
+            // savig non transient data
+            s.defaultWriteObject();
+
+            s.writeInt(channels.size());
+            for (UVChannel c:channels.values()) {
+                s.writeObject(c);
+            }
+            // saving only pubkey
+            s.writeInt(peers.size());
+            for (UVNode p:peers.values()) {
+                s.writeObject(p.getPubKey());
+            }
+
+            s.writeObject(this.generatedInvoices);
+            //s.writeObject(this.invoiceReports);
+            s.writeObject(this.nodeStats);
+            s.writeObject(this.payedInvoices);
+            s.writeObject(channelGraph);
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    /**
+     * Read custom serialization of network.UVNode: num channels + sequence of channels object
+     * Notice that internal UVNodes are restored separately to avoid stack overflow
+     * @param s
+     */
+    @SuppressWarnings("unchecked")
+    @Serial
+    private void readObject(ObjectInputStream s) {
+        channels = new ConcurrentHashMap<>();
+        saved_peers_id = new ArrayList<>();
+        failure_reason = new HashMap<>();
+
+
+        try {
+            s.defaultReadObject();
+            int num_channels = s.readInt();
+            for (int i=0;i<num_channels;i++) {
+                UVChannel c = (UVChannel)s.readObject();
+                channels.put(c.getChannelId(),c);
+            }
+            int num_peers = s.readInt();
+            for (int i=0;i<num_peers;i++) {
+                saved_peers_id.add((String)s.readObject());
+            }
+
+            //noinspection unchecked
+            generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
+            //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
+            nodeStats = (GlobalStats.NodeStats) s.readObject();
+            payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
+            channelGraph = (ChannelGraph) s.readObject();
+
+            setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
+
+            this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+            this.pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
+            this.receivedHTLC = new HashMap<>();
+            this.pendingHTLC = new ConcurrentHashMap<>();
+            this.sentChannelOpenings = new HashMap<>();
+            this.updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.pendingInvoices = new ConcurrentHashMap<>();
+            this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
+            this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
+            this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
+            this.waitingTxConf = new HashMap<>();
+        }
+        catch (IOException | ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    /**
+     * Restoring that can performed only after all UVNodes have be loaded from UVM load (after all
+     * readObject have been invoked on all UVNodes
+     */
+    public void restorePersistentData() {
+        // restore peers
+        peers = new ConcurrentHashMap<>();
+        for (String p: saved_peers_id)
+            peers.put(p, uvNetwork.getUVNode(p));
+    }
+
+}
