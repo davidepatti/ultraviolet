@@ -5,8 +5,8 @@ _**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**
 ## Audio Introduction
 Ai-generared podcast discussion: [Google NotebookLM Audio](https://notebooklm.google.com/notebook/1a1c5193-65ed-4d0e-958e-a3c218da7831/audio)
 
-## Paper
-D. Patti, S. Monteleone, E. Russo, M. Palesi and V. Catania, "A Novel Timechain-Level Approach to the Modeling of the Bitcoin Lightning Network," in 2024 IEEE International Conference on Blockchain (Blockchain), Copenhagen, Denmark, 2024 pp. 11-18.
+## Journal Paper
+Davide Patti, Salvatore Monteleone, Enrico Russo, Maurizio Palesi, Timechain-level Modeling and Analysis of the Bitcoin Lightning Network, Computer Networks, 2025, 111891, ISSN 1389-1286, https://doi.org/10.1016/j.comnet.2025.111891
 
 ## Description
 
