@@ -69,7 +69,7 @@ The output of "node" command, showing the channels a features of the each channe
 ![node](uvpics/node.png) 
 
 The output of the "nodes" command, showing all nodes, along with customizable alias (currently mostly inspired to David
-Lynch and Depeche Mode).
+Lynch, Depeche Mode and David Foster Wallace).
 
 ![nodes](uvpics/nodes.png) 
 
