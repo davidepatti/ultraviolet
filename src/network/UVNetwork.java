@@ -886,14 +886,18 @@ public class UVNetwork implements LNetwork {
 
         for (int nb = 0; nb < blocks_duration; nb++) {
             int current_block = getTimechain().getCurrentBlockHeight();
+            int eventsThisBlock;
 
-            // when events per block are < 1, use a probabilistic approach to determine if the are 0 or one event
-            if (events_per_block < 1) {
-                double r = random.nextDouble(1);
-                if (r<=events_per_block) events_per_block =1;
+            // Keep configured rate immutable and derive per-block event count.
+            if (events_per_block < 1.0) {
+                eventsThisBlock = random.nextDouble(1) <= events_per_block ? 1 : 0;
+            } else {
+                int baseEvents = (int) events_per_block;
+                double fractional = events_per_block - baseEvents;
+                eventsThisBlock = baseEvents + (random.nextDouble(1) <= fractional ? 1 : 0);
             }
 
-            for (int eb = 0; eb<events_per_block; eb++ ) {
+            for (int eb = 0; eb < eventsThisBlock; eb++ ) {
                 var sender = getRandomNode();
                 UVNode dest;
                 do {
