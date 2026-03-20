@@ -16,9 +16,11 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class UVNetwork implements LNetwork {
+    private static final Pattern SYNTHETIC_PUBKEY_PATTERN = Pattern.compile("^pk\\d+$");
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
@@ -153,7 +155,8 @@ public class UVNetwork implements LNetwork {
             throw new RuntimeException(e);
         }
 
-        this.uvnodes = new HashMap<>();
+        // Keep insertion order so imported topologies can be displayed as loaded.
+        this.uvnodes = new LinkedHashMap<>();
         uvTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
         log(new Date() +":Initializing UVManager...");
@@ -485,10 +488,17 @@ public class UVNetwork implements LNetwork {
 
 
     public List<UVNode> getSortedNodeListByPubkey() {
-        return this.uvnodes.values()
-                .stream()
-                .sorted(Comparator.comparing(node -> Integer.valueOf(node.getPubKey().substring(2))))
-                .collect(Collectors.toList());
+        var nodes = new ArrayList<>(this.uvnodes.values());
+        boolean allSyntheticPubkeys = nodes.stream()
+                .map(UVNode::getPubKey)
+                .allMatch(pubkey -> pubkey != null && SYNTHETIC_PUBKEY_PATTERN.matcher(pubkey).matches());
+
+        if (!allSyntheticPubkeys) {
+            return nodes;
+        }
+
+        nodes.sort(Comparator.comparingInt(node -> Integer.parseInt(node.getPubKey().substring(2))));
+        return nodes;
     }
 
     public UVNode searchNode(String pubkey) {
