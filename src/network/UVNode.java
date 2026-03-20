@@ -414,12 +414,31 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 routeInvoiceOnPath(invoice, path);
                 debug(()->"Waiting for pending HTLC "+invoice.getHash());
 
-                while (pendingHTLC.containsKey(hash)) {
+                long timeoutMs = Math.max(
+                        15_000L,
+                        8L * Math.max(1, path.getSize()) * uvNetwork.getConfig().node_services_tick_ms
+                );
+                long deadline = System.currentTimeMillis() + timeoutMs;
+
+                while (pendingHTLC.containsKey(hash) && System.currentTimeMillis() < deadline) {
                     try {
                         Thread.sleep(invoice_check_delay);
                     } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
+                        Thread.currentThread().interrupt();
+                        break;
                     }
+                }
+
+                if (pendingHTLC.containsKey(hash)) {
+                    var timedOut = pendingHTLC.remove(hash);
+                    if (timedOut != null) {
+                        var ch = channels.get(timedOut.getChannel_id());
+                        if (ch != null) {
+                            ch.removePending(this.getPubKey(), timedOut.getAmount());
+                        }
+                    }
+                    failure_reason.put(hash, "attempt_timeout");
+                    log("Timed out waiting HTLC completion for invoice " + hash + " on path #" + attempted_paths);
                 }
 
                 debug(()->"Cleared pending HTLC "+hash);
@@ -446,6 +465,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             break;
                         case "missing local liquidity":
                             miss_local_liquidity++;
+                            break;
+                        case "attempt_timeout":
+                            unknonw_reason++;
                             break;
                         default:
                             debug(()->"No reason for failure of "+hash);
@@ -607,8 +629,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             pendingHTLC.remove(computed_hash);
         }
         else {
-            log("*FATAL*: Missing HTLC for fulfilling hash "+computed_hash);
-            throw new IllegalStateException("Node "+this.getPubKey()+": Missing HTLC for fulfilling hash "+computed_hash);
+            log("Late/unknown fulfill HTLC for hash "+computed_hash+ ", ignoring");
+            return;
         }
     }
     /**
@@ -656,7 +678,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
         }
 
-        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending HTLC for "+msg);
+        log("Late/unknown fail HTLC " + msg + ", ignoring");
     }
 
     private void failHTLC(final MsgUpdateAddHTLC msg, String reason) {
