@@ -696,7 +696,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         final var payload = msg.getOnionPacket().getPayload();
         int currentBlock = uvNetwork.getTimechain().getCurrentBlockHeight();
         int cltv_expiry = msg.getCLTVExpiry();
-        var incomingPeer = getChannelPeer(msg.getChannel_id());
 
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
@@ -711,12 +710,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     log("Received HTLC of own invoice "+own_invoice);
 
                     if (currentBlock <= cltv_expiry) {
+                        var incomingPeer = getChannelPeer(msg.getChannel_id());
                         var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
                         sendToPeer(incomingPeer,to_send, uvNetwork);
                     }
                     else {
                         log("Final node discarding late HTLC: expired in block "+cltv_expiry+ " hash:"+msg.getPayment_hash());
                         var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
+                        var incomingPeer = getChannelPeer(msg.getChannel_id());
                         sendToPeer(incomingPeer,fail_msg, uvNetwork);
                     }
                     return;
@@ -727,6 +728,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         // I'm not the final destination, must forward the HTLC
         final var forwardingChannel = channels.get(payload.getShortChannelId());
+        if (forwardingChannel == null) {
+            log("Unknown forwarding channel " + payload.getShortChannelId()
+                    + " for HTLC " + msg.getPayment_hash()
+                    + ", failing upstream");
+            failHTLC(msg, "temporary_channel_failure");
+            return;
+        }
+
         int amt_incoming = msg.getAmount();
         int amt_forward = payload.getAmtToForward();
 
@@ -769,10 +778,17 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int cltv = payload.getOutgoingCLTV();
 
         // fields that does not depend on payload, but message received
-        var onion_packet = msg.getOnionPacket().getInnerLayer();
+        var onionPacket = msg.getOnionPacket().getInnerLayer();
+        if (onionPacket.isEmpty()) {
+            log("Missing inner onion layer while forwarding HTLC " + msg.getPayment_hash()
+                    + " on channel " + forwardingChannel.getChannelId()
+                    + ", failing upstream");
+            failHTLC(msg, "temporary_channel_failure");
+            return;
+        }
         var payhash = msg.getPayment_hash();
 
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onionPacket.get());
 
         debug(()->"Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
