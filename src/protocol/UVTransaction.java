@@ -118,6 +118,7 @@ public class UVTransaction implements Serializable {
     }
 
     public int getSize() {
+        if (this.getType() == Type.EXTERNAL_BLOB) { return size;}
        return getTransactionSize(this.getType()) ;
     }
 
