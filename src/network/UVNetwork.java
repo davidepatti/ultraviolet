@@ -416,39 +416,104 @@ public class UVNetwork implements LNetwork {
      * @param json_file
      */
     public void importTopology(String json_file, String root_node) {
-        JSONParser parser = new JSONParser();
-        print_log("Beginning importing file "+json_file);
+        final JSONParser parser = new JSONParser();
+        print_log("Beginning importing file " + json_file);
+
         try {
-            Object obj = parser.parse(new FileReader(json_file));
-            JSONObject jsonObject = (JSONObject) obj;
+            Object parsed = parser.parse(new FileReader(json_file));
+            if (!(parsed instanceof JSONObject jsonObject)) {
+                print_log("Import failed: root JSON is not an object");
+                return;
+            }
 
             JSONArray nodes = (JSONArray) jsonObject.get("nodes");
-            for (Object node : nodes ) {
-                JSONObject nodeObject = (JSONObject) node;
+            if (nodes == null) {
+                print_log("Import failed: missing 'nodes' array");
+                return;
+            }
+
+            var defaultProfile = uvConfig.getNodeProfiles().get("default");
+            if (defaultProfile == null) {
+                print_log("Import failed: missing default node profile");
+                return;
+            }
+
+            // Build imported state in isolation; commit only when fully valid.
+            Map<String, UVNode> importedNodes = new LinkedHashMap<>();
+            for (Object node : nodes) {
+                if (!(node instanceof JSONObject nodeObject)) {
+                    print_log("Import failed: invalid node entry " + node);
+                    return;
+                }
                 String pub_key = (String) nodeObject.get("pub_key");
                 String alias = (String) nodeObject.get("alias");
-
-                var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getNodeProfiles().get("default"));
-                uvnodes.put(pub_key,uvNode);
+                if (pub_key == null || pub_key.isBlank()) {
+                    print_log("Import failed: node with missing pub_key");
+                    return;
+                }
+                if (alias == null) alias = "";
+                importedNodes.put(pub_key, new UVNode(this, pub_key, alias, 12345678, defaultProfile));
             }
-            print_log("Node import ended, importing channels...");
 
-            var root= uvnodes.get(root_node);
+            UVNode root = importedNodes.get(root_node);
+            if (root == null) {
+                print_log("Import failed: root node " + root_node + " not found in topology file");
+                return;
+            }
 
             JSONArray edges = (JSONArray) jsonObject.get("edges");
+            if (edges == null) {
+                print_log("Import failed: missing 'edges' array");
+                return;
+            }
+
             for (Object edge : edges) {
-                JSONObject edgeObject = (JSONObject) edge;
+                if (!(edge instanceof JSONObject edgeObject)) {
+                    print_log("Import failed: invalid edge entry " + edge);
+                    return;
+                }
+
                 String channel_id = (String) edgeObject.get("channel_id");
                 String node1_pub = (String) edgeObject.get("node1_pub");
                 String node2_pub = (String) edgeObject.get("node2_pub");
-                int capacity = Integer.parseInt((String) edgeObject.get("capacity"));
+                Object capacityObj = edgeObject.get("capacity");
+
+                if (channel_id == null || channel_id.isBlank() || node1_pub == null || node2_pub == null) {
+                    print_log("Import failed: malformed edge " + edgeObject);
+                    return;
+                }
+
+                int capacity;
+                if (capacityObj instanceof Number n) {
+                    capacity = n.intValue();
+                } else if (capacityObj instanceof String s) {
+                    capacity = Integer.parseInt(s);
+                } else {
+                    print_log("Import failed: invalid capacity in edge " + channel_id + ": " + capacityObj);
+                    return;
+                }
+
+                UVNode uvnode1 = importedNodes.get(node1_pub);
+                UVNode uvnode2 = importedNodes.get(node2_pub);
+                if (uvnode1 == null || uvnode2 == null) {
+                    print_log("Import failed: edge " + channel_id + " references unknown node(s): "
+                            + node1_pub + ", " + node2_pub);
+                    return;
+                }
+
+                // UVChannel expects lexicographic order of endpoints.
+                String left = node1_pub;
+                String right = node2_pub;
+                if (left.compareTo(right) > 0) {
+                    String tmp = left;
+                    left = right;
+                    right = tmp;
+                }
 
                 // TODO: get real init direction
                 boolean direction = random.nextBoolean();
-                UVChannel ch = new UVChannel(channel_id,node1_pub,node2_pub,capacity,0,0,direction);
+                UVChannel ch = new UVChannel(channel_id,left,right,capacity,0,0,direction);
 
-                var uvnode1 = uvnodes.get(node1_pub);
-                var uvnode2 = uvnodes.get(node2_pub);
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addLNChannel(ch);
@@ -456,10 +521,18 @@ public class UVNetwork implements LNetwork {
 
                 root.getChannelGraph().addLNChannel(ch);
             }
+
+            synchronized (this) {
+                uvnodes.clear();
+                uvnodes.putAll(importedNodes);
+                refreshPubkeyList();
+                imported_rootnode_graph = root_node;
+            }
+
             print_log("Import completed");
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (IOException | org.json.simple.parser.ParseException | NumberFormatException e) {
+            print_log("Import failed: " + e.getMessage());
         }
     }
     /***************************************************************************************
