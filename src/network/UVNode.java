@@ -180,10 +180,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return local_rnd_generator;
     }
 
-    /**
-     * @param channel_id
-     * @return
-     */
     private UVNode getChannelPeer(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
@@ -250,10 +246,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.uvNetwork = uvm;
     }
 
-    /**
-     * @param amount
-     * @return
-     */
     @Override
     public LNInvoice generateInvoice(int amount, String msg, boolean determininistic ) {
         // determining secret based on message, useful for testing
@@ -345,7 +337,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int miss_local_liquidity = 0;
         int miss_max_fees = 0;
         int miss_policy = 0;
-        int unknonw_reason = 0;
 
         String logMessage;
 
@@ -563,7 +554,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         var first_hop = path.getEnd();
-        var channel_id = path.edges().get(path.edges().size()-1).id();
+        var channel_id = path.edges().getLast().id();
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
@@ -630,7 +621,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
         else {
             log("Late/unknown fulfill HTLC for hash "+computed_hash+ ", ignoring");
-            return;
         }
     }
     /**
@@ -883,9 +873,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         sendToPeer(peer, msg_request, uvNetwork);
         return true;
     }
-    /**
-     * @param openRequest
-     */
+
     private synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
@@ -990,10 +978,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(from,msg_update);
     }
 
-    /**
-     *
-     * @param newChannel
-     */
     public void fundingLocked(UVChannel newChannel) {
 
         log("Received funding_locked for "+newChannel.getChannelId());
@@ -1023,10 +1007,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(sender,msg_update);
     }
 
-    /**
-     * Not broadcasted if too old or too many forwardings
-     * @param msg
-     */
    private void broadcastToPeers(String fromID, GossipMsg msg) {
 
        var current_age = uvNetwork.getTimechain().getCurrentBlockHeight() -msg.getTimeStamp();

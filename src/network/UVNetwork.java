@@ -17,7 +17,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 public class UVNetwork implements LNetwork {
     private static final Pattern SYNTHETIC_PUBKEY_PATTERN = Pattern.compile("^pk\\d+$");
@@ -32,7 +31,6 @@ public class UVNetwork implements LNetwork {
 
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
-    private String imported_rootnode_graph;
     public static Consumer<String> Log = System.out::println;
 
     private final GlobalStats stats;
@@ -336,7 +334,6 @@ public class UVNetwork implements LNetwork {
                 }
             });
         }
-        int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
@@ -411,10 +408,6 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    /**
-     *
-     * @param json_file
-     */
     public void importTopology(String json_file, String root_node) {
         final JSONParser parser = new JSONParser();
         print_log("Beginning importing file " + json_file);
@@ -619,10 +612,6 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    /**
-     *
-     * @param s
-     */
     public void log(String s) {
         try {
 
@@ -747,11 +736,6 @@ public class UVNetwork implements LNetwork {
         print_log("Saving complete!");
     }
 
-    /**
-     * Load network status from file
-     * @param file
-     * @return False if is not possible to read the file
-     */
     public boolean loadStatus(String file) {
         if (getTimechainStatus()) {
             setTimechainStatus(false);

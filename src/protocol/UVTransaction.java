@@ -73,8 +73,7 @@ public class UVTransaction implements Serializable {
             toBeHashed += java.util.UUID.randomUUID().toString();
         }
         var txId = CryptoKit.bytesToHexString(CryptoKit.hash256(toBeHashed.getBytes()));
-        var tx = new UVTransaction(txId,type,amount,node1_pub,node2_pub,fees_per_byte,size);
-        return tx;
+        return new UVTransaction(txId,type,amount,node1_pub,node2_pub,fees_per_byte,size);
     }
 
     public String getTxId() {
@@ -123,19 +122,13 @@ public class UVTransaction implements Serializable {
     }
 
     public static int getTransactionSize(Type type) {
-        switch (type) {
-            case CHANNEL_FUNDING:
-                return 250;  // Average size for standard funding transaction
-            case COOPERATIVE_CLOSE:
-                return 180;  // Simple cooperative close
-            case FORCE_CLOSE:
-                return 280;  // Unilateral close with timelocks
-            case HTLC_TIMEOUT_SUCCESS:
-                return 350;  // Complex HTLC spend
-            case PENALTY_TRANSACTION:
-                return 200;  // Revoked state penalty
-            default:
-                throw new IllegalArgumentException("Unspecified tx size for type: " + type);
-        }
+        return switch (type) {
+            case CHANNEL_FUNDING -> 250;  // Average size for standard funding transaction
+            case COOPERATIVE_CLOSE -> 180;  // Simple cooperative close
+            case FORCE_CLOSE -> 280;  // Unilateral close with timelocks
+            case HTLC_TIMEOUT_SUCCESS -> 350;  // Complex HTLC spend
+            case PENALTY_TRANSACTION -> 200;  // Revoked state penalty
+            default -> throw new IllegalArgumentException("Unspecified tx size for type: " + type);
+        };
     }
 }
