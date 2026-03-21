@@ -106,14 +106,31 @@ public class UVTimechain implements Runnable, Serializable {
             }
             // blob pseudo txs can be partially removed, since they represent multiple txs
             else if (tx.getType().equals(UVTransaction.Type.EXTERNAL_BLOB)){
-                int left_bytes = BLOCK_WEIGHT_LIMIT-currentBlockWeight;
+                int bytesToInclude = BLOCK_WEIGHT_LIMIT - currentBlockWeight;
+                if (bytesToInclude <= 0) {
+                    break;
+                }
                 if (!mempoolQueue.remove(tx))
                     throw new IllegalArgumentException("Removing non-existent tx from mempool: " + tx);
-                var new_tx = UVTransaction.createTx(tx.getType(),tx.getAmount(),tx.getNode1Pub(),tx.getNode2Pub(),tx.getFeesPerByte(),left_bytes);
-                mempoolQueue.add(new_tx);
+
+                // Include only the fillable part in this block.
+                var includedTx = UVTransaction.createTx(
+                        tx.getType(), tx.getAmount(), tx.getNode1Pub(), tx.getNode2Pub(), tx.getFeesPerByte(), bytesToInclude
+                );
+                blockTxs.add(includedTx);
+                currentBlockWeight += bytesToInclude;
+
+                // Requeue the remaining bytes in mempool.
+                int remainingBytes = txSize - bytesToInclude;
+                if (remainingBytes > 0) {
+                    var remainingTx = UVTransaction.createTx(
+                            tx.getType(), tx.getAmount(), tx.getNode1Pub(), tx.getNode2Pub(), tx.getFeesPerByte(), remainingBytes
+                    );
+                    mempoolQueue.add(remainingTx);
+                }
 
                 long bandBytes = congestionLevelsByFeeBand.get(txFeeBand);
-                long updated = Math.max(0L, bandBytes - left_bytes);
+                long updated = Math.max(0L, bandBytes - bytesToInclude);
                 congestionLevelsByFeeBand.put(txFeeBand, updated);
                 break;
             } else {
