@@ -767,7 +767,9 @@ public class UVNetwork implements LNetwork {
             final var profile = node.getProfile();
             final int max_channels = profile.getIntAttribute("max_channels");
             final int min_channels = profile.getIntAttribute("min_channels");
-            final int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
+            int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
+            if (target_channel_openings>uvnodes.size()/2) target_channel_openings = uvnodes.size()/2;
+
             log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
             node.setP2PServices(true);
