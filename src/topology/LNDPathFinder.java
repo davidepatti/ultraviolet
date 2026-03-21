@@ -3,11 +3,12 @@ package topology;
 public class LNDPathFinder extends MiniDijkstra{
     @Override
     public double weight(ChannelGraph.Edge edge, Path path) {
-        double cost = 0.0;
-        for (var e: path.edges())  {
-            cost+=e.policy().getBaseFee()+e.policy().getFeePpm()+e.policy().getCLTVDelta();
+        // MiniDijkstra already accumulates cost across expansions.
+        // Return only the incremental cost of this newly added edge.
+        var p = edge.policy();
+        if (p == null) {
+            return Double.POSITIVE_INFINITY;
         }
-
-        return cost;
+        return p.getBaseFee() + p.getFeePpm() + p.getCLTVDelta();
     }
 }
