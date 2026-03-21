@@ -66,6 +66,9 @@ public class UVTimechain implements Runnable, Serializable {
     public synchronized void injectMempoolBlob(int feePerByte, int bytes) {
         var blob_tx = UVTransaction.createTx(UVTransaction.Type.EXTERNAL_BLOB,-1,"B1","B2",feePerByte,bytes);
         mempoolQueue.add(blob_tx);
+        var band = getTxFeeBand(blob_tx);
+        long currentBytes = congestionLevelsByFeeBand.get(band);
+        congestionLevelsByFeeBand.put(band, currentBytes + blob_tx.getSize());
     }
 
     int getTxFeeBand(UVTransaction tx ) {
@@ -84,26 +87,21 @@ public class UVTimechain implements Runnable, Serializable {
     List<UVTransaction> selectTransactionsForBlock() {
         List<UVTransaction> blockTxs = new ArrayList<>();
         int currentBlockWeight = 0;
-        int currentBandThreshold = -1;
 
         while (currentBlockWeight < BLOCK_WEIGHT_LIMIT && !mempoolQueue.isEmpty()) {
             UVTransaction tx = mempoolQueue.peek();
 
             var txFeeBand = getTxFeeBand(tx);
-            // Set starting band if first (highest feerate) transaction of mempool
-            if (currentBandThreshold < 0) {
-                currentBandThreshold = txFeeBand;
-            }
 
             int txSize = tx.getSize();
-            long bandBytes = congestionLevelsByFeeBand.get(currentBandThreshold);
 
             if (currentBlockWeight + txSize <= BLOCK_WEIGHT_LIMIT) {
-                // Add transaction and decrement its bytes from the band
                 mempoolQueue.poll();
                 blockTxs.add(tx);
                 currentBlockWeight += txSize;
-                congestionLevelsByFeeBand.put(currentBandThreshold, bandBytes - txSize);
+                long bandBytes = congestionLevelsByFeeBand.get(txFeeBand);
+                long updated = Math.max(0L, bandBytes - txSize);
+                congestionLevelsByFeeBand.put(txFeeBand, updated);
 
             }
             // blob pseudo txs can be partially removed, since they represent multiple txs
@@ -113,8 +111,12 @@ public class UVTimechain implements Runnable, Serializable {
                     throw new IllegalArgumentException("Removing non-existent tx from mempool: " + tx);
                 var new_tx = UVTransaction.createTx(tx.getType(),tx.getAmount(),tx.getNode1Pub(),tx.getNode2Pub(),tx.getFeesPerByte(),left_bytes);
                 mempoolQueue.add(new_tx);
+
+                long bandBytes = congestionLevelsByFeeBand.get(txFeeBand);
+                long updated = Math.max(0L, bandBytes - left_bytes);
+                congestionLevelsByFeeBand.put(txFeeBand, updated);
                 break;
-            }else {
+            } else {
                 break;
             }
         }
