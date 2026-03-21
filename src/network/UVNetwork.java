@@ -810,8 +810,25 @@ public class UVNetwork implements LNetwork {
 
         getTimechain().setStatus(status);
 
+        final long timeoutMs = 10_000L;
+        final long sleepMs = 25L;
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        long nextLogAt = System.currentTimeMillis();
         while (getTimechainStatus()!=status) {
-            print_log("Waiting protocol.UVTimechain to update status to "+status);
+            long now = System.currentTimeMillis();
+            if (now >= deadline) {
+                throw new IllegalStateException("Timeout waiting UVTimechain to update status to " + status);
+            }
+            if (now >= nextLogAt) {
+                print_log("Waiting protocol.UVTimechain to update status to " + status);
+                nextLogAt = now + 1_000L;
+            }
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while waiting UVTimechain status update", e);
+            }
         }
 
         if (status) print_log("Timechain set to start!");
