@@ -1162,7 +1162,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
         }
         catch (Exception e) {
-            e.printStackTrace();
+            uvNetwork.logException("runServices on node " + getPubKey(), e);
         }
     }
 
@@ -1221,7 +1221,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             try {
                 processUpdateAddHTLC(msg);
             }
-            catch (Exception e) { e.printStackTrace(); }
+            catch (Exception e) { uvNetwork.logException("processUpdateAddHTLC on node " + getPubKey(), e); }
         }
 
         n = 0;
@@ -1229,14 +1229,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             var msg = updateFulFillHTLCQueue.poll();
             try {
                 processUpdateFulfillHTLC(msg);
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { uvNetwork.logException("processUpdateFulfillHTLC on node " + getPubKey(), e); }
         }
         n = 0;
         while (!updateFailHTLCQueue.isEmpty() && n++ < max ) {
             var msg = updateFailHTLCQueue.poll();
             try {
                 processUpdateFailHTLC(msg);
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { uvNetwork.logException("processUpdateFailHTLC on node " + getPubKey(), e); }
         }
         // check for expired htlc
     }

@@ -33,6 +33,9 @@ public class UVNetwork implements LNetwork {
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
     public static Consumer<String> Log = System.out::println;
+    private static final int LOG_QUEUE_CAPACITY = 131072;
+    private static final int LOG_BATCH_SIZE = 256;
+    private static final long LOG_POLL_TIMEOUT_MS = 200L;
 
     private final GlobalStats stats;
 
@@ -41,7 +44,11 @@ public class UVNetwork implements LNetwork {
     public UVConfig getConfig() {
         return uvConfig;
     }
-    private static BufferedWriter logfile;
+    private final BlockingQueue<String> logQueue = new ArrayBlockingQueue<>(LOG_QUEUE_CAPACITY);
+    private final AtomicInteger droppedLogMessages = new AtomicInteger(0);
+    private volatile boolean logWorkerRunning = false;
+    private Thread logWorkerThread;
+    private BufferedWriter logfile;
 
     private ScheduledExecutorService p2pExecutor;
 
@@ -150,9 +157,9 @@ public class UVNetwork implements LNetwork {
             }
             logfile = new BufferedWriter(new FileWriter(uvConfig.logfile));
         } catch (IOException e) {
-            log("Cannot open logfile for writing:"+ uvConfig.logfile);
-            throw new RuntimeException(e);
+            throw new UncheckedIOException("Cannot open logfile for writing: " + uvConfig.logfile, e);
         }
+        startLogWorker();
 
         // Keep insertion order so imported topologies can be displayed as loaded.
         this.uvnodes = new LinkedHashMap<>();
@@ -244,7 +251,7 @@ public class UVNetwork implements LNetwork {
             bootstrap_latch.await();
 
         } catch (InterruptedException e) {
-            System.out.println("Interrupted Bootstrap Exception!");
+            print_log("Interrupted bootstrap exception");
             Thread.currentThread().interrupt(); // handle interruption
         }
         finally {
@@ -259,14 +266,14 @@ public class UVNetwork implements LNetwork {
                 Thread.currentThread().interrupt();
             }
 
-            System.out.println("Waiting "+uvConfig.p2p_max_age+" blocks as p2p messages expire time... ");
+            print_log("Waiting "+uvConfig.p2p_max_age+" blocks as p2p messages expire time... ");
             waitForBlocks(uvConfig.p2p_max_age+1);
-            System.out.println("Done!");
+            print_log("Done!");
 
 
-            System.out.println("Waiting for message queue to empty....");
+            print_log("Waiting for message queue to empty....");
             waitForEmptyQueues(100);
-            System.out.println("DONE!");
+            print_log("DONE!");
 
             print_log("Pruning empty policies from graphs...");
             int pruned = 0;
@@ -295,11 +302,11 @@ public class UVNetwork implements LNetwork {
 
             for (UVNode node : getUVNodeList().values()) {
                 if (!node.areQueuesEmpty())  {
-                    System.out.println("** Waiting to empty queues on "+node.getPubKey());
+                    print_log("** Waiting to empty queues on "+node.getPubKey());
                     if (enable_warning)  {
-                        System.out.print("-->");
+                        print_log("-->");
                         node.showQueuesStatus();
-                        System.out.print("------------------------------------------");
+                        print_log("------------------------------------------");
                     }
                     queues_empty = false;
                 }
@@ -345,7 +352,9 @@ public class UVNetwork implements LNetwork {
 
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(false);
-            n.p2pHandler.cancel(false);
+            if (n.p2pHandler != null) {
+                n.p2pHandler.cancel(false);
+            }
         }
 
         print_log("P2P Services stopped");
@@ -612,19 +621,187 @@ public class UVNetwork implements LNetwork {
         return bootstrap_latch;
     }
 
+    private void startLogWorker() {
+        logWorkerRunning = true;
+        logWorkerThread = new Thread(this::runLogWriter, "UVLogWriter");
+        logWorkerThread.setDaemon(true);
+        logWorkerThread.start();
+    }
 
-    public void log(String s) {
+    private void runLogWriter() {
+        ArrayList<String> batch = new ArrayList<>(LOG_BATCH_SIZE);
+        while (logWorkerRunning || !logQueue.isEmpty()) {
+            try {
+                String first = logQueue.poll(LOG_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                if (first == null) {
+                    flushLogfile();
+                    continue;
+                }
+                batch.add(first);
+                logQueue.drainTo(batch, LOG_BATCH_SIZE - 1);
+                writeLogBatch(batch);
+                batch.clear();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        String tail;
+        while ((tail = logQueue.poll()) != null) {
+            batch.add(tail);
+            if (batch.size() >= LOG_BATCH_SIZE) {
+                writeLogBatch(batch);
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) {
+            writeLogBatch(batch);
+            batch.clear();
+        }
+        flushLogfile();
+    }
+
+    private void writeLogBatch(List<String> lines) {
+        if (logfile == null || lines.isEmpty()) {
+            return;
+        }
         try {
-
-            logfile.write("\n[block "+ uvTimechain.getCurrentBlockHeight()+"]:"+s);
+            for (String line : lines) {
+                logfile.write(line);
+                logfile.newLine();
+            }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            System.err.println("ERROR: cannot write logfile batch: " + e.getMessage());
         }
     }
 
+    private void flushLogfile() {
+        if (logfile == null) {
+            return;
+        }
+        try {
+            logfile.flush();
+        } catch (IOException e) {
+            System.err.println("ERROR: cannot flush logfile: " + e.getMessage());
+        }
+    }
+
+    private int getCurrentBlockForLogs() {
+        return uvTimechain != null ? uvTimechain.getCurrentBlockHeight() : -1;
+    }
+
+    private String decorateLogLine(String message) {
+        return "[block " + getCurrentBlockForLogs() + "]:" + message;
+    }
+
+    private void enqueueLogLine(String line) {
+        if (!logWorkerRunning) {
+            return;
+        }
+        if (logQueue.offer(line)) {
+            return;
+        }
+        int dropped = droppedLogMessages.incrementAndGet();
+        if (dropped == 1 || dropped % 1000 == 0) {
+            System.err.println("WARNING: logfile queue full, dropped messages: " + dropped);
+        }
+    }
+
+    public void log(String s) {
+        if (s == null) {
+            return;
+        }
+        enqueueLogLine(decorateLogLine(s));
+    }
+
     public void print_log(String s) {
-        System.out.println(s);
+        if (Log != null) {
+            Log.accept(s);
+        } else {
+            System.out.println(s);
+        }
         log(s);
+    }
+
+    public void logException(String context, Throwable t) {
+        if (t == null) {
+            return;
+        }
+        String prefix = context == null || context.isBlank() ? "ERROR" : "ERROR: " + context;
+        log(prefix + " -> " + t);
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
+        for (String line : sw.toString().split("\\R")) {
+            if (!line.isBlank()) {
+                log(line);
+            }
+        }
+    }
+
+    public synchronized void shutdown() {
+        try {
+            if (getTimechainStatus()) {
+                setTimechainStatus(false);
+            }
+        } catch (Exception e) {
+            logException("Error while stopping timechain during shutdown", e);
+        }
+        try {
+            if (p2pExecutor != null) {
+                stopP2PNetwork();
+                p2pExecutor.shutdown();
+                try {
+                    if (!p2pExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                        p2pExecutor.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                p2pExecutor = null;
+            }
+        } catch (Exception e) {
+            logException("Error while stopping p2p during shutdown", e);
+        }
+        try {
+            closeCriticalLog();
+        } catch (Exception e) {
+            logException("Error while closing critical log during shutdown", e);
+        }
+        shutdownLogging();
+    }
+
+    private synchronized void shutdownLogging() {
+        if (!logWorkerRunning) {
+            return;
+        }
+
+        int dropped = droppedLogMessages.get();
+        if (dropped > 0) {
+            enqueueLogLine(decorateLogLine("WARNING: dropped log messages before shutdown: " + dropped));
+        }
+
+        logWorkerRunning = false;
+        if (logWorkerThread != null) {
+            try {
+                logWorkerThread.join(5000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                logWorkerThread = null;
+            }
+        }
+
+        flushLogfile();
+        if (logfile != null) {
+            try {
+                logfile.close();
+            } catch (IOException e) {
+                System.err.println("ERROR: cannot close logfile: " + e.getMessage());
+            } finally {
+                logfile = null;
+            }
+        }
     }
 
     private synchronized void openCriticalLogIfNeeded() {
@@ -668,7 +845,7 @@ public class UVNetwork implements LNetwork {
             return;
         }
 
-        System.out.println("***CRITICAL LOG MESSAGE*** (check report)");
+        Log.accept("***CRITICAL LOG MESSAGE*** (check report)");
 
         synchronized (this) {
             // Ensure we have some session id; if bootstrap has not set it, derive one now
@@ -833,7 +1010,6 @@ public class UVNetwork implements LNetwork {
     public void bootstrapNode(UVNode node) {
 
         try {
-            logfile.flush();
             // get a deterministic thread-related seed to create the Random
             Random thread_rng = threadRng.get();
 
@@ -893,7 +1069,7 @@ public class UVNetwork implements LNetwork {
                     }
 
                     if (some_node == null) {
-                        System.out.println("*************  WARNING: NULLL value for key "+some_random_key);
+                        log("WARNING: Null value for key "+some_random_key);
                         // This should now be extremely rare / symptomatic of something else.
                         // Keeping a defensive check is cheap, though.
                         continue;
@@ -909,12 +1085,10 @@ public class UVNetwork implements LNetwork {
             } // while
 
             log("BOOTSTRAP: Completed on "+node.getPubKey());
-            logfile.flush();
             decreaseBootStrapCount();
         } catch (Throwable t) {
-            log("BOOTSTRAP ERROR on "+node.getPubKey()+": "+t);
+            logException("BOOTSTRAP ERROR on "+node.getPubKey(), t);
             decreaseBootStrapCount();
-            t.printStackTrace();
         } finally {
             log("BOOTSTRAP: Completed on "+node.getPubKey()+" (finally block)");
         }
@@ -1003,7 +1177,7 @@ public class UVNetwork implements LNetwork {
         print_log("DONE !!");
         Instant end_gen = Instant.now();
         Duration timeElapsed = Duration.between(start_gen, end_gen);
-        System.out.println("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
+        print_log("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
         invoiceExecutor.shutdown();
     }
 

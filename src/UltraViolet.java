@@ -85,29 +85,33 @@ public class UltraViolet {
         menuItems.add(new MenuItem());
         menuItems.add(new MenuItem("q", "Quit ", this::quitMenu));
 
-        while (!quit) {
-            System.out.print("\033[H\033[2J");
-            System.out.flush();
-            System.out.println("__________________________________________________");
-            System.out.println(" U l t r a v i o l e t ");
-            System.out.println("__________________________________________________");
-            menuItems.forEach(System.out::println);
-            System.out.println("__________________________________________________");
-            System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
-            if (!networkManager.getTimechain().getStatus()) System.out.println(" (NOT RUNNING)");
-            else System.out.println(" Running...");
+        try {
+            while (!quit) {
+                System.out.print("\033[H\033[2J");
+                System.out.flush();
+                System.out.println("__________________________________________________");
+                System.out.println(" U l t r a v i o l e t ");
+                System.out.println("__________________________________________________");
+                menuItems.forEach(System.out::println);
+                System.out.println("__________________________________________________");
+                System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
+                if (!networkManager.getTimechain().getStatus()) System.out.println(" (NOT RUNNING)");
+                else System.out.println(" Running...");
 
-            System.out.print("\n -> ");
-            var ch = menuInputScanner.nextLine();
+                System.out.print("\n -> ");
+                var ch = menuInputScanner.nextLine();
 
-            for (MenuItem item : menuItems) {
-                if (item.key.equals(ch)) {
-                    item.func.accept(null);
-                    break;
+                for (MenuItem item : menuItems) {
+                    if (item.key.equals(ch)) {
+                        item.func.accept(null);
+                        break;
+                    }
                 }
+                System.out.println("\n[ Press ENTER to continue... ]");
+                menuInputScanner.nextLine();
             }
-            System.out.println("\n[ Press ENTER to continue... ]");
-            menuInputScanner.nextLine();
+        } finally {
+            networkManager.shutdown();
         }
         System.out.println("Exiting...");
         System.exit(0);
@@ -498,7 +502,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 
