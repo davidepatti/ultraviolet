@@ -16,21 +16,22 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 public class UVNetwork implements LNetwork {
+    private static final Pattern SYNTHETIC_PUBKEY_PATTERN = Pattern.compile("^pk\\d+$");
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
     private final HashMap<String, UVNode> uvnodes;
 
     private List<String> pubkeys_list;
+    private String imported_rootnode_graph;
 
     private UVTimechain uvTimechain;
 
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
-    private String imported_rootnode_graph;
     public static Consumer<String> Log = System.out::println;
 
     private final GlobalStats stats;
@@ -153,7 +154,8 @@ public class UVNetwork implements LNetwork {
             throw new RuntimeException(e);
         }
 
-        this.uvnodes = new HashMap<>();
+        // Keep insertion order so imported topologies can be displayed as loaded.
+        this.uvnodes = new LinkedHashMap<>();
         uvTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
         log(new Date() +":Initializing UVManager...");
@@ -333,7 +335,6 @@ public class UVNetwork implements LNetwork {
                 }
             });
         }
-        int i = 0;
         for (UVNode n : uvnodes.values()) {
             n.setP2PServices(true);
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
@@ -408,44 +409,105 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    /**
-     *
-     * @param json_file
-     */
     public void importTopology(String json_file, String root_node) {
-        JSONParser parser = new JSONParser();
-        print_log("Beginning importing file "+json_file);
+        final JSONParser parser = new JSONParser();
+        print_log("Beginning importing file " + json_file);
+
         try {
-            Object obj = parser.parse(new FileReader(json_file));
-            JSONObject jsonObject = (JSONObject) obj;
+            Object parsed = parser.parse(new FileReader(json_file));
+            if (!(parsed instanceof JSONObject jsonObject)) {
+                print_log("Import failed: root JSON is not an object");
+                return;
+            }
 
             JSONArray nodes = (JSONArray) jsonObject.get("nodes");
-            for (Object node : nodes ) {
-                JSONObject nodeObject = (JSONObject) node;
+            if (nodes == null) {
+                print_log("Import failed: missing 'nodes' array");
+                return;
+            }
+
+            var defaultProfile = uvConfig.getNodeProfiles().get("default");
+            if (defaultProfile == null) {
+                print_log("Import failed: missing default node profile");
+                return;
+            }
+
+            // Build imported state in isolation; commit only when fully valid.
+            Map<String, UVNode> importedNodes = new LinkedHashMap<>();
+            for (Object node : nodes) {
+                if (!(node instanceof JSONObject nodeObject)) {
+                    print_log("Import failed: invalid node entry " + node);
+                    return;
+                }
                 String pub_key = (String) nodeObject.get("pub_key");
                 String alias = (String) nodeObject.get("alias");
-
-                var uvNode = new UVNode(this,pub_key,alias,12345678,uvConfig.getNodeProfiles().get("default"));
-                uvnodes.put(pub_key,uvNode);
+                if (pub_key == null || pub_key.isBlank()) {
+                    print_log("Import failed: node with missing pub_key");
+                    return;
+                }
+                if (alias == null) alias = "";
+                importedNodes.put(pub_key, new UVNode(this, pub_key, alias, 12345678, defaultProfile));
             }
-            print_log("Node import ended, importing channels...");
 
-            var root= uvnodes.get(root_node);
+            UVNode root = importedNodes.get(root_node);
+            if (root == null) {
+                print_log("Import failed: root node " + root_node + " not found in topology file");
+                return;
+            }
 
             JSONArray edges = (JSONArray) jsonObject.get("edges");
+            if (edges == null) {
+                print_log("Import failed: missing 'edges' array");
+                return;
+            }
+
             for (Object edge : edges) {
-                JSONObject edgeObject = (JSONObject) edge;
+                if (!(edge instanceof JSONObject edgeObject)) {
+                    print_log("Import failed: invalid edge entry " + edge);
+                    return;
+                }
+
                 String channel_id = (String) edgeObject.get("channel_id");
                 String node1_pub = (String) edgeObject.get("node1_pub");
                 String node2_pub = (String) edgeObject.get("node2_pub");
-                int capacity = Integer.parseInt((String) edgeObject.get("capacity"));
+                Object capacityObj = edgeObject.get("capacity");
+
+                if (channel_id == null || channel_id.isBlank() || node1_pub == null || node2_pub == null) {
+                    print_log("Import failed: malformed edge " + edgeObject);
+                    return;
+                }
+
+                int capacity;
+                if (capacityObj instanceof Number n) {
+                    capacity = n.intValue();
+                } else if (capacityObj instanceof String s) {
+                    capacity = Integer.parseInt(s);
+                } else {
+                    print_log("Import failed: invalid capacity in edge " + channel_id + ": " + capacityObj);
+                    return;
+                }
+
+                UVNode uvnode1 = importedNodes.get(node1_pub);
+                UVNode uvnode2 = importedNodes.get(node2_pub);
+                if (uvnode1 == null || uvnode2 == null) {
+                    print_log("Import failed: edge " + channel_id + " references unknown node(s): "
+                            + node1_pub + ", " + node2_pub);
+                    return;
+                }
+
+                // UVChannel expects lexicographic order of endpoints.
+                String left = node1_pub;
+                String right = node2_pub;
+                if (left.compareTo(right) > 0) {
+                    String tmp = left;
+                    left = right;
+                    right = tmp;
+                }
 
                 // TODO: get real init direction
                 boolean direction = random.nextBoolean();
-                UVChannel ch = new UVChannel(channel_id,node1_pub,node2_pub,capacity,0,0,direction);
+                UVChannel ch = new UVChannel(channel_id,left,right,capacity,0,0,direction);
 
-                var uvnode1 = uvnodes.get(node1_pub);
-                var uvnode2 = uvnodes.get(node2_pub);
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addLNChannel(ch);
@@ -453,10 +515,18 @@ public class UVNetwork implements LNetwork {
 
                 root.getChannelGraph().addLNChannel(ch);
             }
+
+            synchronized (this) {
+                uvnodes.clear();
+                uvnodes.putAll(importedNodes);
+                refreshPubkeyList();
+                imported_rootnode_graph = root_node;
+            }
+
             print_log("Import completed");
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (IOException | org.json.simple.parser.ParseException | NumberFormatException e) {
+            print_log("Import failed: " + e.getMessage());
         }
     }
     /***************************************************************************************
@@ -485,10 +555,17 @@ public class UVNetwork implements LNetwork {
 
 
     public List<UVNode> getSortedNodeListByPubkey() {
-        return this.uvnodes.values()
-                .stream()
-                .sorted(Comparator.comparing(node -> Integer.valueOf(node.getPubKey().substring(2))))
-                .collect(Collectors.toList());
+        var nodes = new ArrayList<>(this.uvnodes.values());
+        boolean allSyntheticPubkeys = nodes.stream()
+                .map(UVNode::getPubKey)
+                .allMatch(pubkey -> pubkey != null && SYNTHETIC_PUBKEY_PATTERN.matcher(pubkey).matches());
+
+        if (!allSyntheticPubkeys) {
+            return nodes;
+        }
+
+        nodes.sort(Comparator.comparingInt(node -> Integer.parseInt(node.getPubKey().substring(2))));
+        return nodes;
     }
 
     public UVNode searchNode(String pubkey) {
@@ -536,10 +613,6 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    /**
-     *
-     * @param s
-     */
     public void log(String s) {
         try {
 
@@ -663,11 +736,6 @@ public class UVNetwork implements LNetwork {
         print_log("Saving complete!");
     }
 
-    /**
-     * Load network status from file
-     * @param file
-     * @return False if is not possible to read the file
-     */
     public boolean loadStatus(String file) {
         if (getTimechainStatus()) {
             setTimechainStatus(false);
@@ -726,8 +794,25 @@ public class UVNetwork implements LNetwork {
 
         getTimechain().setStatus(status);
 
+        final long timeoutMs = 10_000L;
+        final long sleepMs = 25L;
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        long nextLogAt = System.currentTimeMillis();
         while (getTimechainStatus()!=status) {
-            print_log("Waiting protocol.UVTimechain to update status to "+status);
+            long now = System.currentTimeMillis();
+            if (now >= deadline) {
+                throw new IllegalStateException("Timeout waiting UVTimechain to update status to " + status);
+            }
+            if (now >= nextLogAt) {
+                print_log("Waiting protocol.UVTimechain to update status to " + status);
+                nextLogAt = now + 1_000L;
+            }
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while waiting UVTimechain status update", e);
+            }
         }
 
         if (status) print_log("Timechain set to start!");
@@ -757,7 +842,9 @@ public class UVNetwork implements LNetwork {
             final var profile = node.getProfile();
             final int max_channels = profile.getIntAttribute("max_channels");
             final int min_channels = profile.getIntAttribute("min_channels");
-            final int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
+            int target_channel_openings = thread_rng.nextInt(max_channels+1-min_channels)+min_channels;
+            if (target_channel_openings>uvnodes.size()/2) target_channel_openings = uvnodes.size()/2;
+
             log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
             node.setP2PServices(true);
@@ -877,14 +964,18 @@ public class UVNetwork implements LNetwork {
 
         for (int nb = 0; nb < blocks_duration; nb++) {
             int current_block = getTimechain().getCurrentBlockHeight();
+            int eventsThisBlock;
 
-            // when events per block are < 1, use a probabilistic approach to determine if the are 0 or one event
-            if (events_per_block < 1) {
-                double r = random.nextDouble(1);
-                if (r<=events_per_block) events_per_block =1;
+            // Keep configured rate immutable and derive per-block event count.
+            if (events_per_block < 1.0) {
+                eventsThisBlock = random.nextDouble(1) <= events_per_block ? 1 : 0;
+            } else {
+                int baseEvents = (int) events_per_block;
+                double fractional = events_per_block - baseEvents;
+                eventsThisBlock = baseEvents + (random.nextDouble(1) <= fractional ? 1 : 0);
             }
 
-            for (int eb = 0; eb<events_per_block; eb++ ) {
+            for (int eb = 0; eb < eventsThisBlock; eb++ ) {
                 var sender = getRandomNode();
                 UVNode dest;
                 do {

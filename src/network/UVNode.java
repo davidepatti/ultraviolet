@@ -180,10 +180,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return local_rnd_generator;
     }
 
-    /**
-     * @param channel_id
-     * @return
-     */
     private UVNode getChannelPeer(String channel_id) {
         var channel = channels.get(channel_id);
         if (this.getPubKey().equals(channel.getNode1PubKey()))
@@ -250,10 +246,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.uvNetwork = uvm;
     }
 
-    /**
-     * @param amount
-     * @return
-     */
     @Override
     public LNInvoice generateInvoice(int amount, String msg, boolean determininistic ) {
         // determining secret based on message, useful for testing
@@ -345,7 +337,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int miss_local_liquidity = 0;
         int miss_max_fees = 0;
         int miss_policy = 0;
-        int unknonw_reason = 0;
 
         String logMessage;
 
@@ -388,6 +379,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int attempted_paths = 0;
         int expiry_too_soon = 0;
         int temporary_channel_failure = 0;
+        int unknown_reason = 0;
 
         if (!candidatePaths.isEmpty()) {
 
@@ -414,12 +406,31 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 routeInvoiceOnPath(invoice, path);
                 debug(()->"Waiting for pending HTLC "+invoice.getHash());
 
-                while (pendingHTLC.containsKey(hash)) {
+                long timeoutMs = Math.max(
+                        15_000L,
+                        8L * Math.max(1, path.getSize()) * uvNetwork.getConfig().node_services_tick_ms
+                );
+                long deadline = System.currentTimeMillis() + timeoutMs;
+
+                while (pendingHTLC.containsKey(hash) && System.currentTimeMillis() < deadline) {
                     try {
                         Thread.sleep(invoice_check_delay);
                     } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
+                        Thread.currentThread().interrupt();
+                        break;
                     }
+                }
+
+                if (pendingHTLC.containsKey(hash)) {
+                    var timedOut = pendingHTLC.remove(hash);
+                    if (timedOut != null) {
+                        var ch = channels.get(timedOut.getChannel_id());
+                        if (ch != null) {
+                            ch.removePending(this.getPubKey(), timedOut.getAmount());
+                        }
+                    }
+                    failure_reason.put(hash, "attempt_timeout");
+                    log("Timed out waiting HTLC completion for invoice " + hash + " on path #" + attempted_paths);
                 }
 
                 debug(()->"Cleared pending HTLC "+hash);
@@ -447,9 +458,12 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                         case "missing local liquidity":
                             miss_local_liquidity++;
                             break;
+                        case "attempt_timeout":
+                            unknown_reason++;
+                            break;
                         default:
                             debug(()->"No reason for failure of "+hash);
-                            unknonw_reason++;
+                            unknown_reason++;
                             break;
                     }
                     logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
@@ -541,7 +555,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         var first_hop = path.getEnd();
-        var channel_id = path.edges().get(path.edges().size()-1).id();
+        var channel_id = path.edges().getLast().id();
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
@@ -607,8 +621,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             pendingHTLC.remove(computed_hash);
         }
         else {
-            log("*FATAL*: Missing HTLC for fulfilling hash "+computed_hash);
-            throw new IllegalStateException("Node "+this.getPubKey()+": Missing HTLC for fulfilling hash "+computed_hash);
+            log("Late/unknown fulfill HTLC for hash "+computed_hash+ ", ignoring");
         }
     }
     /**
@@ -656,7 +669,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
         }
 
-        throw new IllegalStateException("Node " + this.getPubKey() + ": Missing pending HTLC for "+msg);
+        log("Late/unknown fail HTLC " + msg + ", ignoring");
     }
 
     private void failHTLC(final MsgUpdateAddHTLC msg, String reason) {
@@ -674,7 +687,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         final var payload = msg.getOnionPacket().getPayload();
         int currentBlock = uvNetwork.getTimechain().getCurrentBlockHeight();
         int cltv_expiry = msg.getCLTVExpiry();
-        var incomingPeer = getChannelPeer(msg.getChannel_id());
 
         // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
@@ -689,12 +701,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     log("Received HTLC of own invoice "+own_invoice);
 
                     if (currentBlock <= cltv_expiry) {
+                        var incomingPeer = getChannelPeer(msg.getChannel_id());
                         var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
                         sendToPeer(incomingPeer,to_send, uvNetwork);
                     }
                     else {
                         log("Final node discarding late HTLC: expired in block "+cltv_expiry+ " hash:"+msg.getPayment_hash());
                         var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
+                        var incomingPeer = getChannelPeer(msg.getChannel_id());
                         sendToPeer(incomingPeer,fail_msg, uvNetwork);
                     }
                     return;
@@ -705,6 +719,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         // I'm not the final destination, must forward the HTLC
         final var forwardingChannel = channels.get(payload.getShortChannelId());
+        if (forwardingChannel == null) {
+            log("Unknown forwarding channel " + payload.getShortChannelId()
+                    + " for HTLC " + msg.getPayment_hash()
+                    + ", failing upstream");
+            failHTLC(msg, "temporary_channel_failure");
+            return;
+        }
+
         int amt_incoming = msg.getAmount();
         int amt_forward = payload.getAmtToForward();
 
@@ -747,10 +769,17 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int cltv = payload.getOutgoingCLTV();
 
         // fields that does not depend on payload, but message received
-        var onion_packet = msg.getOnionPacket().getInnerLayer();
+        var onionPacket = msg.getOnionPacket().getInnerLayer();
+        if (onionPacket.isEmpty()) {
+            log("Missing inner onion layer while forwarding HTLC " + msg.getPayment_hash()
+                    + " on channel " + forwardingChannel.getChannelId()
+                    + ", failing upstream");
+            failHTLC(msg, "temporary_channel_failure");
+            return;
+        }
         var payhash = msg.getPayment_hash();
 
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onion_packet.get());
+        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onionPacket.get());
 
         debug(()->"Forwarding "+new_msg);
         receivedHTLC.put(msg.getPayment_hash(),msg);
@@ -845,9 +874,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         sendToPeer(peer, msg_request, uvNetwork);
         return true;
     }
-    /**
-     * @param openRequest
-     */
+
     private synchronized void acceptChannel(MsgOpenChannel openRequest) {
         var temporary_channel_id = openRequest.getTemporary_channel_id();
         var initiator_id = openRequest.getFunding_pubkey();
@@ -952,10 +979,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(from,msg_update);
     }
 
-    /**
-     *
-     * @param newChannel
-     */
     public void fundingLocked(UVChannel newChannel) {
 
         log("Received funding_locked for "+newChannel.getChannelId());
@@ -985,10 +1008,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(sender,msg_update);
     }
 
-    /**
-     * Not broadcasted if too old or too many forwardings
-     * @param msg
-     */
    private void broadcastToPeers(String fromID, GossipMsg msg) {
 
        var current_age = uvNetwork.getTimechain().getCurrentBlockHeight() -msg.getTimeStamp();
