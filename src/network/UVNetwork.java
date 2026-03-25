@@ -26,6 +26,7 @@ public class UVNetwork implements LNetwork {
     private final HashMap<String, UVNode> uvnodes;
 
     private List<String> pubkeys_list;
+    private String imported_rootnode_graph;
 
     private UVTimechain uvTimechain;
 
