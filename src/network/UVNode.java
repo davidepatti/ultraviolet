@@ -379,6 +379,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int attempted_paths = 0;
         int expiry_too_soon = 0;
         int temporary_channel_failure = 0;
+        int unknown_reason = 0;
 
         if (!candidatePaths.isEmpty()) {
 
@@ -458,11 +459,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             miss_local_liquidity++;
                             break;
                         case "attempt_timeout":
-                            unknonw_reason++;
+                            unknown_reason++;
                             break;
                         default:
                             debug(()->"No reason for failure of "+hash);
-                            unknonw_reason++;
+                            unknown_reason++;
                             break;
                     }
                     logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
