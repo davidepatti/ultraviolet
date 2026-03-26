@@ -340,6 +340,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         String logMessage;
 
+        pathFinder.setPaymentAmount(invoice.getAmount());
         var totalPaths = findPaths(this.getPubKey(),invoice.getDestination(),1000);
         List<Path> candidatePaths = new ArrayList<>();
 

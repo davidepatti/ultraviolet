@@ -467,15 +467,13 @@ public class UltraViolet {
      *
      */
     private void findPathsCmd() {
-        Scanner scanner = new Scanner(System.in);
         String start;
         if (imported_graph_root != null) {
             System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
             start = imported_graph_root;
         } else {
             if (networkManager.isBootstrapCompleted()) {
-                System.out.print("Starting node public key:");
-                start = scanner.nextLine();
+                start = readLineOrDefault("Starting node public key", "pk0");
             }
             else  {
                 System.out.println("Bootstrap Non completed!");
@@ -483,17 +481,19 @@ public class UltraViolet {
             }
         }
 
-        System.out.print("Destination node public key:");
-        String destination = scanner.nextLine();
-        System.out.print("Single[1] or All [any key] paths?");
-        String choice = scanner.nextLine();
+        String destination = readLineOrDefault("Destination node public key", "pk99");
+        int amount = readIntOrDefault("Payment amount", 10000);
+        String choice = readLineOrDefault("Single[1] or All paths", "all");
         boolean stopfirst = choice.equals("1");
+        int topk = stopfirst ? 1 : readIntOrDefault("Top K paths", 20);
 
         var startNode = networkManager.searchNode(start);
 
         for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
-            startNode.setPathFinder(PathFinderFactory.of(strategy));
-            var paths = startNode.findPaths(start, destination, 20);
+            var pathFinder = PathFinderFactory.of(strategy);
+            pathFinder.setPaymentAmount(amount);
+            startNode.setPathFinder(pathFinder);
+            var paths = startNode.findPaths(start, destination, topk);
             System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
             if (!paths.isEmpty()) {
                 for (Path path : paths) {
@@ -515,8 +515,5 @@ public class UltraViolet {
 
 
 }
-
-
-
 
 
