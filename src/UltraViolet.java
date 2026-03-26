@@ -423,26 +423,39 @@ public class UltraViolet {
 
         new UltraViolet(new UVConfig(args[0]));
     }
+
+    private String readLineOrDefault(String prompt, String defaultValue) {
+        System.out.print(prompt + " [" + defaultValue + "]:");
+        String value = menuInputScanner.nextLine();
+        return value.isBlank() ? defaultValue : value;
+    }
+
+    private int readIntOrDefault(String prompt, int defaultValue) {
+        System.out.print(prompt + " [" + defaultValue + "]:");
+        String value = menuInputScanner.nextLine();
+        if (value.isBlank()) {
+            return defaultValue;
+        }
+        return Integer.parseInt(value);
+    }
+
     private void testInvoiceRoutingCmd() {
 
         if (!networkManager.isBootstrapCompleted()) {
-            System.out.println("ERROR: must execute bootstrap or load/import a network!");
+            System.out.println("Bootstrap not completed, cannot generate events!");
             return;
         }
-
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Starting node public key:");
-        String start_id = scanner.nextLine();
+        if (!networkManager.getTimechainStatus()) {
+            System.out.println("Timechain not running, please start the timechain");
+            return;
+        }
+        String start_id = readLineOrDefault("Starting node public key", "pk0");
         var sender = networkManager.searchNode(start_id);
-        System.out.print("Destination node public key:");
-        String end_id = scanner.nextLine();
+        String end_id = readLineOrDefault("Destination node public key", "pk99");
         var dest = networkManager.searchNode(end_id);
-        System.out.print("Invoice amount:");
-        int amount = Integer.parseInt(scanner.nextLine());
-        System.out.print("Max fees:");
-        int fees = Integer.parseInt(scanner.nextLine());
-        System.out.print("Invoice message:");
-        String msg = scanner.nextLine();
+        int amount = readIntOrDefault("Invoice amount", 10000);
+        int fees = readIntOrDefault("Max fees", 1000);
+        String msg = readLineOrDefault("Invoice message", "default");
 
         var invoice = dest.generateInvoice(amount,msg,true);
         System.out.println("Generated Invoice: "+invoice);
@@ -502,7 +515,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 
