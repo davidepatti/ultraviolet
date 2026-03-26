@@ -3,6 +3,7 @@ import network.*;
 import stats.*;
 import topology.*;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -157,7 +158,7 @@ public class UltraViolet {
                 System.out.println(ui.separator());
                 System.out.print(ui.label("Timechain: ") + networkManager.getTimechain().getCurrentBlockHeight());
                 if (!networkManager.getTimechain().getStatus()) System.out.println(" " + ui.stopped("(NOT RUNNING)"));
-                else System.out.println(" " + ui.running("Running..."));
+                else System.out.println(" " + ui.running("RUNNING..."));
 
                 System.out.print("\n" + ui.label(" -> "));
                 var ch = menuInputScanner.nextLine();
@@ -205,6 +206,7 @@ public class UltraViolet {
     }
     private void myMethod(Object x) {
         System.out.println("A graph topology will be imported using the json output of 'lncli describegraph' command on some root node");
+        showAvailableFiles(".json");
         System.out.print("Enter a JSON file: ");
         String json = menuInputScanner.nextLine();
         System.out.print("Enter root node pubkey:");
@@ -412,6 +414,7 @@ public class UltraViolet {
     }
 
     private void loadUVNetworkStatus(Object x) {
+        showAvailableFiles(".dat");
         System.out.print("Load from:");
         String file_to_load = menuInputScanner.nextLine();
         if (networkManager.loadStatus(file_to_load))
@@ -561,6 +564,19 @@ public class UltraViolet {
         System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
     }
 
+    private void showAvailableFiles(String extension) {
+        File[] matches = new File(".").listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(extension));
+        System.out.println("Available " + extension + " files:");
+        if (matches == null || matches.length == 0) {
+            System.out.println("  (none found in current directory)");
+            return;
+        }
+        Arrays.sort(matches, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+        for (File match : matches) {
+            System.out.println("  " + match.getName());
+        }
+    }
+
     private static String padRight(String value, int width) {
         StringBuilder s = new StringBuilder(value);
         while (s.length() < width) {
@@ -571,7 +587,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 
