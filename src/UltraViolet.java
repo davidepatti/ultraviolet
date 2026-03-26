@@ -13,17 +13,81 @@ import java.util.function.Consumer;
 
 
 public class UltraViolet {
+    private static final String MENU_SEPARATOR = "__________________________________________________";
+    private static final int MENU_KEY_WIDTH = 8;
 
     private final UVNetwork networkManager;
     boolean quit = false;
     private String imported_graph_root;
     private static final int LOOP_SLEEP_TIME = 500;
     private final Scanner menuInputScanner;
+    private final TerminalStyle ui;
+
+    private static final class TerminalStyle {
+        private static final String RESET = "\033[0m";
+        private static final String BOLD = "\033[1m";
+        private static final String DIM = "\033[2m";
+        private static final String CYAN = "\033[36m";
+        private static final String GREEN = "\033[32m";
+        private static final String YELLOW = "\033[33m";
+        private final boolean enabled;
+
+        private TerminalStyle(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        static TerminalStyle detect() {
+            if (System.getenv("NO_COLOR") != null) {
+                return new TerminalStyle(false);
+            }
+
+            String mode = System.getenv("UV_COLOR");
+            if (mode != null) {
+                if ("always".equalsIgnoreCase(mode)) return new TerminalStyle(true);
+                if ("never".equalsIgnoreCase(mode)) return new TerminalStyle(false);
+            }
+
+            String term = System.getenv("TERM");
+            boolean supportsAnsi = term != null && !term.isBlank() && !"dumb".equalsIgnoreCase(term);
+            return new TerminalStyle(supportsAnsi && System.console() != null);
+        }
+
+        private String apply(String prefix, String text) {
+            return enabled ? prefix + text + RESET : text;
+        }
+
+        String separator() {
+            return apply(DIM, MENU_SEPARATOR);
+        }
+
+        String title(String text) {
+            return apply(BOLD + CYAN, text);
+        }
+
+        String key(String text) {
+            return apply(BOLD + CYAN, text);
+        }
+
+        String label(String text) {
+            return apply(BOLD, text);
+        }
+
+        String running(String text) {
+            return apply(BOLD + GREEN, text);
+        }
+
+        String stopped(String text) {
+            return apply(BOLD + YELLOW, text);
+        }
+
+        String hint(String text) {
+            return apply(DIM, text);
+        }
+    }
 
 
     private static class MenuItem {
         public final String key, description;
-        private final String entry;
 
         public final Consumer<Void> func;
 
@@ -31,28 +95,25 @@ public class UltraViolet {
             key = "";
             description = null;
             func = __ -> {};
-            entry = "__________________________________________________";
         }
 
         public MenuItem(String key, String desc, Consumer<Void> func) {
             this.key = key;
             this.description = desc;
             this.func = func;
-            StringBuilder s = new StringBuilder();
-            s.append(key);
-            while (s.toString().length() < 8) s.append(" ");
-            s.append("- ").append(desc);
-
-            entry = s.toString();
         }
-        @Override
-        public String toString() {
-            return entry;
+
+        public String render(TerminalStyle ui) {
+            if (key.isEmpty()) {
+                return ui.separator();
+            }
+            return ui.key(padRight(key, MENU_KEY_WIDTH)) + "- " + description;
         }
     }
 
 
     public UltraViolet(UVConfig config) {
+        this.ui = TerminalStyle.detect();
         this.networkManager = new UVNetwork(config);
 
         ArrayList<MenuItem> menuItems = new ArrayList<>();
@@ -89,16 +150,16 @@ public class UltraViolet {
             while (!quit) {
                 System.out.print("\033[H\033[2J");
                 System.out.flush();
-                System.out.println("__________________________________________________");
-                System.out.println(" U l t r a v i o l e t ");
-                System.out.println("__________________________________________________");
-                menuItems.forEach(System.out::println);
-                System.out.println("__________________________________________________");
-                System.out.print("Timechain: "+networkManager.getTimechain().getCurrentBlockHeight());
-                if (!networkManager.getTimechain().getStatus()) System.out.println(" (NOT RUNNING)");
-                else System.out.println(" Running...");
+                System.out.println(ui.separator());
+                System.out.println(ui.title(" U l t r a v i o l e t "));
+                System.out.println(ui.separator());
+                menuItems.forEach(item -> System.out.println(item.render(ui)));
+                System.out.println(ui.separator());
+                System.out.print(ui.label("Timechain: ") + networkManager.getTimechain().getCurrentBlockHeight());
+                if (!networkManager.getTimechain().getStatus()) System.out.println(" " + ui.stopped("(NOT RUNNING)"));
+                else System.out.println(" " + ui.running("Running..."));
 
-                System.out.print("\n -> ");
+                System.out.print("\n" + ui.label(" -> "));
                 var ch = menuInputScanner.nextLine();
 
                 for (MenuItem item : menuItems) {
@@ -107,7 +168,7 @@ public class UltraViolet {
                         break;
                     }
                 }
-                System.out.println("\n[ Press ENTER to continue... ]");
+                System.out.println("\n" + ui.hint("[ Press ENTER to continue... ]"));
                 menuInputScanner.nextLine();
             }
         } finally {
@@ -500,9 +561,16 @@ public class UltraViolet {
         System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
     }
 
+    private static String padRight(String value, int width) {
+        StringBuilder s = new StringBuilder(value);
+        while (s.length() < width) {
+            s.append(' ');
+        }
+        return s.toString();
+    }
+
 
 }
-
 
 
 
