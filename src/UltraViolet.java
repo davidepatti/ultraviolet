@@ -358,32 +358,11 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.printf(
-            "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
-            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES);
-        double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
-
-        int n_blocks;
-        int amt_min;
-        int amt_max;
-        int fees;
-
-        if(node_events_per_block == 0) {
-            node_events_per_block = DEFAULT_NODE_EVENTS_PER_BLOCK;
-            n_blocks = DEFAULT_N_BLOCKS;
-            amt_min = DEFAULT_AMT_MIN;
-            amt_max = DEFAULT_AMT_MAX;
-            fees = DEFAULT_FEES;
-        } else {
-            System.out.print("Timechain duration (blocks): ");
-            n_blocks = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Min amount");
-            amt_min = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max amount");
-            amt_max = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max fees");
-            fees = Integer.parseInt(menuInputScanner.nextLine());
-        }
+        double node_events_per_block = readDoubleOrDefault("Invoice generation rate (events/node/block)", DEFAULT_NODE_EVENTS_PER_BLOCK);
+        int n_blocks = readIntOrDefault("Timechain duration (blocks)", DEFAULT_N_BLOCKS);
+        int amt_min = readIntOrDefault("Min amount", DEFAULT_AMT_MIN);
+        int amt_max = readIntOrDefault("Max amount", DEFAULT_AMT_MAX);
+        int fees = readIntOrDefault("Max fees", DEFAULT_FEES);
 
         networkManager.generateInvoiceEvents(node_events_per_block, n_blocks, amt_min, amt_max, fees);
 
@@ -564,6 +543,22 @@ public class UltraViolet {
         System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
     }
 
+    private String readLineOrDefault(String prompt, String defaultValue) {
+        System.out.print(ui.label(prompt) + " " + ui.hint("[" + defaultValue + "]:"));
+        String value = menuInputScanner.nextLine();
+        return value.isBlank() ? defaultValue : value;
+    }
+
+    private int readIntOrDefault(String prompt, int defaultValue) {
+        String value = readLineOrDefault(prompt, Integer.toString(defaultValue));
+        return Integer.parseInt(value);
+    }
+
+    private double readDoubleOrDefault(String prompt, double defaultValue) {
+        String value = readLineOrDefault(prompt, Double.toString(defaultValue));
+        return Double.parseDouble(value);
+    }
+
     private void showAvailableFiles(String extension) {
         File[] matches = new File(".").listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(extension));
         System.out.println("Available " + extension + " files:");
@@ -587,7 +582,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 
