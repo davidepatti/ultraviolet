@@ -3,12 +3,14 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$SCRIPT_DIR"
+
 BUILD_DIR="$SCRIPT_DIR/out/production/ultraviolet"
 DEFAULT_CONFIG="$SCRIPT_DIR/uv_configs/test.properties"
+JSON_JAR="$SCRIPT_DIR/src/json-simple-1.1.jar"
 
-if [ ! -d "$BUILD_DIR" ]; then
-  echo "Build output not found: $BUILD_DIR" >&2
-  echo "Build the project in IntelliJ first." >&2
+if [ ! -f "$JSON_JAR" ]; then
+  echo "json-simple jar not found: $JSON_JAR" >&2
   exit 1
 fi
 
@@ -22,14 +24,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
   exit 1
 fi
 
-JSON_JAR="$BUILD_DIR/json-simple-1.1.jar"
-if [ ! -f "$JSON_JAR" ]; then
-  JSON_JAR="$SCRIPT_DIR/src/json-simple-1.1.jar"
-fi
+mkdir -p "$BUILD_DIR"
+find "$BUILD_DIR" -name '*.class' -delete
 
-if [ ! -f "$JSON_JAR" ]; then
-  echo "json-simple jar not found in build output or src/." >&2
-  exit 1
-fi
+TMP_SOURCES=$(mktemp)
+trap 'rm -f "$TMP_SOURCES"' EXIT INT TERM
+find "$SCRIPT_DIR/src" -name '*.java' | sort > "$TMP_SOURCES"
 
-exec java -cp "$BUILD_DIR:$JSON_JAR" UltraViolet "$CONFIG_PATH" "$@"
+javac -cp "$JSON_JAR" -d "$BUILD_DIR" @"$TMP_SOURCES"
+
+exec java -cp "$BUILD_DIR:$JSON_JAR" UltraViolet "$CONFIG_PATH"
