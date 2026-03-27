@@ -18,11 +18,12 @@ import java.util.*;
  *            longer than the hop minimum, it will not appear.  Memory
  *            grows with the number of same-depth parents.
  * -------------------------------------------------------------------------*/
-public class ShortestHop implements PathFinder {
+public class ShortestHop extends PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
+    public SearchResult findPaths(ChannelGraph g, String start, String end, int topk) {
         /* frontier ordered by hop depth exactly as before */
         var queue = new LinkedList<String>();
+        var stats = new SearchStatsCollector();
 
         /* depth map instead of visited-set */
         var depth  = new HashMap<String, Integer>();
@@ -35,9 +36,15 @@ public class ShortestHop implements PathFinder {
 
         while (!queue.isEmpty()) {
             var u = queue.poll();
+            stats.investigatedStates++;
             int d = depth.get(u);
 
             for (ChannelGraph.Edge e : g.getAdjMap().getOrDefault(u, Set.<ChannelGraph.Edge>of())) {
+                stats.expandedEdges++;
+                if (!canTraverse(e)) {
+                    stats.excludedByCapacity++;
+                    continue;
+                }
                 String v = e.destination();
 
                 /* first time we reach v → record depth & parent, enqueue */
@@ -49,22 +56,33 @@ public class ShortestHop implements PathFinder {
                 /* reached again at the SAME depth → additional shortest parent */
                 else if (depth.get(v) == d + 1) {
                     parents.get(v).add(e);
+                } else {
+                    stats.excludedByVisitedState++;
                 }
             }
         }
 
         /* ---------- reconstruct every shortest path ---------- */
         List<Path> paths = new ArrayList<>();
-        if (!depth.containsKey(end)) return paths;      // unreachable
+        if (!depth.containsKey(end)) return buildSearchResult(paths, stats);      // unreachable
 
         buildPaths(end, parents, new ArrayList<>(), paths);
+        if (topk > 0 && paths.size() > topk) {
+            paths = new ArrayList<>(paths.subList(0, topk));
+        }
 
-        return paths;
+        return buildSearchResult(paths, stats);
     }
 
     @Override
     public double totalCost(Path p) {
         return p.edges().size();
+    }
+
+    @Override
+    public PathDetails describePath(Path path) {
+        double hops = path.getSize();
+        return new PathDetails(path, hops, List.of(new CostComponent("hop_count", hops)));
     }
 
     /* DFS back-tracking, collects paths reversed (end → start) */

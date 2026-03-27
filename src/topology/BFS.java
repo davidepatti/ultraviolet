@@ -19,31 +19,38 @@ import java.util.List;
  *            cheaper arrivals to an already-visited vertex are discarded.
  * -------------------------------------------------------------------------*/
 
-public class BFS implements PathFinder {
+public class BFS extends PathFinder {
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
+    public SearchResult findPaths(ChannelGraph g, String start, String end, int topk) {
 
         int found = 0;
         var visited_vertex = new ArrayList<String>();
         var queue_vertex = new LinkedList<String>();
         List<Path> paths = new ArrayList<>();
+        var stats = new SearchStatsCollector();
 
         var last_parent = new HashMap<String, ChannelGraph.Edge>();
         last_parent.put("ROOT",null);
-
-        int nfound = 0;
 
         visited_vertex.add(start);
         queue_vertex.add(start);
 
         while (!queue_vertex.isEmpty()) {
             var current_vertex = queue_vertex.poll();
+            stats.investigatedStates++;
 
             var list_edges =g.getAdjMap().get(current_vertex);
+            if (list_edges == null) {
+                continue;
+            }
 
             for (ChannelGraph.Edge e :list_edges) {
+                stats.expandedEdges++;
+                if (!canTraverse(e)) {
+                    stats.excludedByCapacity++;
+                    continue;
+                }
                 if (e.destination().equals(end))  {
-                    nfound++;
                     List<ChannelGraph.Edge> edges = new ArrayList<>();
                     edges.add(e);
 
@@ -54,7 +61,7 @@ public class BFS implements PathFinder {
                     }
                     paths.add(new Path(edges));
                     found++;
-                    if (found == topk) return paths;
+                    if (found == topk) return buildSearchResult(paths, stats);
                     // no need to go deeper along that path
                     visited_vertex.add(e.destination());
                     continue;
@@ -66,14 +73,22 @@ public class BFS implements PathFinder {
                         visited_vertex.add(e.destination());
                         queue_vertex.add(e.destination());
                     }
+                } else {
+                    stats.excludedByVisitedState++;
                 }
             }
         }
-        return paths;
+        return buildSearchResult(paths, stats);
     }
 
     @Override
     public double totalCost(Path p) {
         return p.edges().size();
+    }
+
+    @Override
+    public PathDetails describePath(Path path) {
+        double hops = path.getSize();
+        return new PathDetails(path, hops, List.of(new CostComponent("hop_count", hops)));
     }
 }

@@ -12,15 +12,16 @@ import java.util.*;
      * to collect up to {@code topk} lowest-cost simple paths from {@code start} to {@code end}.
      * Paths longer than max hops are pruned; vertices already on the partial path are skipped to avoid cycles.
      */
-public class MiniDijkstra implements PathFinder{
+public class MiniDijkstra extends PathFinder {
 
     public final int max_hops = 6;
+
     public double weight(ChannelGraph.Edge e, Path p) {
         return 1.0;
     }
 
     @Override
-    public List<Path> findPaths(ChannelGraph g, String start, String end, int topk) {
+    public SearchResult findPaths(ChannelGraph g, String start, String end, int topk) {
         if (topk <= 0) topk = 1;
 
         //record candidatePath(String vertex, double cost, List<ChannelGraph.Edge> path) {}
@@ -29,13 +30,18 @@ public class MiniDijkstra implements PathFinder{
         var queue = new PriorityQueue<candidatePath>(Comparator.comparingDouble(candidatePath::cost));
         Map<String, List<Double>> bestCostsByVertex = new HashMap<>();
         List<Path> paths = new ArrayList<>();
+        var stats = new SearchStatsCollector();
 
         queue.add(new candidatePath(start, 0.0, new Path(null)));
         bestCostsByVertex.put(start, new ArrayList<>(List.of(0.0)));
 
         while (!queue.isEmpty() && paths.size() < topk) {
             var currentCandidate = queue.poll();
-            if (currentCandidate.path().getSize()>max_hops) continue;
+            stats.investigatedStates++;
+            if (currentCandidate.path().getSize()>max_hops) {
+                stats.excludedByMaxHops++;
+                continue;
+            }
 
             if (currentCandidate.vertex().equals(end)) {            // found one of the k best
                 // Path expects edges in reverse (end→start) order; we currently hold start→end.
@@ -49,20 +55,33 @@ public class MiniDijkstra implements PathFinder{
             /* expand search frontier */
             for (ChannelGraph.Edge e :
                     g.getAdjMap().getOrDefault(currentCandidate.vertex(), Set.<ChannelGraph.Edge>of())) {
+                stats.expandedEdges++;
+                if (!canTraverse(e)) {
+                    stats.excludedByCapacity++;
+                    continue;
+                }
 
                 String v = e.destination();
 
-                if (pathContainsVertex(currentCandidate.path(), v)) continue;
+                if (pathContainsVertex(currentCandidate.path(), v)) {
+                    stats.excludedByCycle++;
+                    continue;
+                }
 
                 var newPath = currentCandidate.path().getExtendedPath(e);
                 double newCost = currentCandidate.cost() + weight(e,newPath);
-                if (!Double.isFinite(newCost)) continue;
+                if (!Double.isFinite(newCost)) {
+                    stats.excludedByCost++;
+                    continue;
+                }
                 if (shouldEnqueue(bestCostsByVertex, v, newCost, topk)) {
                     queue.add(new candidatePath(v, newCost, newPath));
+                } else {
+                    stats.excludedByVisitedState++;
                 }
             }
         }
-        return paths;
+        return buildSearchResult(paths, stats);
     }
 
     @Override
@@ -73,6 +92,12 @@ public class MiniDijkstra implements PathFinder{
         }
 
         return totalCost;
+    }
+
+    @Override
+    public PathDetails describePath(Path path) {
+        double total = totalCost(path);
+        return new PathDetails(path, total, List.of(new CostComponent("uniform_path_cost", total)));
     }
 
     private boolean pathContainsVertex(Path path, String v) {

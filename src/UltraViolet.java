@@ -554,16 +554,52 @@ public class UltraViolet {
             var pathFinder = PathFinderFactory.of(strategy);
             pathFinder.setPaymentAmount(amount);
             startNode.setPathFinder(pathFinder);
-            var paths = startNode.findPaths(start, destination, topk);
+            var searchResult = startNode.findPaths(start, destination, topk);
             System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
-            if (!paths.isEmpty()) {
-                for (Path path : paths) {
-                    System.out.println(path + " COST: " + startNode.getPathFinder().totalCost(path));
+            if (!searchResult.paths().isEmpty()) {
+                for (var pathDetails : searchResult.paths()) {
+                    System.out.println(formatPathDetails(pathDetails));
                 }
             } else {
                 System.out.println("NO PATH FOUND");
             }
+            System.out.println(ui.hint("search stats: " + formatSearchStats(searchResult.stats())));
         }
+    }
+
+    private String formatPathDetails(PathFinder.PathDetails pathDetails) {
+        StringBuilder s = new StringBuilder();
+        s.append(pathDetails.path()).append(" COST: ").append(formatDouble(pathDetails.totalCost()));
+        if (!pathDetails.components().isEmpty()) {
+            s.append(" [");
+            for (int i = 0; i < pathDetails.components().size(); i++) {
+                if (i > 0) {
+                    s.append(", ");
+                }
+                var component = pathDetails.components().get(i);
+                s.append(component.label()).append('=').append(formatDouble(component.value()));
+            }
+            s.append(']');
+        }
+        return s.toString();
+    }
+
+    private String formatSearchStats(PathFinder.SearchStats stats) {
+        return "investigated=" + stats.investigatedStates()
+                + ", expanded_edges=" + stats.expandedEdges()
+                + ", excluded_capacity=" + stats.excludedByCapacity()
+                + ", excluded_visited=" + stats.excludedByVisitedState()
+                + ", excluded_cycle=" + stats.excludedByCycle()
+                + ", excluded_max_hops=" + stats.excludedByMaxHops()
+                + ", excluded_cost=" + stats.excludedByCost()
+                + ", returned=" + stats.returnedPaths();
+    }
+
+    private String formatDouble(double value) {
+        if (!Double.isFinite(value)) {
+            return Double.toString(value);
+        }
+        return String.format(Locale.ROOT, "%.6f", value);
     }
 
     private void showGraphCommand(String node_id) {
@@ -584,7 +620,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 

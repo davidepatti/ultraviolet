@@ -2,6 +2,8 @@ package topology;
 
 import network.LNChannel;
 
+import java.util.List;
+
 public class LNDPathFinder extends MiniDijkstra{
     private static final double RISK_FACTOR = 15e-9;
     private static final double BASE_ATTEMPT_COST_MSAT = 100.0;
@@ -9,12 +11,10 @@ public class LNDPathFinder extends MiniDijkstra{
     private static final double DEFAULT_PATH_PROBABILITY = 0.6;
     private static final int DEFAULT_PAYMENT_AMOUNT_SAT = 10_000;
 
-    private int paymentAmountSat = DEFAULT_PAYMENT_AMOUNT_SAT;
     private double pathProbability = DEFAULT_PATH_PROBABILITY;
 
-    @Override
-    public void setPaymentAmount(int amountSat) {
-        paymentAmountSat = Math.max(amountSat, 0);
+    public LNDPathFinder() {
+        paymentAmountSat = DEFAULT_PAYMENT_AMOUNT_SAT;
     }
 
     @Override
@@ -33,20 +33,38 @@ public class LNDPathFinder extends MiniDijkstra{
     }
 
     @Override
-    public double totalCost(Path path) {
+    public PathDetails describePath(Path path) {
         if (path.edges().isEmpty()) {
-            return 0.0;
+            return new PathDetails(path, 0.0, List.of());
         }
 
-        double totalCost = probabilisticPenalty();
+        double routingFees = 0.0;
+        double timelockCost = 0.0;
         for (ChannelGraph.Edge edge : path.edges()) {
             LNChannel.Policy policy = edge.policy();
             if (policy == null) {
-                return Double.POSITIVE_INFINITY;
+                return new PathDetails(
+                        path,
+                        Double.POSITIVE_INFINITY,
+                        List.of(new CostComponent("invalid_policy", Double.POSITIVE_INFINITY))
+                );
             }
-            totalCost += routingFees(policy) + timelockOpportunityCost(policy);
+            routingFees += routingFees(policy);
+            timelockCost += timelockOpportunityCost(policy);
         }
-        return totalCost;
+
+        double probabilisticPenalty = probabilisticPenalty();
+        double total = routingFees + timelockCost + probabilisticPenalty;
+        return new PathDetails(path, total, List.of(
+                new CostComponent("routing_fees", routingFees),
+                new CostComponent("timelock_opportunity_cost", timelockCost),
+                new CostComponent("probabilistic_penalty", probabilisticPenalty)
+        ));
+    }
+
+    @Override
+    public double totalCost(Path path) {
+        return describePath(path).totalCost();
     }
 
     private double routingFees(LNChannel.Policy policy) {
