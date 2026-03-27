@@ -5,71 +5,124 @@ import java.util.Random;
 
 public class DistributionGenerator {
 
-    // Generates initial samples within specified bounds and median
-    private static double[] generateUniformSamplesWithMedian(Random random, int size, double lowerLimit, double upperLimit, double median) {
+    private static final double EPSILON = 1e-9;
+
+    private static void validateInputs(int size, double lowerLimit, double upperLimit, double median, double mean) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("Sample size must be positive");
+        }
+        if (lowerLimit > upperLimit) {
+            throw new IllegalArgumentException("Lower limit cannot exceed upper limit");
+        }
+        if (median < lowerLimit || median > upperLimit) {
+            throw new IllegalArgumentException("Median must lie within the configured bounds");
+        }
+
+        double minMean = feasibleMeanMin(size, lowerLimit, median);
+        double maxMean = feasibleMeanMax(size, median, upperLimit);
+        if (mean < minMean - EPSILON || mean > maxMean + EPSILON) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Mean %.4f is incompatible with lower=%.4f, median=%.4f, upper=%.4f. Feasible range is [%.4f, %.4f]",
+                            mean, lowerLimit, median, upperLimit, minMean, maxMean
+                    )
+            );
+        }
+    }
+
+    private static double feasibleMeanMin(int size, double lowerLimit, double median) {
+        int lowerCount = size / 2;
+        int medianCount = size % 2;
+        int upperCount = size / 2;
+        return (lowerCount * lowerLimit + (medianCount + upperCount) * median) / size;
+    }
+
+    private static double feasibleMeanMax(int size, double median, double upperLimit) {
+        int lowerCount = size / 2;
+        int medianCount = size % 2;
+        int upperCount = size / 2;
+        return ((lowerCount + medianCount) * median + upperCount * upperLimit) / size;
+    }
+
+    private static double interpolate(double start, double end, double fraction) {
+        return start + (end - start) * fraction;
+    }
+
+    private static double[] generateMirroredSamples(Random random, int size, double lowerLimit, double upperLimit, double desiredMean) {
         double[] samples = new double[size];
-        // Fill first half with values below median
-        for (int i = 0; i < size / 2; i++) {
-            samples[i] = lowerLimit + (median - lowerLimit) * random.nextDouble();
+        if (size == 0) {
+            return samples;
         }
-        // Fill second half with values above median
-        for (int i = size / 2; i < size; i++) {
-            samples[i] = median + (upperLimit - median) * random.nextDouble();
+
+        double low = Math.max(lowerLimit, 2 * desiredMean - upperLimit);
+        double high = Math.min(upperLimit, 2 * desiredMean - lowerLimit);
+        int index = 0;
+
+        while (index + 1 < size) {
+            double first = high - low < EPSILON ? low : low + (high - low) * random.nextDouble();
+            double second = 2 * desiredMean - first;
+            samples[index++] = first;
+            samples[index++] = second;
         }
+
+        if (index < size) {
+            samples[index] = desiredMean;
+        }
+
+        shuffle(random, samples);
         return samples;
     }
 
-    // Adjusts samples to achieve the desired mean
-    private static double[] adjustSamplesMean(double[] samples,  double lowerLimit, double upperLimit, double median, double desiredMean) {
-        double current_sum = Arrays.stream(samples).sum();
-        double desired_sum = desiredMean*samples.length;
-        double adj_sum = desired_sum-current_sum;
+    private static void shuffle(Random random, double[] values) {
+        for (int i = values.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            double tmp = values[i];
+            values[i] = values[j];
+            values[j] = tmp;
+        }
+    }
 
-        // try to adjust proportianally to median sides sizes
-        double lower_fraction = (median-lowerLimit)/(upperLimit-lowerLimit);
-        double upper_fraction = (upperLimit-median)/(upperLimit-lowerLimit);
+    private static double[] generateDoubleSamplesInternal(Random random, int size, double lowerLimit, double upperLimit, double median, double mean) {
+        validateInputs(size, lowerLimit, upperLimit, median, mean);
 
-        double adj_sum_lower = lower_fraction*adj_sum;
-        double adj_sum_upper = upper_fraction*adj_sum;
+        int lowerCount = size / 2;
+        int medianCount = size % 2;
+        int upperCount = size / 2;
 
-        double adj_sample_lower = adj_sum_lower/(samples.length/2.0);
-        double adj_sample_upper = adj_sum_upper/(samples.length/2.0);
+        double minMean = feasibleMeanMin(size, lowerLimit, median);
+        double maxMean = feasibleMeanMax(size, median, upperLimit);
+        double fraction = maxMean - minMean < EPSILON ? 0.0 : (mean - minMean) / (maxMean - minMean);
 
+        double lowerMean = interpolate(lowerLimit, median, fraction);
+        double upperMean = interpolate(median, upperLimit, fraction);
 
-        // Apply adjustments
-        for (int i = 0; i < samples.length; i++) {
-            if (samples[i] < median) {
-                // Adjust the lower half
-                samples[i] += adj_sample_lower;
-                // Ensure it doesn't cross the median or lower limit
-                if (samples[i] >= median) samples[i] = median - 0.0001;
-                if (samples[i] < lowerLimit) samples[i] = lowerLimit;
-            } else {
-                // Adjust the upper half
-                samples[i] += adj_sample_upper;
-                // Ensure it doesn't cross the median or exceed the upper limit
-                if (samples[i] < median) samples[i] = median;
-                if (samples[i] > upperLimit) samples[i] = upperLimit;
-            }
+        double[] samples = new double[size];
+        int offset = 0;
+
+        double[] lowerSamples = generateMirroredSamples(random, lowerCount, lowerLimit, median, lowerMean);
+        System.arraycopy(lowerSamples, 0, samples, offset, lowerSamples.length);
+        offset += lowerSamples.length;
+
+        if (medianCount == 1) {
+            samples[offset++] = median;
         }
 
+        double[] upperSamples = generateMirroredSamples(random, upperCount, median, upperLimit, upperMean);
+        System.arraycopy(upperSamples, 0, samples, offset, upperSamples.length);
+
+        shuffle(random, samples);
         return samples;
     }
 
     public static double[] generateDoubleSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {
-
-        double[] samples = generateUniformSamplesWithMedian(random, size, lower_limit, upper_limit, median);
-        return adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
+        return generateDoubleSamplesInternal(random, size, lower_limit, upper_limit, median, mean);
     }
-    @SuppressWarnings("DataFlowIssue")
+
     public static int[] generateIntSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {
-        double[] samples = generateUniformSamplesWithMedian(random, size, lower_limit, upper_limit, median);
-        //noinspection DataFlowIssue
-        samples = adjustSamplesMean(samples,lower_limit,upper_limit, median, mean);
-        // Convert double[] to int[]
+        double[] samples = generateDoubleSamplesInternal(random, size, lower_limit, upper_limit, median, mean);
         int[] intSamples = new int[samples.length];
-        for (int i = 0; i < samples.length; i++){
-            intSamples[i] = (int)Math.round(samples[i]);  // round off to nearest integer
+        for (int i = 0; i < samples.length; i++) {
+            intSamples[i] = (int) Math.round(samples[i]);
         }
         return intSamples;
     }
@@ -77,18 +130,15 @@ public class DistributionGenerator {
     public static void main(String[] args) {
         int size = 100;
         Random random = new Random();
-        //double[] samples = generateDoubleSamples(size,0,500,200,100);
         int[] samples = generateIntSamples(random, size, 50, 100, 60, 80);
 
-        // Sorting to check the results
         Arrays.sort(samples);
         double recalculatedMean = Arrays.stream(samples).average().orElse(Double.NaN);
-        double recalculatedMedian1 = samples[size / 2-1];
+        double recalculatedMedian1 = samples[size / 2 - 1];
         double recalculatedMedian2 = samples[size / 2];
 
-        System.out.println("Recalculated Median: " + recalculatedMedian1+ " - "+recalculatedMedian2);
+        System.out.println("Recalculated Median: " + recalculatedMedian1 + " - " + recalculatedMedian2);
         System.out.println("Recalculated Mean: " + recalculatedMean);
         for (var x : samples) System.out.println(x);
-        //for (var x : samples2) System.out.println(x);
     }
 }

@@ -91,16 +91,11 @@ public class UVConfig implements Serializable {
         }
 
         public int getRandomSample(Random rng, String key) {
-            try {
-                if (distributions.containsKey(key)) {
-                    var samples = distributions.get(key);
-                    return samples[rng.nextInt(0, samples.length)];
-                }
-                else  throw new RuntimeException("Missing distribution key: " + key);
-            } catch (Exception e) {
-                e.printStackTrace();
+            var samples = distributions.get(key);
+            if (samples == null || samples.length == 0) {
+                throw new IllegalStateException("Missing distribution key '" + key + "' for profile " + name);
             }
-            return 0;
+            return samples[rng.nextInt(samples.length)];
         }
 
         public String getName() {
