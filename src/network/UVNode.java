@@ -312,7 +312,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private int getPathFees(Path path, int amount) {
         int fees = 0;
 
-        for (ChannelGraph.Edge e : path.edges()) {
+        for (ChannelGraph.Edge e : path.forwardingEdges()) {
             fees += computeFees(amount, e.policy().getBaseFee(), e.policy().getFeePpm());
         }
         return fees;

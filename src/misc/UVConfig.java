@@ -45,9 +45,10 @@ public class UVConfig implements Serializable {
     private static final long serialVersionUID = 120678L;
 
     public static class NodeProfile implements Serializable {
+        private record IntDistributionSpec(int lowerLimit, int upperLimit, double median, double mean) implements Serializable {}
 
         private final Map<String,String> attributes = new HashMap<>();
-        private final Map<String,int[]> distributions = new HashMap<>();
+        private final Map<String, IntDistributionSpec> distributions = new HashMap<>();
         private final String name;
 
         public NodeProfile(String profileName) {
@@ -77,6 +78,10 @@ public class UVConfig implements Serializable {
             attributes.putIfAbsent(key, value);
         }
 
+        public void addDistribution(String key, int lowerLimit, int upperLimit, double median, double mean) {
+            distributions.put(key, new IntDistributionSpec(lowerLimit, upperLimit, median, mean));
+        }
+
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -91,11 +96,17 @@ public class UVConfig implements Serializable {
         }
 
         public int getRandomSample(Random rng, String key) {
-            var samples = distributions.get(key);
-            if (samples == null || samples.length == 0) {
+            var spec = distributions.get(key);
+            if (spec == null) {
                 throw new IllegalStateException("Missing distribution key '" + key + "' for profile " + name);
             }
-            return samples[rng.nextInt(samples.length)];
+            return DistributionGenerator.generateIntSample(
+                    rng,
+                    spec.lowerLimit(),
+                    spec.upperLimit(),
+                    spec.median(),
+                    spec.mean()
+            );
         }
 
         public String getName() {
@@ -142,7 +153,6 @@ public class UVConfig implements Serializable {
                 }
             }
             master_seed = Integer.parseInt(properties.getProperty("seed"));
-            var random = new Random(master_seed);
 
 
             // parse profiles to create samples distributions
@@ -156,8 +166,8 @@ public class UVConfig implements Serializable {
                 final int median_ppm_fee = profile.getIntAttribute("median_ppm_fee");
                 final int mean_ppm_fee = profile.getIntAttribute("mean_ppm_fee");
 
-                profile.distributions.put("channel_sizes",DistributionGenerator.generateIntSamples(random,1000,min_ch_size,max_ch_size,median_ch_size,mean_ch_size));
-                profile.distributions.put("ppm_fees", DistributionGenerator.generateIntSamples(random,1000,min_ppm_fee,max_ppm_fee,median_ppm_fee,mean_ppm_fee));
+                profile.addDistribution("channel_sizes", min_ch_size, max_ch_size, median_ch_size, mean_ch_size);
+                profile.addDistribution("ppm_fees", min_ppm_fee, max_ppm_fee, median_ppm_fee, mean_ppm_fee);
             }
 
         } catch (FileNotFoundException e) {

@@ -25,7 +25,10 @@ public class LNDPathFinder extends MiniDijkstra{
         if (p == null) {
             return Double.POSITIVE_INFINITY;
         }
-        double incrementalCost = routingFees(p) + timelockOpportunityCost(p);
+        double incrementalCost = 0.0;
+        if (path.getSize() > 1) {
+            incrementalCost += routingFees(p) + timelockOpportunityCost(p);
+        }
         if (path.getSize() == 1) {
             incrementalCost += probabilisticPenalty();
         }
@@ -40,7 +43,7 @@ public class LNDPathFinder extends MiniDijkstra{
 
         double routingFees = 0.0;
         double timelockCost = 0.0;
-        for (ChannelGraph.Edge edge : path.edges()) {
+        for (ChannelGraph.Edge edge : path.forwardingEdges()) {
             LNChannel.Policy policy = edge.policy();
             if (policy == null) {
                 return new PathDetails(

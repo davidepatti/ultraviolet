@@ -45,43 +45,56 @@ public class DistributionGenerator {
         return median + (upperLimit - median) * Math.pow(random.nextDouble(), alpha);
     }
 
+    private static double computeAlpha(double lowerLimit, double upperLimit, double median, double mean) {
+        double baseMean = (lowerLimit + median) / 2.0;
+        double topMean = (median + upperLimit) / 2.0;
+        if (mean <= baseMean + EPSILON) {
+            return MAX_ALPHA;
+        } else if (mean >= topMean - EPSILON) {
+            return MIN_ALPHA;
+        }
+
+        double rawAlpha = (upperLimit - lowerLimit) / (2.0 * (mean - baseMean)) - 1.0;
+        return clamp(rawAlpha, MIN_ALPHA, MAX_ALPHA);
+    }
+
+    private static double generateDoubleSampleInternal(Random random, double lowerLimit, double upperLimit, double median, double mean) {
+        validateInputs(1, lowerLimit, upperLimit, median, mean);
+
+        double alpha = computeAlpha(lowerLimit, upperLimit, median, mean);
+        if (median <= lowerLimit + EPSILON) {
+            return sampleUpperSide(random, median, upperLimit, alpha);
+        }
+        if (median >= upperLimit - EPSILON) {
+            return sampleLowerSide(random, lowerLimit, median, alpha);
+        }
+        return random.nextBoolean()
+                ? sampleLowerSide(random, lowerLimit, median, alpha)
+                : sampleUpperSide(random, median, upperLimit, alpha);
+    }
+
     private static double[] generateDoubleSamplesInternal(Random random, int size, double lowerLimit, double upperLimit, double median, double mean) {
         validateInputs(size, lowerLimit, upperLimit, median, mean);
 
-        double baseMean = (lowerLimit + median) / 2.0;
-        double topMean = (median + upperLimit) / 2.0;
-        double alpha;
-        if (mean <= baseMean + EPSILON) {
-            alpha = MAX_ALPHA;
-        } else if (mean >= topMean - EPSILON) {
-            alpha = MIN_ALPHA;
-        } else {
-            double rawAlpha = (upperLimit - lowerLimit) / (2.0 * (mean - baseMean)) - 1.0;
-            alpha = clamp(rawAlpha, MIN_ALPHA, MAX_ALPHA);
-        }
-
-        int lowerCount = size / 2;
-        int medianCount = size % 2;
-        int upperCount = size / 2;
-
         double[] samples = new double[size];
-        int offset = 0;
-        for (int i = 0; i < lowerCount; i++) {
-            samples[offset++] = sampleLowerSide(random, lowerLimit, median, alpha);
-        }
-        if (medianCount == 1) {
-            samples[offset++] = median;
-        }
-        for (int i = 0; i < upperCount; i++) {
-            samples[offset++] = sampleUpperSide(random, median, upperLimit, alpha);
+        for (int i = 0; i < size; i++) {
+            samples[i] = generateDoubleSampleInternal(random, lowerLimit, upperLimit, median, mean);
         }
 
         shuffle(random, samples);
         return samples;
     }
 
+    public static double generateDoubleSample(Random random, int lower_limit, int upper_limit, double median, double mean) {
+        return generateDoubleSampleInternal(random, lower_limit, upper_limit, median, mean);
+    }
+
     public static double[] generateDoubleSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {
         return generateDoubleSamplesInternal(random, size, lower_limit, upper_limit, median, mean);
+    }
+
+    public static int generateIntSample(Random random, int lower_limit, int upper_limit, double median, double mean) {
+        return (int) Math.round(generateDoubleSampleInternal(random, lower_limit, upper_limit, median, mean));
     }
 
     public static int[] generateIntSamples(Random random, int size, int lower_limit, int upper_limit, double median, double mean) {

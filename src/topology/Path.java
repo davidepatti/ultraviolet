@@ -27,6 +27,18 @@ public final class Path {
         return Collections.unmodifiableList(edges);
     }
 
+    /**
+     * For sender-side fee calculations on returned paths, every edge except the
+     * last one is a forwarding hop. The last edge is the sender's local
+     * outbound channel and does not charge forwarding fees.
+     */
+    public List<ChannelGraph.Edge> forwardingEdges() {
+        if (edges.size() <= 1) {
+            return List.of();
+        }
+        return Collections.unmodifiableList(edges.subList(0, edges.size() - 1));
+    }
+
     /** Convenience accessor for the first vertex. */
     public String getStart() {
         return edges.isEmpty() ? null : edges.get(0).source();
