@@ -487,26 +487,36 @@ public class UltraViolet {
 
         new UltraViolet(new UVConfig(args[0]));
     }
+
+    private String readLineOrDefault(String prompt, String defaultValue) {
+        System.out.print(ui.label(prompt) + " " + ui.hint("[" + defaultValue + "]:"));
+        String value = menuInputScanner.nextLine();
+        return value.isBlank() ? defaultValue : value;
+    }
+
+    private int readIntOrDefault(String prompt, int defaultValue) {
+        String value = readLineOrDefault(prompt, Integer.toString(defaultValue));
+        return Integer.parseInt(value);
+    }
+
     private void testInvoiceRoutingCmd() {
 
         if (!networkManager.isBootstrapCompleted()) {
-            System.out.println("ERROR: must execute bootstrap or load/import a network!");
+            System.out.println("Bootstrap not completed, cannot generate events!");
+            return;
+        }
+        if (!networkManager.getTimechainStatus()) {
+            System.out.println("Timechain not running, please start the timechain");
             return;
         }
 
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Starting node public key:");
-        String start_id = scanner.nextLine();
+        String start_id = readLineOrDefault("Starting node public key", "pk0");
         var sender = networkManager.searchNode(start_id);
-        System.out.print("Destination node public key:");
-        String end_id = scanner.nextLine();
+        String end_id = readLineOrDefault("Destination node public key", "pk99");
         var dest = networkManager.searchNode(end_id);
-        System.out.print("Invoice amount:");
-        int amount = Integer.parseInt(scanner.nextLine());
-        System.out.print("Max fees:");
-        int fees = Integer.parseInt(scanner.nextLine());
-        System.out.print("Invoice message:");
-        String msg = scanner.nextLine();
+        int amount = readIntOrDefault("Invoice amount", 10000);
+        int fees = readIntOrDefault("Max fees", 1000);
+        String msg = readLineOrDefault("Invoice message", "default");
 
         var invoice = dest.generateInvoice(amount,msg,true);
         System.out.println("Generated Invoice: "+invoice);
@@ -518,15 +528,13 @@ public class UltraViolet {
      *
      */
     private void findPathsCmd() {
-        Scanner scanner = new Scanner(System.in);
         String start;
         if (imported_graph_root != null) {
             System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
             start = imported_graph_root;
         } else {
             if (networkManager.isBootstrapCompleted()) {
-                System.out.print("Starting node public key:");
-                start = scanner.nextLine();
+                start = readLineOrDefault("Starting node public key", "pk0");
             }
             else  {
                 System.out.println("Bootstrap Non completed!");
@@ -534,17 +542,19 @@ public class UltraViolet {
             }
         }
 
-        System.out.print("Destination node public key:");
-        String destination = scanner.nextLine();
-        System.out.print("Single[1] or All [any key] paths?");
-        String choice = scanner.nextLine();
+        String destination = readLineOrDefault("Destination node public key", "pk99");
+        int amount = readIntOrDefault("Payment amount", 10000);
+        String choice = readLineOrDefault("Single[1] or All paths", "all");
         boolean stopfirst = choice.equals("1");
+        int topk = stopfirst ? 1 : readIntOrDefault("Top K paths", 20);
 
         var startNode = networkManager.searchNode(start);
 
         for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
-            startNode.setPathFinder(PathFinderFactory.of(strategy));
-            var paths = startNode.findPaths(start, destination, 20);
+            var pathFinder = PathFinderFactory.of(strategy);
+            pathFinder.setPaymentAmount(amount);
+            startNode.setPathFinder(pathFinder);
+            var paths = startNode.findPaths(start, destination, topk);
             System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
             if (!paths.isEmpty()) {
                 for (Path path : paths) {
@@ -574,7 +584,6 @@ public class UltraViolet {
 
 
 }
-
 
 
 
