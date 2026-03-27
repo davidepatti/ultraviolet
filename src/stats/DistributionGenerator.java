@@ -6,6 +6,8 @@ import java.util.Random;
 public class DistributionGenerator {
 
     private static final double EPSILON = 1e-9;
+    private static final double MIN_ALPHA = 0.15;
+    private static final double MAX_ALPHA = 20.0;
 
     private static void validateInputs(int size, double lowerLimit, double upperLimit, double median, double mean) {
         if (size <= 0) {
@@ -17,60 +19,13 @@ public class DistributionGenerator {
         if (median < lowerLimit || median > upperLimit) {
             throw new IllegalArgumentException("Median must lie within the configured bounds");
         }
-
-        double minMean = feasibleMeanMin(size, lowerLimit, median);
-        double maxMean = feasibleMeanMax(size, median, upperLimit);
-        if (mean < minMean - EPSILON || mean > maxMean + EPSILON) {
-            throw new IllegalArgumentException(
-                    String.format(
-                            "Mean %.4f is incompatible with lower=%.4f, median=%.4f, upper=%.4f. Feasible range is [%.4f, %.4f]",
-                            mean, lowerLimit, median, upperLimit, minMean, maxMean
-                    )
-            );
+        if (mean < lowerLimit || mean > upperLimit) {
+            throw new IllegalArgumentException("Mean must lie within the configured bounds");
         }
     }
 
-    private static double feasibleMeanMin(int size, double lowerLimit, double median) {
-        int lowerCount = size / 2;
-        int medianCount = size % 2;
-        int upperCount = size / 2;
-        return (lowerCount * lowerLimit + (medianCount + upperCount) * median) / size;
-    }
-
-    private static double feasibleMeanMax(int size, double median, double upperLimit) {
-        int lowerCount = size / 2;
-        int medianCount = size % 2;
-        int upperCount = size / 2;
-        return ((lowerCount + medianCount) * median + upperCount * upperLimit) / size;
-    }
-
-    private static double interpolate(double start, double end, double fraction) {
-        return start + (end - start) * fraction;
-    }
-
-    private static double[] generateMirroredSamples(Random random, int size, double lowerLimit, double upperLimit, double desiredMean) {
-        double[] samples = new double[size];
-        if (size == 0) {
-            return samples;
-        }
-
-        double low = Math.max(lowerLimit, 2 * desiredMean - upperLimit);
-        double high = Math.min(upperLimit, 2 * desiredMean - lowerLimit);
-        int index = 0;
-
-        while (index + 1 < size) {
-            double first = high - low < EPSILON ? low : low + (high - low) * random.nextDouble();
-            double second = 2 * desiredMean - first;
-            samples[index++] = first;
-            samples[index++] = second;
-        }
-
-        if (index < size) {
-            samples[index] = desiredMean;
-        }
-
-        shuffle(random, samples);
-        return samples;
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static void shuffle(Random random, double[] values) {
@@ -82,33 +37,44 @@ public class DistributionGenerator {
         }
     }
 
+    private static double sampleLowerSide(Random random, double lowerLimit, double median, double alpha) {
+        return lowerLimit + (median - lowerLimit) * Math.pow(random.nextDouble(), alpha);
+    }
+
+    private static double sampleUpperSide(Random random, double median, double upperLimit, double alpha) {
+        return median + (upperLimit - median) * Math.pow(random.nextDouble(), alpha);
+    }
+
     private static double[] generateDoubleSamplesInternal(Random random, int size, double lowerLimit, double upperLimit, double median, double mean) {
         validateInputs(size, lowerLimit, upperLimit, median, mean);
+
+        double baseMean = (lowerLimit + median) / 2.0;
+        double topMean = (median + upperLimit) / 2.0;
+        double alpha;
+        if (mean <= baseMean + EPSILON) {
+            alpha = MAX_ALPHA;
+        } else if (mean >= topMean - EPSILON) {
+            alpha = MIN_ALPHA;
+        } else {
+            double rawAlpha = (upperLimit - lowerLimit) / (2.0 * (mean - baseMean)) - 1.0;
+            alpha = clamp(rawAlpha, MIN_ALPHA, MAX_ALPHA);
+        }
 
         int lowerCount = size / 2;
         int medianCount = size % 2;
         int upperCount = size / 2;
 
-        double minMean = feasibleMeanMin(size, lowerLimit, median);
-        double maxMean = feasibleMeanMax(size, median, upperLimit);
-        double fraction = maxMean - minMean < EPSILON ? 0.0 : (mean - minMean) / (maxMean - minMean);
-
-        double lowerMean = interpolate(lowerLimit, median, fraction);
-        double upperMean = interpolate(median, upperLimit, fraction);
-
         double[] samples = new double[size];
         int offset = 0;
-
-        double[] lowerSamples = generateMirroredSamples(random, lowerCount, lowerLimit, median, lowerMean);
-        System.arraycopy(lowerSamples, 0, samples, offset, lowerSamples.length);
-        offset += lowerSamples.length;
-
+        for (int i = 0; i < lowerCount; i++) {
+            samples[offset++] = sampleLowerSide(random, lowerLimit, median, alpha);
+        }
         if (medianCount == 1) {
             samples[offset++] = median;
         }
-
-        double[] upperSamples = generateMirroredSamples(random, upperCount, median, upperLimit, upperMean);
-        System.arraycopy(upperSamples, 0, samples, offset, upperSamples.length);
+        for (int i = 0; i < upperCount; i++) {
+            samples[offset++] = sampleUpperSide(random, median, upperLimit, alpha);
+        }
 
         shuffle(random, samples);
         return samples;
