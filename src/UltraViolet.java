@@ -388,6 +388,8 @@ public class UltraViolet {
             fees = Integer.parseInt(menuInputScanner.nextLine());
         }
 
+        applyPathFinderStrategyToAllNodes(readPathFinderStrategyOrDefault());
+
         networkManager.generateInvoiceEvents(node_events_per_block, n_blocks, amt_min, amt_max, fees);
 
     }
@@ -502,6 +504,41 @@ public class UltraViolet {
         return Integer.parseInt(value);
     }
 
+    private PathFinderFactory.Strategy parsePathFinderStrategy(String value) {
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "lnd" -> PathFinderFactory.Strategy.LND;
+            case "mini_dijkstra", "mini", "dijkstra" -> PathFinderFactory.Strategy.MINI_DIJKSTRA;
+            case "shortest_hop", "shortest", "hop" -> PathFinderFactory.Strategy.SHORTEST_HOP;
+            case "bfs" -> PathFinderFactory.Strategy.BFS;
+            default -> throw new IllegalArgumentException("Unknown path finder: " + value);
+        };
+    }
+
+    private PathFinderFactory.Strategy readPathFinderStrategyOrDefault() {
+        return parsePathFinderStrategy(
+                readLineOrDefault("Path finder [lnd|mini_dijkstra|shortest_hop|bfs]", "lnd")
+        );
+    }
+
+    private String readPathFinderChoiceOrDefault(boolean allowAll) {
+        String prompt = allowAll
+                ? "Path finder [lnd|mini_dijkstra|shortest_hop|bfs|all]"
+                : "Path finder [lnd|mini_dijkstra|shortest_hop|bfs]";
+        return readLineOrDefault(prompt, "lnd").trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void applyPathFinderStrategy(UVNode node, PathFinderFactory.Strategy strategy, int amount) {
+        var pathFinder = PathFinderFactory.of(strategy);
+        pathFinder.setPaymentAmount(amount);
+        node.setPathFinder(pathFinder);
+    }
+
+    private void applyPathFinderStrategyToAllNodes(PathFinderFactory.Strategy strategy) {
+        for (UVNode node : networkManager.getUVNodeList().values()) {
+            node.setPathFinder(PathFinderFactory.of(strategy));
+        }
+    }
+
     private void testInvoiceRoutingCmd() {
 
         if (!networkManager.isBootstrapCompleted()) {
@@ -520,6 +557,9 @@ public class UltraViolet {
         int amount = readIntOrDefault("Invoice amount", 10000);
         int fees = readIntOrDefault("Max fees", 1000);
         String msg = readLineOrDefault("Invoice message", "default");
+        var strategy = readPathFinderStrategyOrDefault();
+
+        applyPathFinderStrategy(sender, strategy, amount);
 
         var invoice = dest.generateInvoice(amount,msg,true);
         System.out.println("Generated Invoice: "+invoice);
@@ -550,24 +590,39 @@ public class UltraViolet {
         String choice = readLineOrDefault("Single[1] or All paths", "all");
         boolean stopfirst = choice.equals("1");
         int topk = stopfirst ? 1 : readIntOrDefault("Top K paths", 20);
+        String strategyChoice = readPathFinderChoiceOrDefault(true);
 
         var startNode = networkManager.searchNode(start);
 
-        for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
-            var pathFinder = PathFinderFactory.of(strategy);
-            pathFinder.setPaymentAmount(amount);
-            startNode.setPathFinder(pathFinder);
-            var searchResult = startNode.findPaths(start, destination, topk);
-            System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
-            if (!searchResult.paths().isEmpty()) {
-                for (var pathDetails : searchResult.paths()) {
-                    System.out.println(formatPathDetails(pathDetails));
+        if (strategyChoice.equals("all")) {
+            for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
+                applyPathFinderStrategy(startNode, strategy, amount);
+                var searchResult = startNode.findPaths(start, destination, topk);
+                System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
+                if (!searchResult.paths().isEmpty()) {
+                    for (var pathDetails : searchResult.paths()) {
+                        System.out.println(formatPathDetails(pathDetails));
+                    }
+                } else {
+                    System.out.println("NO PATH FOUND");
                 }
-            } else {
-                System.out.println("NO PATH FOUND");
+                System.out.println(ui.hint("search stats: " + formatSearchStats(searchResult.stats())));
             }
-            System.out.println(ui.hint("search stats: " + formatSearchStats(searchResult.stats())));
+            return;
         }
+
+        var strategy = parsePathFinderStrategy(strategyChoice);
+        applyPathFinderStrategy(startNode, strategy, amount);
+        var searchResult = startNode.findPaths(start, destination, topk);
+        System.out.println(" -- " + strategy.name().toLowerCase() + " --------------------------------------");
+        if (!searchResult.paths().isEmpty()) {
+            for (var pathDetails : searchResult.paths()) {
+                System.out.println(formatPathDetails(pathDetails));
+            }
+        } else {
+            System.out.println("NO PATH FOUND");
+        }
+        System.out.println(ui.hint("search stats: " + formatSearchStats(searchResult.stats())));
     }
 
     private String formatPathDetails(PathFinder.PathDetails pathDetails) {
@@ -636,5 +691,3 @@ public class UltraViolet {
 
 
 }
-
-
