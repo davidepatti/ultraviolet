@@ -27,9 +27,11 @@ public class MiniDijkstra implements PathFinder{
         record candidatePath(String vertex, double cost, Path path) {}
 
         var queue = new PriorityQueue<candidatePath>(Comparator.comparingDouble(candidatePath::cost));
+        Map<String, List<Double>> bestCostsByVertex = new HashMap<>();
         List<Path> paths = new ArrayList<>();
 
         queue.add(new candidatePath(start, 0.0, new Path(null)));
+        bestCostsByVertex.put(start, new ArrayList<>(List.of(0.0)));
 
         while (!queue.isEmpty() && paths.size() < topk) {
             var currentCandidate = queue.poll();
@@ -53,7 +55,11 @@ public class MiniDijkstra implements PathFinder{
                 if (pathContainsVertex(currentCandidate.path(), v)) continue;
 
                 var newPath = currentCandidate.path().getExtendedPath(e);
-                queue.add(new candidatePath(v, currentCandidate.cost() + weight(e,newPath), newPath));
+                double newCost = currentCandidate.cost() + weight(e,newPath);
+                if (!Double.isFinite(newCost)) continue;
+                if (shouldEnqueue(bestCostsByVertex, v, newCost, topk)) {
+                    queue.add(new candidatePath(v, newCost, newPath));
+                }
             }
         }
         return paths;
@@ -76,5 +82,21 @@ public class MiniDijkstra implements PathFinder{
             }
         }
         return false;
+    }
+
+    private boolean shouldEnqueue(Map<String, List<Double>> bestCostsByVertex, String vertex, double newCost, int topk) {
+        List<Double> bestCosts = bestCostsByVertex.computeIfAbsent(vertex, __ -> new ArrayList<>());
+        int insertAt = Collections.binarySearch(bestCosts, newCost);
+        if (insertAt < 0) {
+            insertAt = -insertAt - 1;
+        }
+        if (insertAt >= topk) {
+            return false;
+        }
+        bestCosts.add(insertAt, newCost);
+        if (bestCosts.size() > topk) {
+            bestCosts.remove(topk);
+        }
+        return true;
     }
 }
