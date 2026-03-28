@@ -42,6 +42,7 @@ public class UltraViolet {
         private static final String CYAN = "\033[36m";
         private static final String GREEN = "\033[32m";
         private static final String MAGENTA = "\033[35m";
+        private static final String RED = "\033[31m";
         private static final String YELLOW = "\033[33m";
         private final boolean enabled;
 
@@ -111,6 +112,10 @@ public class UltraViolet {
 
         String detail(String text) {
             return apply(MAGENTA, text);
+        }
+
+        String error(String text) {
+            return apply(BOLD + RED, text);
         }
     }
 
@@ -191,13 +196,14 @@ public class UltraViolet {
             String sender,
             String dest,
             String amount,
-            String paths,
+            String returnedPaths,
             String candidates,
             String attempts,
-            String missPolicy,
-            String missCapacity,
-            String missLiquidity,
-            String missFees,
+            String filteredPolicy,
+            String searchCapacity,
+            String filteredCapacity,
+            String filteredLiquidity,
+            String filteredFees,
             String temporaryFailures,
             String expirySoon,
             String success
@@ -460,32 +466,15 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.printf(
-            "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
-            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES);
-        double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
-
-        int n_blocks;
-        int amt_min;
-        int amt_max;
-        int fees;
-
-        if(node_events_per_block == 0) {
-            node_events_per_block = DEFAULT_NODE_EVENTS_PER_BLOCK;
-            n_blocks = DEFAULT_N_BLOCKS;
-            amt_min = DEFAULT_AMT_MIN;
-            amt_max = DEFAULT_AMT_MAX;
-            fees = DEFAULT_FEES;
-        } else {
-            System.out.print("Timechain duration (blocks): ");
-            n_blocks = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Min amount");
-            amt_min = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max amount");
-            amt_max = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max fees");
-            fees = Integer.parseInt(menuInputScanner.nextLine());
-        }
+        System.out.println(ui.hint("Press ENTER to accept defaults."));
+        double node_events_per_block = readDoubleOrDefault(
+                "Invoice generation rate (events/node/block)",
+                DEFAULT_NODE_EVENTS_PER_BLOCK
+        );
+        int n_blocks = readIntOrDefault("Timechain duration (blocks)", DEFAULT_N_BLOCKS);
+        int amt_min = readIntOrDefault("Min amount", DEFAULT_AMT_MIN);
+        int amt_max = readIntOrDefault("Max amount", DEFAULT_AMT_MAX);
+        int fees = readIntOrDefault("Max fees", DEFAULT_FEES);
 
         applyPathFinderStrategyToAllNodes(readPathFinderStrategyOrDefault());
 
@@ -524,7 +513,13 @@ public class UltraViolet {
         if (networkManager.loadStatus(file_to_load)) {
             updateSelectedConfigPath(networkManager.getConfig(), selectedConfigPath);
             System.out.println("UVM LOADED");
-        } else System.out.println("ERROR LOADING UVM from " + file_to_load);
+        } else {
+            String error = networkManager.getLastLoadStatusError();
+            if (error == null || error.isBlank()) {
+                error = "ERROR LOADING UVM from " + file_to_load;
+            }
+            System.out.println(ui.error(error));
+        }
     }
 
     private void setLocalChannelsBalances(Object x) {
@@ -582,6 +577,11 @@ public class UltraViolet {
     private int readIntOrDefault(String prompt, int defaultValue) {
         String value = readLineOrDefault(prompt, Integer.toString(defaultValue));
         return Integer.parseInt(value);
+    }
+
+    private double readDoubleOrDefault(String prompt, double defaultValue) {
+        String value = readLineOrDefault(prompt, Double.toString(defaultValue));
+        return Double.parseDouble(value);
     }
 
     private PathFinderFactory.Strategy parsePathFinderStrategy(String value) {
@@ -1111,13 +1111,14 @@ public class UltraViolet {
         int senderWidth = maxWidth("From", rows.stream().map(InvoiceDisplayRow::sender).toList());
         int destWidth = maxWidth("To", rows.stream().map(InvoiceDisplayRow::dest).toList());
         int amountWidth = maxWidth("Amt", rows.stream().map(InvoiceDisplayRow::amount).toList());
-        int pathsWidth = maxWidth("Paths", rows.stream().map(InvoiceDisplayRow::paths).toList());
+        int returnedWidth = maxWidth("Ret", rows.stream().map(InvoiceDisplayRow::returnedPaths).toList());
         int candidatesWidth = maxWidth("Cand", rows.stream().map(InvoiceDisplayRow::candidates).toList());
         int attemptsWidth = maxWidth("Att", rows.stream().map(InvoiceDisplayRow::attempts).toList());
-        int missPolicyWidth = maxWidth("Pol", rows.stream().map(InvoiceDisplayRow::missPolicy).toList());
-        int missCapacityWidth = maxWidth("Cap", rows.stream().map(InvoiceDisplayRow::missCapacity).toList());
-        int missLiquidityWidth = maxWidth("Liq", rows.stream().map(InvoiceDisplayRow::missLiquidity).toList());
-        int missFeesWidth = maxWidth("Fees", rows.stream().map(InvoiceDisplayRow::missFees).toList());
+        int filteredPolicyWidth = maxWidth("Pol", rows.stream().map(InvoiceDisplayRow::filteredPolicy).toList());
+        int searchCapacityWidth = maxWidth("SCap", rows.stream().map(InvoiceDisplayRow::searchCapacity).toList());
+        int filteredCapacityWidth = maxWidth("FCap", rows.stream().map(InvoiceDisplayRow::filteredCapacity).toList());
+        int filteredLiquidityWidth = maxWidth("Liq", rows.stream().map(InvoiceDisplayRow::filteredLiquidity).toList());
+        int filteredFeesWidth = maxWidth("Fees", rows.stream().map(InvoiceDisplayRow::filteredFees).toList());
         int tempWidth = maxWidth("Tmp", rows.stream().map(InvoiceDisplayRow::temporaryFailures).toList());
         int expiryWidth = maxWidth("Exp", rows.stream().map(InvoiceDisplayRow::expirySoon).toList());
         int successWidth = maxWidth("OK", rows.stream().map(InvoiceDisplayRow::success).toList());
@@ -1128,13 +1129,14 @@ public class UltraViolet {
                                 + padRight("From", senderWidth) + "  "
                                 + padRight("To", destWidth) + "  "
                                 + padLeft("Amt", amountWidth) + "  "
-                                + padLeft("Paths", pathsWidth) + "  "
+                                + padLeft("Ret", returnedWidth) + "  "
                                 + padLeft("Cand", candidatesWidth) + "  "
                                 + padLeft("Att", attemptsWidth) + "  "
-                                + padLeft("Pol", missPolicyWidth) + "  "
-                                + padLeft("Cap", missCapacityWidth) + "  "
-                                + padLeft("Liq", missLiquidityWidth) + "  "
-                                + padLeft("Fees", missFeesWidth) + "  "
+                                + padLeft("Pol", filteredPolicyWidth) + "  "
+                                + padLeft("SCap", searchCapacityWidth) + "  "
+                                + padLeft("FCap", filteredCapacityWidth) + "  "
+                                + padLeft("Liq", filteredLiquidityWidth) + "  "
+                                + padLeft("Fees", filteredFeesWidth) + "  "
                                 + padLeft("Tmp", tempWidth) + "  "
                                 + padLeft("Exp", expiryWidth) + "  "
                                 + padLeft("OK", successWidth)
@@ -1148,13 +1150,14 @@ public class UltraViolet {
                             + ui.section(padRight(row.sender(), senderWidth)) + "  "
                             + ui.accent(padRight(row.dest(), destWidth)) + "  "
                             + ui.value(padLeft(row.amount(), amountWidth)) + "  "
-                            + ui.value(padLeft(row.paths(), pathsWidth)) + "  "
+                            + ui.value(padLeft(row.returnedPaths(), returnedWidth)) + "  "
                             + ui.value(padLeft(row.candidates(), candidatesWidth)) + "  "
                             + ui.value(padLeft(row.attempts(), attemptsWidth)) + "  "
-                            + ui.accent(padLeft(row.missPolicy(), missPolicyWidth)) + "  "
-                            + ui.accent(padLeft(row.missCapacity(), missCapacityWidth)) + "  "
-                            + ui.accent(padLeft(row.missLiquidity(), missLiquidityWidth)) + "  "
-                            + ui.accent(padLeft(row.missFees(), missFeesWidth)) + "  "
+                            + ui.accent(padLeft(row.filteredPolicy(), filteredPolicyWidth)) + "  "
+                            + ui.accent(padLeft(row.searchCapacity(), searchCapacityWidth)) + "  "
+                            + ui.accent(padLeft(row.filteredCapacity(), filteredCapacityWidth)) + "  "
+                            + ui.accent(padLeft(row.filteredLiquidity(), filteredLiquidityWidth)) + "  "
+                            + ui.accent(padLeft(row.filteredFees(), filteredFeesWidth)) + "  "
                             + ui.accent(padLeft(row.temporaryFailures(), tempWidth)) + "  "
                             + ui.accent(padLeft(row.expirySoon(), expiryWidth)) + "  "
                             + ("yes".equals(row.success()) ? ui.running(successValue) : ui.stopped(successValue))
@@ -1170,15 +1173,16 @@ public class UltraViolet {
                     abbreviateMiddle(report.sender(), 14),
                     abbreviateMiddle(report.dest(), 14),
                     formatAmountNumber(report.amt()),
-                    Integer.toString(report.total_paths()),
+                    Integer.toString(report.search_returned_paths()),
                     Integer.toString(report.candidate_paths()),
                     Integer.toString(report.attempted_paths()),
-                    Integer.toString(report.miss_policy()),
-                    Integer.toString(report.miss_capacity()),
-                    Integer.toString(report.miss_local_liquidity()),
-                    Integer.toString(report.miss_fees()),
-                    Integer.toString(report.temporary_channel_failures()),
-                    Integer.toString(report.expiry_too_soon()),
+                    Integer.toString(report.filtered_policy()),
+                    Integer.toString(report.search_excluded_capacity()),
+                    Integer.toString(report.filtered_capacity()),
+                    Integer.toString(report.filtered_local_liquidity()),
+                    Integer.toString(report.filtered_max_fees()),
+                    Integer.toString(report.attempt_failed_temporary_channel()),
+                    Integer.toString(report.attempt_failed_expiry_too_soon()),
                     report.success() ? "yes" : "no"
             ));
         }

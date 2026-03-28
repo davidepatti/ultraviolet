@@ -91,6 +91,7 @@ Also, an interesting possibility is to use the "inv" command to inject a whole s
 And the collected and characterized to produce statistical data such as failure rate and motivation of the failures,
 e.g. missing liquidity, insufficient channel capacity, no routes, expired timelocks and so on. See the command "rep" for
 a complete report, and "wr" to the export reports.
+The invoice CSV schema is documented in [docs/invoice_report_format.md](docs/invoice_report_format.md).
 
 The `stat` command now renders the same information as a readable terminal dashboard, combining a small network summary
 with aligned min/max/average/quartile tables for graph size, channel counts, balances, invoices, and outbound ratios.
@@ -114,7 +115,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
 
 
 
