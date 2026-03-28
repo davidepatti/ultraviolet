@@ -11,7 +11,9 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
+import java.util.stream.DoubleStream;
 
 
 public class UltraViolet {
@@ -36,8 +38,10 @@ public class UltraViolet {
         private static final String RESET = "\033[0m";
         private static final String BOLD = "\033[1m";
         private static final String DIM = "\033[2m";
+        private static final String BLUE = "\033[34m";
         private static final String CYAN = "\033[36m";
         private static final String GREEN = "\033[32m";
+        private static final String MAGENTA = "\033[35m";
         private static final String YELLOW = "\033[33m";
         private final boolean enabled;
 
@@ -92,6 +96,22 @@ public class UltraViolet {
         String hint(String text) {
             return apply(DIM, text);
         }
+
+        String section(String text) {
+            return apply(BOLD + BLUE, text);
+        }
+
+        String value(String text) {
+            return apply(BOLD + GREEN, text);
+        }
+
+        String accent(String text) {
+            return apply(BOLD + YELLOW, text);
+        }
+
+        String detail(String text) {
+            return apply(MAGENTA, text);
+        }
     }
 
 
@@ -124,6 +144,64 @@ public class UltraViolet {
             return ui.key(padRight(key, MENU_KEY_WIDTH)) + "- " + descriptionSupplier.get();
         }
     }
+
+    private record ChannelDisplayRow(
+            String channelId,
+            String peerId,
+            String capacity,
+            String outbound,
+            String inbound,
+            String selfFees,
+            String peerFees
+    ) {}
+
+    private record NodeOverviewRow(
+            String pubkey,
+            String alias,
+            String capacity,
+            String channels,
+            String onChain,
+            String local,
+            String remote,
+            String outbound,
+            String profile
+    ) {}
+
+    private record GraphDisplayRow(
+            String source,
+            String destination,
+            String channelId,
+            String capacity,
+            String policy
+    ) {}
+
+    private record NetworkStatRow(
+            String label,
+            String min,
+            String max,
+            String average,
+            String stdDev,
+            String firstQuartile,
+            String median,
+            String thirdQuartile
+    ) {}
+
+    private record InvoiceDisplayRow(
+            String hash,
+            String sender,
+            String dest,
+            String amount,
+            String paths,
+            String candidates,
+            String attempts,
+            String missPolicy,
+            String missCapacity,
+            String missLiquidity,
+            String missFees,
+            String temporaryFailures,
+            String expirySoon,
+            String success
+    ) {}
 
 
     public UltraViolet(String configPath) {
@@ -253,9 +331,11 @@ public class UltraViolet {
     }
 
     private void showAllNodes(Void unused) {
-        System.out.println(UVNode.generateNodeLabelString());
-        System.out.println("---------------------------------------------------------------------");
-        networkManager.getUVNodeList().values().stream().sorted().forEach(System.out::println);
+        if (networkManager.getUVNodeList().isEmpty()) {
+            System.out.println("EMPTY NODE LIST");
+            return;
+        }
+        printNodeOverviewTable(" Network Nodes ", networkManager.getSortedNodeListByPubkey());
     }
 
     public void showNodesAndChannels(Object x) {
@@ -263,14 +343,15 @@ public class UltraViolet {
             System.out.println("EMPTY NODE LIST");
             return;
         }
-        var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
-        for (UVNode n : ln) {
-            System.out.println("--------------------------------------------");
-            System.out.println(UVNode.generateNodeLabelString());
-            System.out.println(n);
-            System.out.println(UVChannel.generateLabels());
-            n.getChannels().values().forEach(System.out::println);
+        var nodes = networkManager.getSortedNodeListByPubkey();
+        System.out.println(ui.separator());
+        System.out.println(ui.title(" Nodes And Channels "));
+        printNodeCollectionSummary(nodes);
+        int nodeAmountWidth = computeNodeAmountWidth(nodes);
+        for (UVNode node : nodes) {
+            printNodeAndChannels(node, nodeAmountWidth);
         }
+        System.out.println(ui.separator());
     }
 
     private void showNode(Object x) {
@@ -424,7 +505,7 @@ public class UltraViolet {
     // Method for "Show Network Stats"
     public void showNetworkStatsMethod(Object x) {
         if (networkManager.isBootstrapCompleted()) {
-            System.out.println(networkManager.getStats().generateNetworkReport());
+            printNetworkStatsDashboard();
         } else {
             System.out.println("Bootstrap not completed!");
         }
@@ -469,36 +550,12 @@ public class UltraViolet {
             return;
         }
         var node = networkManager.searchNode(pubkey);
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println(UVNode.generateNodeLabelString());
-        System.out.println(node);
-
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println("Channel ID      n1     n2     balances              base/ppm fees             outbound/inbound");
-        System.out.println("---------------------------------------------------------------------");
-
-        for (var channel: node.getChannels().values()) {
-            int outbound = (int)(node.getOutboundFraction(channel.getChannelId())*100);
-            System.out.println(channel+" ["+outbound+"/"+(100-outbound)+"]");
-        }
-
-        System.out.println("---------------------------------------------------------------------");
-        int edges = node.getChannelGraph().getChannelCount();
-        int vertex = node.getChannelGraph().getNodeCount();
-        System.out.println("Graph nodes: " + vertex + " Graph channels: " + edges + " Graph null policies: " + node.getChannelGraph().countNullPolicies());
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println("*** HTLC Node Statistics ");
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println(GlobalStats.NodeStats.generateHTLCStatsHeader());
-        System.out.println(node.getNodeStats().generateHTLCStatsCSV());
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println("*** Invoice Reports ");
-        System.out.println("---------------------------------------------------------------------");
-        System.out.println(GlobalStats.NodeStats.InvoiceReport.generateInvoiceReportHeader());
-        for (var r :node.getNodeStats().getInvoiceReports()) {
-            System.out.println(r);
-        }
+        printNodeAndChannels(node, computeNodeAmountWidth(List.of(node)));
+        printNodeGraphSummary(node);
+        printNodeHtlcStats(node);
+        printInvoiceReports(node);
         node.showQueuesStatus();
+        System.out.println(ui.separator());
     }
 
 
@@ -687,8 +744,7 @@ public class UltraViolet {
 
         if (!networkManager.isBootstrapCompleted()) return;
         var n = networkManager.searchNode(node_id);
-        System.out.println(n.getChannelGraph());
-        System.out.println("Graph null policies: "+n.getChannelGraph().countNullPolicies());
+        printGraphTable(n);
     }
 
     private void showAvailableFiles(String extension) {
@@ -838,6 +894,545 @@ public class UltraViolet {
         return new File(firstPath).getAbsoluteFile().equals(new File(secondPath).getAbsoluteFile());
     }
 
+    private void printNodeAndChannels(UVNode node, int nodeAmountWidth) {
+        System.out.println(ui.separator());
+        System.out.println(ui.title(" Node " + node.getPubKey() + " ") + " " + ui.accent(node.getAlias()));
+        System.out.println(
+                "  "
+                        + ui.hint("Capacity: ") + ui.value(formatAmountWithUnit(node.getNodeCapacity(), nodeAmountWidth))
+                        + "  "
+                        + ui.hint("Channels: ") + ui.value(padLeft(Integer.toString(node.getChannels().size()), 3))
+                        + "  "
+                        + ui.hint("Profile: ") + ui.detail(node.getProfile().getName())
+        );
+        System.out.println(
+                "  "
+                        + ui.hint("On-chain: ") + ui.value(formatAmountWithUnit(node.getOnChainBalance(), nodeAmountWidth))
+                        + "  "
+                        + ui.hint("Pending: ") + ui.accent(formatAmountWithUnit(node.getOnchainPending(), nodeAmountWidth))
+        );
+        System.out.println(
+                "  "
+                        + ui.hint("Local: ") + ui.value(formatAmountWithUnit(node.getLocalBalance(), nodeAmountWidth))
+                        + "  "
+                        + ui.hint("Remote: ") + ui.accent(formatAmountWithUnit(node.getRemoteBalance(), nodeAmountWidth))
+        );
+
+        var rows = buildChannelDisplayRows(node);
+        if (rows.isEmpty()) {
+            System.out.println("  " + ui.hint("(no channels)"));
+            return;
+        }
+
+        int channelIdWidth = maxWidth("Channel ID", rows.stream().map(ChannelDisplayRow::channelId).toList());
+        int peerWidth = maxWidth("Peer", rows.stream().map(ChannelDisplayRow::peerId).toList());
+        int capacityWidth = maxWidth("Capacity", rows.stream().map(ChannelDisplayRow::capacity).toList());
+        int outboundWidth = maxWidth("Outbound", rows.stream().map(ChannelDisplayRow::outbound).toList());
+        int inboundWidth = maxWidth("Inbound", rows.stream().map(ChannelDisplayRow::inbound).toList());
+        int selfFeeWidth = maxWidth("Self fee", rows.stream().map(ChannelDisplayRow::selfFees).toList());
+        int peerFeeWidth = maxWidth("Peer fee", rows.stream().map(ChannelDisplayRow::peerFees).toList());
+
+        System.out.println("  " + ui.section("Channels"));
+        System.out.println(
+                "  " + ui.hint(
+                        padRight("Channel ID", channelIdWidth) + "  "
+                                + padRight("Peer", peerWidth) + "  "
+                                + padLeft("Capacity", capacityWidth) + "  "
+                                + padLeft("Outbound", outboundWidth) + "  "
+                                + padLeft("Inbound", inboundWidth) + "  "
+                                + padLeft("Self fee", selfFeeWidth) + "  "
+                                + padLeft("Peer fee", peerFeeWidth)
+                )
+        );
+        for (ChannelDisplayRow row : rows) {
+            System.out.println(
+                    "  "
+                            + ui.key(padRight(row.channelId(), channelIdWidth)) + "  "
+                            + ui.section(padRight(row.peerId(), peerWidth)) + "  "
+                            + ui.value(padLeft(row.capacity(), capacityWidth)) + "  "
+                            + ui.value(padLeft(row.outbound(), outboundWidth)) + "  "
+                            + ui.accent(padLeft(row.inbound(), inboundWidth)) + "  "
+                            + ui.detail(padLeft(row.selfFees(), selfFeeWidth)) + "  "
+                            + ui.detail(padLeft(row.peerFees(), peerFeeWidth))
+            );
+        }
+    }
+
+    private void printNodeOverviewTable(String title, List<UVNode> nodes) {
+        System.out.println(ui.separator());
+        System.out.println(ui.title(title));
+        printNodeCollectionSummary(nodes);
+
+        var rows = buildNodeOverviewRows(nodes);
+        int pubkeyWidth = maxWidth("Node", rows.stream().map(NodeOverviewRow::pubkey).toList());
+        int aliasWidth = maxWidth("Alias", rows.stream().map(NodeOverviewRow::alias).toList());
+        int capacityWidth = maxWidth("Capacity", rows.stream().map(NodeOverviewRow::capacity).toList());
+        int channelsWidth = maxWidth("Channels", rows.stream().map(NodeOverviewRow::channels).toList());
+        int onChainWidth = maxWidth("On-chain", rows.stream().map(NodeOverviewRow::onChain).toList());
+        int localWidth = maxWidth("Local", rows.stream().map(NodeOverviewRow::local).toList());
+        int remoteWidth = maxWidth("Remote", rows.stream().map(NodeOverviewRow::remote).toList());
+        int outboundWidth = maxWidth("Outbound", rows.stream().map(NodeOverviewRow::outbound).toList());
+        int profileWidth = maxWidth("Profile", rows.stream().map(NodeOverviewRow::profile).toList());
+
+        System.out.println(
+                "  " + ui.hint(
+                        padRight("Node", pubkeyWidth) + "  "
+                                + padRight("Alias", aliasWidth) + "  "
+                                + padLeft("Capacity", capacityWidth) + "  "
+                                + padLeft("Channels", channelsWidth) + "  "
+                                + padLeft("On-chain", onChainWidth) + "  "
+                                + padLeft("Local", localWidth) + "  "
+                                + padLeft("Remote", remoteWidth) + "  "
+                                + padLeft("Outbound", outboundWidth) + "  "
+                                + padRight("Profile", profileWidth)
+                )
+        );
+        for (NodeOverviewRow row : rows) {
+            System.out.println(
+                    "  "
+                            + ui.key(padRight(row.pubkey(), pubkeyWidth)) + "  "
+                            + ui.accent(padRight(row.alias(), aliasWidth)) + "  "
+                            + ui.value(padLeft(row.capacity(), capacityWidth)) + "  "
+                            + ui.value(padLeft(row.channels(), channelsWidth)) + "  "
+                            + ui.value(padLeft(row.onChain(), onChainWidth)) + "  "
+                            + ui.value(padLeft(row.local(), localWidth)) + "  "
+                            + ui.accent(padLeft(row.remote(), remoteWidth)) + "  "
+                            + ui.detail(padLeft(row.outbound(), outboundWidth)) + "  "
+                            + ui.detail(padRight(row.profile(), profileWidth))
+            );
+        }
+        System.out.println(ui.separator());
+    }
+
+    private void printNodeCollectionSummary(List<UVNode> nodes) {
+        GlobalStats stats = networkManager.getStats();
+        int uniqueChannels = countUniqueChannels(nodes);
+        long totalCapacity = computeTotalNetworkCapacity(nodes);
+        double averageOutbound = nodes.stream().mapToDouble(this::safeOverallOutboundFraction).average().orElse(0.0);
+        UVNode maxGraphNode = stats.getMaxGraphSizeNode();
+        UVNode minGraphNode = stats.getMinGraphSizeNode();
+
+        System.out.println(
+                "  "
+                        + ui.hint("Nodes: ") + ui.value(padLeft(Integer.toString(nodes.size()), 4))
+                        + "  "
+                        + ui.hint("Channels: ") + ui.value(padLeft(Integer.toString(uniqueChannels), 4))
+                        + "  "
+                        + ui.hint("Capacity: ") + ui.value(formatAmountWithUnit(totalCapacity))
+                        + "  "
+                        + ui.hint("Avg outbound: ") + ui.detail(formatPercent(averageOutbound))
+        );
+
+        String largest = maxGraphNode == null
+                ? "-"
+                : maxGraphNode.getPubKey() + " (" + maxGraphNode.getChannelGraph().getNodeCount() + ")";
+        String smallest = minGraphNode == null
+                ? "-"
+                : minGraphNode.getPubKey() + " (" + minGraphNode.getChannelGraph().getNodeCount() + ")";
+        System.out.println(
+                "  "
+                        + ui.hint("Avg graph size: ") + ui.value(formatWhole(stats.getAverageGraphSize()))
+                        + "  "
+                        + ui.hint("Largest graph: ") + ui.section(largest)
+                        + "  "
+                        + ui.hint("Smallest graph: ") + ui.section(smallest)
+        );
+    }
+
+    private ArrayList<NodeOverviewRow> buildNodeOverviewRows(List<UVNode> nodes) {
+        ArrayList<NodeOverviewRow> rows = new ArrayList<>();
+        for (UVNode node : nodes) {
+            rows.add(new NodeOverviewRow(
+                    node.getPubKey(),
+                    node.getAlias(),
+                    formatAmountNumber(node.getNodeCapacity()),
+                    Integer.toString(node.getChannels().size()),
+                    formatAmountNumber(node.getOnChainBalance()),
+                    formatAmountNumber(node.getLocalBalance()),
+                    formatAmountNumber(node.getRemoteBalance()),
+                    formatPercent(safeOverallOutboundFraction(node)),
+                    node.getProfile().getName()
+            ));
+        }
+        return rows;
+    }
+
+    private void printNodeGraphSummary(UVNode node) {
+        ChannelGraph graph = node.getChannelGraph();
+        System.out.println("  " + ui.section("Graph View"));
+        System.out.println(
+                "  "
+                        + ui.hint("Visible nodes: ") + ui.value(Integer.toString(graph.getNodeCount()))
+                        + "  "
+                        + ui.hint("Directed edges: ") + ui.value(Integer.toString(graph.getChannelCount()))
+                        + "  "
+                        + ui.hint("Null policies: ") + ui.accent(Integer.toString(graph.countNullPolicies()))
+                        + "  "
+                        + ui.hint("Outbound share: ") + ui.detail(formatPercent(safeOverallOutboundFraction(node)))
+        );
+    }
+
+    private void printNodeHtlcStats(UVNode node) {
+        GlobalStats.NodeStats stats = node.getNodeStats();
+        System.out.println("  " + ui.section("HTLC Stats"));
+        System.out.println(
+                "  "
+                        + ui.hint("Invoice processing: ")
+                        + ui.value(Integer.toString(stats.getInvoiceProcessingSuccesses())) + " ok  "
+                        + ui.accent(Integer.toString(stats.getInvoiceProcessingFailures())) + " fail  "
+                        + ui.hint("Volume: ") + ui.value(formatAmountWithUnit(stats.getInvoiceProcessingVolume()))
+        );
+        System.out.println(
+                "  "
+                        + ui.hint("Forwarding: ")
+                        + ui.value(Integer.toString(stats.getForwarding_successes())) + " ok  "
+                        + ui.accent(Integer.toString(stats.getForwarding_failures())) + " fail  "
+                        + ui.hint("Volume: ") + ui.value(formatAmountWithUnit(stats.getForwarded_volume()))
+        );
+        System.out.println(
+                "  "
+                        + ui.hint("Failure reasons: ")
+                        + ui.accent("expiry-too-soon=" + stats.getExpiryTooSoon())
+                        + "  "
+                        + ui.accent("temporary-channel-failure=" + stats.getTemporaryChannelFailures())
+        );
+    }
+
+    private void printInvoiceReports(UVNode node) {
+        System.out.println("  " + ui.section("Invoice Reports"));
+        var reports = node.getInvoiceReports();
+        if (reports.isEmpty()) {
+            System.out.println("  " + ui.hint("(none)"));
+            return;
+        }
+
+        var rows = buildInvoiceDisplayRows(reports);
+        int hashWidth = maxWidth("Hash", rows.stream().map(InvoiceDisplayRow::hash).toList());
+        int senderWidth = maxWidth("From", rows.stream().map(InvoiceDisplayRow::sender).toList());
+        int destWidth = maxWidth("To", rows.stream().map(InvoiceDisplayRow::dest).toList());
+        int amountWidth = maxWidth("Amt", rows.stream().map(InvoiceDisplayRow::amount).toList());
+        int pathsWidth = maxWidth("Paths", rows.stream().map(InvoiceDisplayRow::paths).toList());
+        int candidatesWidth = maxWidth("Cand", rows.stream().map(InvoiceDisplayRow::candidates).toList());
+        int attemptsWidth = maxWidth("Att", rows.stream().map(InvoiceDisplayRow::attempts).toList());
+        int missPolicyWidth = maxWidth("Pol", rows.stream().map(InvoiceDisplayRow::missPolicy).toList());
+        int missCapacityWidth = maxWidth("Cap", rows.stream().map(InvoiceDisplayRow::missCapacity).toList());
+        int missLiquidityWidth = maxWidth("Liq", rows.stream().map(InvoiceDisplayRow::missLiquidity).toList());
+        int missFeesWidth = maxWidth("Fees", rows.stream().map(InvoiceDisplayRow::missFees).toList());
+        int tempWidth = maxWidth("Tmp", rows.stream().map(InvoiceDisplayRow::temporaryFailures).toList());
+        int expiryWidth = maxWidth("Exp", rows.stream().map(InvoiceDisplayRow::expirySoon).toList());
+        int successWidth = maxWidth("OK", rows.stream().map(InvoiceDisplayRow::success).toList());
+
+        System.out.println(
+                "  " + ui.hint(
+                        padRight("Hash", hashWidth) + "  "
+                                + padRight("From", senderWidth) + "  "
+                                + padRight("To", destWidth) + "  "
+                                + padLeft("Amt", amountWidth) + "  "
+                                + padLeft("Paths", pathsWidth) + "  "
+                                + padLeft("Cand", candidatesWidth) + "  "
+                                + padLeft("Att", attemptsWidth) + "  "
+                                + padLeft("Pol", missPolicyWidth) + "  "
+                                + padLeft("Cap", missCapacityWidth) + "  "
+                                + padLeft("Liq", missLiquidityWidth) + "  "
+                                + padLeft("Fees", missFeesWidth) + "  "
+                                + padLeft("Tmp", tempWidth) + "  "
+                                + padLeft("Exp", expiryWidth) + "  "
+                                + padLeft("OK", successWidth)
+                )
+        );
+        for (InvoiceDisplayRow row : rows) {
+            String successValue = padLeft(row.success(), successWidth);
+            System.out.println(
+                    "  "
+                            + ui.detail(padRight(row.hash(), hashWidth)) + "  "
+                            + ui.section(padRight(row.sender(), senderWidth)) + "  "
+                            + ui.accent(padRight(row.dest(), destWidth)) + "  "
+                            + ui.value(padLeft(row.amount(), amountWidth)) + "  "
+                            + ui.value(padLeft(row.paths(), pathsWidth)) + "  "
+                            + ui.value(padLeft(row.candidates(), candidatesWidth)) + "  "
+                            + ui.value(padLeft(row.attempts(), attemptsWidth)) + "  "
+                            + ui.accent(padLeft(row.missPolicy(), missPolicyWidth)) + "  "
+                            + ui.accent(padLeft(row.missCapacity(), missCapacityWidth)) + "  "
+                            + ui.accent(padLeft(row.missLiquidity(), missLiquidityWidth)) + "  "
+                            + ui.accent(padLeft(row.missFees(), missFeesWidth)) + "  "
+                            + ui.accent(padLeft(row.temporaryFailures(), tempWidth)) + "  "
+                            + ui.accent(padLeft(row.expirySoon(), expiryWidth)) + "  "
+                            + ("yes".equals(row.success()) ? ui.running(successValue) : ui.stopped(successValue))
+            );
+        }
+    }
+
+    private ArrayList<InvoiceDisplayRow> buildInvoiceDisplayRows(List<GlobalStats.NodeStats.InvoiceReport> reports) {
+        ArrayList<InvoiceDisplayRow> rows = new ArrayList<>();
+        for (GlobalStats.NodeStats.InvoiceReport report : reports) {
+            rows.add(new InvoiceDisplayRow(
+                    abbreviateMiddle(report.hash(), 16),
+                    abbreviateMiddle(report.sender(), 14),
+                    abbreviateMiddle(report.dest(), 14),
+                    formatAmountNumber(report.amt()),
+                    Integer.toString(report.total_paths()),
+                    Integer.toString(report.candidate_paths()),
+                    Integer.toString(report.attempted_paths()),
+                    Integer.toString(report.miss_policy()),
+                    Integer.toString(report.miss_capacity()),
+                    Integer.toString(report.miss_local_liquidity()),
+                    Integer.toString(report.miss_fees()),
+                    Integer.toString(report.temporary_channel_failures()),
+                    Integer.toString(report.expiry_too_soon()),
+                    report.success() ? "yes" : "no"
+            ));
+        }
+        return rows;
+    }
+
+    private void printGraphTable(UVNode node) {
+        ChannelGraph graph = node.getChannelGraph();
+        System.out.println(ui.separator());
+        System.out.println(ui.title(" Graph " + node.getPubKey() + " ") + " " + ui.accent(node.getAlias()));
+        System.out.println(
+                "  "
+                        + ui.hint("Visible nodes: ") + ui.value(Integer.toString(graph.getNodeCount()))
+                        + "  "
+                        + ui.hint("Directed edges: ") + ui.value(Integer.toString(graph.getChannelCount()))
+                        + "  "
+                        + ui.hint("Null policies: ") + ui.accent(Integer.toString(graph.countNullPolicies()))
+        );
+
+        var rows = buildGraphDisplayRows(graph);
+        if (rows.isEmpty()) {
+            System.out.println("  " + ui.hint("(graph is empty)"));
+            System.out.println(ui.separator());
+            return;
+        }
+
+        int sourceWidth = maxWidth("Source", rows.stream().map(GraphDisplayRow::source).toList());
+        int destWidth = maxWidth("Destination", rows.stream().map(GraphDisplayRow::destination).toList());
+        int channelWidth = maxWidth("Channel ID", rows.stream().map(GraphDisplayRow::channelId).toList());
+        int capacityWidth = maxWidth("Capacity", rows.stream().map(GraphDisplayRow::capacity).toList());
+        int policyWidth = maxWidth("Policy", rows.stream().map(GraphDisplayRow::policy).toList());
+
+        System.out.println(
+                "  " + ui.hint(
+                        padRight("Source", sourceWidth) + "  "
+                                + padRight("Destination", destWidth) + "  "
+                                + padRight("Channel ID", channelWidth) + "  "
+                                + padLeft("Capacity", capacityWidth) + "  "
+                                + padLeft("Policy", policyWidth)
+                )
+        );
+        for (GraphDisplayRow row : rows) {
+            String source = row.source().equals(node.getPubKey())
+                    ? ui.accent(padRight(row.source(), sourceWidth))
+                    : ui.section(padRight(row.source(), sourceWidth));
+            System.out.println(
+                    "  "
+                            + source + "  "
+                            + ui.key(padRight(row.destination(), destWidth)) + "  "
+                            + ui.detail(padRight(row.channelId(), channelWidth)) + "  "
+                            + ui.value(padLeft(row.capacity(), capacityWidth)) + "  "
+                            + ui.detail(padLeft(row.policy(), policyWidth))
+            );
+        }
+        System.out.println(ui.separator());
+    }
+
+    private ArrayList<GraphDisplayRow> buildGraphDisplayRows(ChannelGraph graph) {
+        ArrayList<GraphDisplayRow> rows = new ArrayList<>();
+        ArrayList<String> sources = new ArrayList<>(graph.getAdjMap().keySet());
+        sources.sort(String::compareTo);
+        for (String source : sources) {
+            var edges = new ArrayList<>(graph.getAdjMap().getOrDefault(source, Set.of()));
+            edges.sort(Comparator.comparing(ChannelGraph.Edge::destination).thenComparing(ChannelGraph.Edge::id));
+            for (ChannelGraph.Edge edge : edges) {
+                rows.add(new GraphDisplayRow(
+                        source,
+                        edge.destination(),
+                        edge.id(),
+                        formatAmountNumber(edge.capacity()),
+                        formatPolicy(edge.policy())
+                ));
+            }
+        }
+        return rows;
+    }
+
+    private void printNetworkStatsDashboard() {
+        var nodes = networkManager.getSortedNodeListByPubkey();
+        System.out.println(ui.separator());
+        System.out.println(ui.title(" Network Stats "));
+        printNodeCollectionSummary(nodes);
+
+        var rows = buildNetworkStatRows(nodes);
+        int labelWidth = maxWidth("Metric", rows.stream().map(NetworkStatRow::label).toList());
+        int minWidth = maxWidth("Min", rows.stream().map(NetworkStatRow::min).toList());
+        int maxWidth = maxWidth("Max", rows.stream().map(NetworkStatRow::max).toList());
+        int avgWidth = maxWidth("Average", rows.stream().map(NetworkStatRow::average).toList());
+        int stdWidth = maxWidth("Std dev", rows.stream().map(NetworkStatRow::stdDev).toList());
+        int q1Width = maxWidth("Q1", rows.stream().map(NetworkStatRow::firstQuartile).toList());
+        int medianWidth = maxWidth("Median", rows.stream().map(NetworkStatRow::median).toList());
+        int q3Width = maxWidth("Q3", rows.stream().map(NetworkStatRow::thirdQuartile).toList());
+
+        System.out.println(
+                "  " + ui.hint(
+                        padRight("Metric", labelWidth) + "  "
+                                + padLeft("Min", minWidth) + "  "
+                                + padLeft("Max", maxWidth) + "  "
+                                + padLeft("Average", avgWidth) + "  "
+                                + padLeft("Std dev", stdWidth) + "  "
+                                + padLeft("Q1", q1Width) + "  "
+                                + padLeft("Median", medianWidth) + "  "
+                                + padLeft("Q3", q3Width)
+                )
+        );
+        for (NetworkStatRow row : rows) {
+            System.out.println(
+                    "  "
+                            + ui.section(padRight(row.label(), labelWidth)) + "  "
+                            + ui.value(padLeft(row.min(), minWidth)) + "  "
+                            + ui.value(padLeft(row.max(), maxWidth)) + "  "
+                            + ui.value(padLeft(row.average(), avgWidth)) + "  "
+                            + ui.detail(padLeft(row.stdDev(), stdWidth)) + "  "
+                            + ui.accent(padLeft(row.firstQuartile(), q1Width)) + "  "
+                            + ui.accent(padLeft(row.median(), medianWidth)) + "  "
+                            + ui.accent(padLeft(row.thirdQuartile(), q3Width))
+            );
+        }
+        System.out.println(ui.separator());
+    }
+
+    private ArrayList<NetworkStatRow> buildNetworkStatRows(List<UVNode> nodes) {
+        ArrayList<NetworkStatRow> rows = new ArrayList<>();
+        rows.add(buildNetworkStatRow("Graph nodes", nodes.stream().mapToDouble(n -> n.getChannelGraph().getNodeCount()), this::formatWhole));
+        rows.add(buildNetworkStatRow("Graph edges", nodes.stream().mapToDouble(n -> n.getChannelGraph().getChannelCount()), this::formatWhole));
+        rows.add(buildNetworkStatRow("Node channels", nodes.stream().mapToDouble(n -> n.getChannels().size()), this::formatWhole));
+        rows.add(buildNetworkStatRow("Node capacity", nodes.stream().mapToDouble(UVNode::getNodeCapacity), this::formatWhole));
+        rows.add(buildNetworkStatRow("Local balance", nodes.stream().mapToDouble(UVNode::getLocalBalance), this::formatWhole));
+        rows.add(buildNetworkStatRow("Invoices", nodes.stream().mapToDouble(n -> n.getGeneratedInvoices().size()), this::formatWhole));
+        rows.add(buildNetworkStatRow("Outbound %", nodes.stream().mapToDouble(this::safeOverallOutboundFraction), this::formatPercent));
+        return rows;
+    }
+
+    private NetworkStatRow buildNetworkStatRow(String label, DoubleStream stream, DoubleFunction<String> formatter) {
+        GlobalStats.StatFunctions stats = new GlobalStats.StatFunctions(stream);
+        return new NetworkStatRow(
+                label,
+                formatter.apply(stats.calculateMin()),
+                formatter.apply(stats.calculateMax()),
+                formatter.apply(stats.calculateAverage()),
+                formatter.apply(stats.calculateStandardDeviation()),
+                formatter.apply(stats.calculateFirstQuartile()),
+                formatter.apply(stats.calculateMedian()),
+                formatter.apply(stats.calculateThirdQuartile())
+        );
+    }
+
+    private ArrayList<ChannelDisplayRow> buildChannelDisplayRows(UVNode node) {
+        ArrayList<ChannelDisplayRow> rows = new ArrayList<>();
+        var channels = node.getChannels().values().stream().sorted().toList();
+        for (UVChannel channel : channels) {
+            String localId = node.getPubKey();
+            String peerId = channel.getNode1PubKey().equals(localId)
+                    ? channel.getNode2PubKey()
+                    : channel.getNode1PubKey();
+            rows.add(new ChannelDisplayRow(
+                    channel.getChannelId(),
+                    peerId,
+                    formatAmountNumber(channel.getCapacity()),
+                    formatAmountNumber(Math.max(0, channel.getLiquidity(localId))),
+                    formatAmountNumber(Math.max(0, channel.getLiquidity(peerId))),
+                    formatPolicy(channel.getPolicy(localId)),
+                    formatPolicy(channel.getPolicy(peerId))
+            ));
+        }
+        return rows;
+    }
+
+    private int computeNodeAmountWidth(List<UVNode> nodes) {
+        int width = 1;
+        for (UVNode node : nodes) {
+            width = Math.max(width, formatAmountNumber(node.getNodeCapacity()).length());
+            width = Math.max(width, formatAmountNumber(node.getOnChainBalance()).length());
+            width = Math.max(width, formatAmountNumber(node.getOnchainPending()).length());
+            width = Math.max(width, formatAmountNumber(node.getLocalBalance()).length());
+            width = Math.max(width, formatAmountNumber(node.getRemoteBalance()).length());
+        }
+        return width;
+    }
+
+    private int countUniqueChannels(List<UVNode> nodes) {
+        return nodes.stream().mapToInt(node -> node.getChannels().size()).sum() / 2;
+    }
+
+    private long computeTotalNetworkCapacity(List<UVNode> nodes) {
+        return nodes.stream().mapToLong(UVNode::getNodeCapacity).sum() / 2L;
+    }
+
+    private int maxWidth(String header, List<String> values) {
+        int width = header.length();
+        for (String value : values) {
+            width = Math.max(width, value.length());
+        }
+        return width;
+    }
+
+    private String formatAmountWithUnit(int amount, int width) {
+        return padLeft(formatAmountNumber(amount), width) + " sats";
+    }
+
+    private String formatAmountWithUnit(int amount) {
+        return formatAmountWithUnit((long) amount);
+    }
+
+    private String formatAmountWithUnit(long amount) {
+        return formatAmountNumber(amount) + " sats";
+    }
+
+    private String formatAmountNumber(int amount) {
+        return formatAmountNumber((long) amount);
+    }
+
+    private String formatAmountNumber(long amount) {
+        return String.format(Locale.ROOT, "%,d", amount);
+    }
+
+    private String formatWhole(double value) {
+        if (!Double.isFinite(value)) {
+            return "-";
+        }
+        return String.format(Locale.ROOT, "%,.0f", value);
+    }
+
+    private String formatPercent(double fraction) {
+        if (!Double.isFinite(fraction)) {
+            return "-";
+        }
+        return String.format(Locale.ROOT, "%.1f%%", fraction * 100.0);
+    }
+
+    private String formatPolicy(LNChannel.Policy policy) {
+        if (policy == null) {
+            return "-";
+        }
+        return String.format(Locale.ROOT, "%4d %4d", policy.getBaseFee(), policy.getFeePpm());
+    }
+
+    private double safeOverallOutboundFraction(UVNode node) {
+        int capacity = node.getNodeCapacity();
+        if (capacity == 0) {
+            return 0.0;
+        }
+        return (double) node.getLocalBalance() / capacity;
+    }
+
+    private String abbreviateMiddle(String value, int maxWidth) {
+        if (value == null || value.length() <= maxWidth || maxWidth < 5) {
+            return value;
+        }
+        int prefix = (maxWidth - 3) / 2;
+        int suffix = maxWidth - 3 - prefix;
+        return value.substring(0, prefix) + "..." + value.substring(value.length() - suffix);
+    }
+
     private String formatBootstrapProgressLine(int totalNodes) {
         int completed = networkManager.getBootstrapsEnded();
         int running = networkManager.getBootstrapsRunning();
@@ -898,6 +1493,14 @@ public class UltraViolet {
         StringBuilder s = new StringBuilder(value);
         while (s.length() < width) {
             s.append(' ');
+        }
+        return s.toString();
+    }
+
+    private static String padLeft(String value, int width) {
+        StringBuilder s = new StringBuilder(value);
+        while (s.length() < width) {
+            s.insert(0, ' ');
         }
         return s.toString();
     }

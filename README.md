@@ -6,7 +6,7 @@ _**U**nifying **L**ightning **T**opology and **R**outing **A**bstractions **VI**
 Ai-generared podcast discussion: [Google NotebookLM Audio](https://notebooklm.google.com/notebook/1a1c5193-65ed-4d0e-958e-a3c218da7831/audio)
 
 ## Paper
-D. Patti, S. Monteleone, E. Russo, M. Palesi and V. Catania, "A Novel Timechain-Level Approach to the Modeling of the Bitcoin Lightning Network," in 2024 IEEE International Conference on Blockchain (Blockchain), Copenhagen, Denmark, 2024 pp. 11-18.
+D. Patti, S. Monteleone, E. Russo, and M. Palesi, "Timechain-level modeling and analysis of the bitcoin lightning network," _Computer Networks_, vol. 275, Feb. 2026, Art. no. 111891. [https://doi.org/10.1016/j.comnet.2025.111891](https://doi.org/10.1016/j.comnet.2025.111891)
 
 ## Description
 
@@ -45,9 +45,7 @@ https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.propert
 
 ### Exploring with UV
 
-The above command will start the main menu:
-
-![screen](uvpics/main.png) 
+The above command will start the main menu.
 
 You can try to bootstrap a network using the commmand "boot". After a while depending on your hardware and the number of
 nodes, you will have a LN deployed.
@@ -62,18 +60,19 @@ start and stop it (with the "t" command"), actually freezing the time flow.
 ### Showing Nodes
 
 
-The commands "all", "nodes", "node", "graph", "p2pq" are all useful for displaying, at various level, the current LN.
+The commands `all`, `net`, `node`, `graph`, and `stat` are all useful for displaying, at various levels, the current LN.
 Please notice how, for sake of simplicity, each node and channel is given a simple handle to quickly.
-The output of "node" command, showing the channels a features of the each channel:
+Please notice that each node has its own channel graph, built according to the received gossip messages (as in real LN).
 
-![node](uvpics/node.png) 
+The newer `net` view provides a denser network-wide table, with aligned capacities and balances so it is easier to scan
+large simulated topologies from the terminal.
 
-The output of the "nodes" command, showing all nodes, along with customizable alias (currently mostly inspired to David
-Lynch and Depeche Mode).
+![net_view](uvpics/net_view.png)
 
-![nodes](uvpics/nodes.png) 
+The `all` command has also been refreshed into a per-node dashboard: each block now highlights node balances, channel
+counts, and a compact channel table with outbound/inbound liquidity and fee directions.
 
-Please notice that each node has its own channel graph, build according to the received gossip messages (as in real LN).
+![all_view](uvpics/all_view.png)
 
 ### Deploying Events
 
@@ -93,6 +92,11 @@ And the collected and characterized to produce statistical data such as failure 
 e.g. missing liquidity, insufficient channel capacity, no routes, expired timelocks and so on. See the command "rep" for
 a complete report, and "wr" to the export reports.
 
+The `stat` command now renders the same information as a readable terminal dashboard, combining a small network summary
+with aligned min/max/average/quartile tables for graph size, channel counts, balances, invoices, and outbound ratios.
+
+![stats_view](uvpics/stats_view.png)
+
 ### Misc
 
 The current status of the LN can be saved and restored later. 
@@ -110,9 +114,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
-
-
 
 
 

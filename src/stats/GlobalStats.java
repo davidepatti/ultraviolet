@@ -203,6 +203,8 @@ public class GlobalStats {
         public int getForwarding_failures() { return forwarding_failures; }
         public int getForwarding_successes() { return forwarding_successes; }
         public int getForwarded_volume() { return forwarded_volume; }
+        public int getExpiryTooSoon() { return expiry_too_soon; }
+        public int getTemporaryChannelFailures() { return temporary_channel_failure; }
         public ArrayList<InvoiceReport> getInvoiceReports() { return invoiceReports; }
         public void incrementInvoiceProcessingSuccessses() { this.invoice_processing_success++; }
         public int getInvoiceProcessingVolume() { return invoice_processing_volume; }
