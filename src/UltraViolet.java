@@ -26,7 +26,11 @@ public class UltraViolet {
     private static final int LOOP_SLEEP_TIME = 500;
     private final Scanner menuInputScanner;
     private final TerminalStyle ui;
+    private final Object consoleOutputLock = new Object();
     private String selectedConfigPath;
+    private String lastBootstrapProgressLine;
+    private int bootstrapProgressWidth;
+    private boolean bootstrapProgressVisible;
 
     private static final class TerminalStyle {
         private static final String RESET = "\033[0m";
@@ -124,6 +128,7 @@ public class UltraViolet {
 
     public UltraViolet(String configPath) {
         this.ui = TerminalStyle.detect();
+        UVNetwork.Log = this::printNetworkLogLine;
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         menuInputScanner = new Scanner(System.in);
         networkManager = createNetworkManager(configPath);
@@ -204,20 +209,20 @@ public class UltraViolet {
             return;
         }
         System.out.println("Bootstrap started, check " + config.logfile + " for details...");
-        var bootstrap_exec= Executors.newSingleThreadExecutor();
-        Future<?> bootstrapOutcome = bootstrap_exec.submit(networkManager::bootstrapNetwork);
+        var bootstrapExec = Executors.newSingleThreadExecutor();
+        Future<?> bootstrapOutcome = bootstrapExec.submit(networkManager::bootstrapNetwork);
         System.out.println("waiting bootstrap to finish...");
-        int loopCount = 0;
+        resetBootstrapProgressOutput();
         while (!bootstrapOutcome.isDone()) {
-            loopCount++;
-            System.out.println("Bootstrapping (" + 100 * networkManager.getBootstrapsEnded() / (double) config.bootstrap_nodes + "%)(Completed " + networkManager.getBootstrapsEnded() + " of " + config.bootstrap_nodes + ", running:" + networkManager.getBootstrapsRunning() + ")");
-            if (loopCount % 20 == 0) System.out.println();
+            renderBootstrapProgressLine(formatBootstrapProgressLine(config.bootstrap_nodes));
             try {
                 Thread.sleep(LOOP_SLEEP_TIME);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
+        finishBootstrapProgressOutput();
+        bootstrapExec.shutdown();
         System.out.println("Done!");
     }
     private void myMethod(Object x) {
@@ -831,6 +836,62 @@ public class UltraViolet {
             return false;
         }
         return new File(firstPath).getAbsoluteFile().equals(new File(secondPath).getAbsoluteFile());
+    }
+
+    private String formatBootstrapProgressLine(int totalNodes) {
+        int completed = networkManager.getBootstrapsEnded();
+        int running = networkManager.getBootstrapsRunning();
+        double percent = totalNodes == 0 ? 100.0 : 100.0 * completed / totalNodes;
+        return String.format(
+                Locale.ROOT,
+                "Bootstrapping (%5.1f%%) (Completed %d of %d, running:%d)",
+                percent,
+                completed,
+                totalNodes,
+                running
+        );
+    }
+
+    private void resetBootstrapProgressOutput() {
+        synchronized (consoleOutputLock) {
+            lastBootstrapProgressLine = null;
+            bootstrapProgressWidth = 0;
+            bootstrapProgressVisible = false;
+        }
+    }
+
+    private void renderBootstrapProgressLine(String progressLine) {
+        synchronized (consoleOutputLock) {
+            if (Objects.equals(lastBootstrapProgressLine, progressLine)) {
+                return;
+            }
+            bootstrapProgressWidth = Math.max(bootstrapProgressWidth, progressLine.length());
+            System.out.print("\r" + padRight(progressLine, bootstrapProgressWidth));
+            System.out.flush();
+            lastBootstrapProgressLine = progressLine;
+            bootstrapProgressVisible = true;
+        }
+    }
+
+    private void finishBootstrapProgressOutput() {
+        synchronized (consoleOutputLock) {
+            if (!bootstrapProgressVisible) {
+                return;
+            }
+            System.out.println();
+            bootstrapProgressVisible = false;
+        }
+    }
+
+    private void printNetworkLogLine(String message) {
+        synchronized (consoleOutputLock) {
+            if (bootstrapProgressVisible) {
+                System.out.print("\r" + padRight("", bootstrapProgressWidth) + "\r");
+                System.out.flush();
+                bootstrapProgressVisible = false;
+            }
+            System.out.println(message);
+        }
     }
 
     private static String padRight(String value, int width) {
