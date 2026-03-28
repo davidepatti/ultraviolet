@@ -275,32 +275,98 @@ public class GlobalStats {
             return "PubKey,Alias,Capacity,Channels,OutboundFraction,Max,Min,Average,Median,"+generateHTLCStatsHeader();
         }
 
+        // Search, filter, and routing-attempt metrics are kept in separate columns on purpose.
         public record InvoiceReport(String hash,
                                     String sender,
                                     String dest,
                                     int amt,
-                                    int total_paths,
+                                    int max_fees,
+                                    String path_finder,
+                                    int search_limit_paths,
+                                    int search_returned_paths,
+                                    int search_investigated_states,
+                                    int search_expanded_edges,
+                                    int search_excluded_capacity,
+                                    int search_excluded_visited_state,
+                                    int search_excluded_cycle,
+                                    int search_excluded_max_hops,
+                                    int search_excluded_cost,
+                                    int filtered_policy,
+                                    int filtered_capacity,
+                                    int filtered_local_liquidity,
+                                    int filtered_max_fees,
                                     int candidate_paths,
-                                    int miss_policy,
-                                    int miss_capacity,
-                                    int miss_local_liquidity,
-                                    int miss_fees,
                                     int attempted_paths,
-                                    int temporary_channel_failures,
-                                    int expiry_too_soon,
+                                    int attempt_failed_temporary_channel,
+                                    int attempt_failed_expiry_too_soon,
+                                    int attempt_failed_local_liquidity,
+                                    int attempt_failed_timeout,
+                                    int attempt_failed_unknown,
                                     boolean success) implements Serializable {
 
             public static String generateInvoiceReportHeader() {
-                return "hash, sender, dest, amt, total_paths, candidate_paths, miss_policy, miss_capacity," +
-                        " miss_local_liquidity, miss_fees, attempted_paths, temporary_channel_failures," +
-                        " expiry_too_soon, success";
+                return String.join(",",
+                        "hash",
+                        "sender",
+                        "dest",
+                        "amt",
+                        "max_fees",
+                        "path_finder",
+                        "search_limit_paths",
+                        "search_returned_paths",
+                        "search_investigated_states",
+                        "search_expanded_edges",
+                        "search_excluded_capacity",
+                        "search_excluded_visited_state",
+                        "search_excluded_cycle",
+                        "search_excluded_max_hops",
+                        "search_excluded_cost",
+                        "filtered_policy",
+                        "filtered_capacity",
+                        "filtered_local_liquidity",
+                        "filtered_max_fees",
+                        "candidate_paths",
+                        "attempted_paths",
+                        "attempt_failed_temporary_channel",
+                        "attempt_failed_expiry_too_soon",
+                        "attempt_failed_local_liquidity",
+                        "attempt_failed_timeout",
+                        "attempt_failed_unknown",
+                        "success"
+                );
             }
 
             @Override
             public String toString() {
-                return hash + ',' + sender + ',' + dest + ',' +amt+","+ total_paths + "," + candidate_paths + "," +miss_policy + ","+miss_capacity +
-                        "," + miss_local_liquidity + "," + miss_fees + "," + attempted_paths + "," + temporary_channel_failures +
-                        "," + expiry_too_soon + "," + success;
+                return String.join(",",
+                        hash,
+                        sender,
+                        dest,
+                        Integer.toString(amt),
+                        Integer.toString(max_fees),
+                        path_finder,
+                        Integer.toString(search_limit_paths),
+                        Integer.toString(search_returned_paths),
+                        Integer.toString(search_investigated_states),
+                        Integer.toString(search_expanded_edges),
+                        Integer.toString(search_excluded_capacity),
+                        Integer.toString(search_excluded_visited_state),
+                        Integer.toString(search_excluded_cycle),
+                        Integer.toString(search_excluded_max_hops),
+                        Integer.toString(search_excluded_cost),
+                        Integer.toString(filtered_policy),
+                        Integer.toString(filtered_capacity),
+                        Integer.toString(filtered_local_liquidity),
+                        Integer.toString(filtered_max_fees),
+                        Integer.toString(candidate_paths),
+                        Integer.toString(attempted_paths),
+                        Integer.toString(attempt_failed_temporary_channel),
+                        Integer.toString(attempt_failed_expiry_too_soon),
+                        Integer.toString(attempt_failed_local_liquidity),
+                        Integer.toString(attempt_failed_timeout),
+                        Integer.toString(attempt_failed_unknown),
+                        Boolean.toString(success)
+                );
             }
 
         }

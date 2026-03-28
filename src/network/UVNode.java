@@ -341,57 +341,58 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         log("Processing Invoice " + invoice);
 
-        // pathfinding stats
-        int miss_capacity = 0;
-        int miss_local_liquidity = 0;
-        int miss_max_fees = 0;
-        int miss_policy = 0;
+        // Keep post-search filtering separate from pathfinder-internal pruning stats.
+        int filtered_policy = 0;
+        int filtered_capacity = 0;
+        int filtered_local_liquidity = 0;
+        int filtered_max_fees = 0;
 
         String logMessage;
 
         var searchResult = newSearchPathFinder(invoice.getAmount())
                 .findPaths(this.channelGraph, this.getPubKey(), invoice.getDestination(), MAX_CANDIDATE_PATHS_PER_INVOICE);
-        miss_capacity = searchResult.stats().excludedByCapacity();
+        var searchStats = searchResult.stats();
+        var pathFinderStrategy = PathFinderFactory.strategyOf(pathFinder).name().toLowerCase(Locale.ROOT);
         List<Path> candidatePaths = new ArrayList<>();
 
         for (var pathDetails : searchResult.paths()) {
             var path = pathDetails.path();
 
-            var to_discard = false;
-
             if (!checkPathPolicies(path)) {
-                miss_policy++;
+                filtered_policy++;
                 continue;
             }
 
             if (!checkPathCapacity(path, invoice.getAmount())) {
                 debug(()->"Discarding path: missing capacity" + (path));
-                to_discard = true;
-                miss_capacity++;
+                filtered_capacity++;
+                continue;
             }
 
             // please notice that this does not exclude further missing local liquidy events
             // that will happen at the momennt of actual reservation, and will be accoutned in another place
             if (!checkOutboundPathLiquidity(path, invoice.getAmount())) {
                 debug(()->"Discarding path: missing liquidity on local channel" +(path));
-                to_discard = true;
-                miss_local_liquidity++;
+                filtered_local_liquidity++;
+                continue;
             }
 
             if (getPathFees(path, invoice.getAmount()) > max_fees) {
                 debug(()->"Discarding path: missing max fees " + (path));
-                to_discard = true;
-                miss_max_fees++;
+                filtered_max_fees++;
+                continue;
             }
 
-            if (!to_discard)  candidatePaths.add(path);
+            candidatePaths.add(path);
         }
 
         boolean success_htlc = false;
         int attempted_paths = 0;
-        int expiry_too_soon = 0;
-        int temporary_channel_failure = 0;
-        int unknown_reason = 0;
+        int attempt_failed_expiry_too_soon = 0;
+        int attempt_failed_temporary_channel = 0;
+        int attempt_failed_local_liquidity = 0;
+        int attempt_failed_timeout = 0;
+        int attempt_failed_unknown = 0;
 
         if (!candidatePaths.isEmpty()) {
 
@@ -462,20 +463,20 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     // TOFIX: reason should not be null
                     switch (reason) {
                         case "expiry_too_soon":
-                            expiry_too_soon++;
+                            attempt_failed_expiry_too_soon++;
                             break;
                         case "temporary_channel_failure":
-                            temporary_channel_failure++;
+                            attempt_failed_temporary_channel++;
                             break;
                         case "missing local liquidity":
-                            miss_local_liquidity++;
+                            attempt_failed_local_liquidity++;
                             break;
                         case "attempt_timeout":
-                            unknown_reason++;
+                            attempt_failed_timeout++;
                             break;
                         default:
                             debug(()->"No reason for failure of "+hash);
-                            unknown_reason++;
+                            attempt_failed_unknown++;
                             break;
                     }
                     logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
@@ -497,20 +498,34 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         pendingInvoices.remove(invoice.getHash());
         failure_reason.remove(invoice.getHash());
 
+        // The invoice CSV is stage-oriented: search, filtering, then actual routing attempts.
         var report = new GlobalStats.NodeStats.InvoiceReport(
                 CryptoKit.shortString(invoice.getHash()),
                 this.getPubKey(),
                 invoice.getDestination(),
                 invoice.getAmount(),
-                searchResult.paths().size(),
+                max_fees,
+                pathFinderStrategy,
+                MAX_CANDIDATE_PATHS_PER_INVOICE,
+                searchStats.returnedPaths(),
+                searchStats.investigatedStates(),
+                searchStats.expandedEdges(),
+                searchStats.excludedByCapacity(),
+                searchStats.excludedByVisitedState(),
+                searchStats.excludedByCycle(),
+                searchStats.excludedByMaxHops(),
+                searchStats.excludedByCost(),
+                filtered_policy,
+                filtered_capacity,
+                filtered_local_liquidity,
+                filtered_max_fees,
                 candidatePaths.size(),
-                miss_policy,
-                miss_capacity,
-                miss_local_liquidity,
-                miss_max_fees,
                 attempted_paths,
-                temporary_channel_failure,
-                expiry_too_soon,
+                attempt_failed_temporary_channel,
+                attempt_failed_expiry_too_soon,
+                attempt_failed_local_liquidity,
+                attempt_failed_timeout,
+                attempt_failed_unknown,
                 success_htlc);
 
         nodeStats.invoiceReports.add(report);
