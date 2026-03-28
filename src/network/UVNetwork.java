@@ -268,12 +268,9 @@ public class UVNetwork implements LNetwork {
 
             print_log("Waiting "+uvConfig.p2p_max_age+" blocks as p2p messages expire time... ");
             waitForBlocks(uvConfig.p2p_max_age+1);
-            print_log("Done!");
-
 
             print_log("Waiting for message queue to empty....");
             waitForEmptyQueues(100);
-            print_log("DONE!");
 
             print_log("Pruning empty policies from graphs...");
             int pruned = 0;
@@ -285,7 +282,7 @@ public class UVNetwork implements LNetwork {
             closeCriticalLog();
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
-            print_log("BOOTRAP: Completed at "+after+", duration (ms):"+d);
+            print_log("BOOTSTRAP: Completed at "+after+", duration (ms):"+d);
 
         }
     }
@@ -1170,11 +1167,9 @@ public class UVNetwork implements LNetwork {
             //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
         }
         print_log("Completed events generation");
-
         print_log("Waiting for queues to flush...");
         // the wait interval is just a reasonable value of ms between checks
         waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
-        print_log("DONE !!");
         Instant end_gen = Instant.now();
         Duration timeElapsed = Duration.between(start_gen, end_gen);
         print_log("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
