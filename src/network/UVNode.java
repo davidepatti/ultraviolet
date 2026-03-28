@@ -1459,49 +1459,43 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     @SuppressWarnings("unchecked")
     @Serial
-    private void readObject(ObjectInputStream s) {
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
         channels = new ConcurrentHashMap<>();
         saved_peers_id = new ArrayList<>();
         failure_reason = new HashMap<>();
 
-
-        try {
-            s.defaultReadObject();
-            int num_channels = s.readInt();
-            for (int i=0;i<num_channels;i++) {
-                UVChannel c = (UVChannel)s.readObject();
-                channels.put(c.getChannelId(),c);
-            }
-            int num_peers = s.readInt();
-            for (int i=0;i<num_peers;i++) {
-                saved_peers_id.add((String)s.readObject());
-            }
-
-            //noinspection unchecked
-            generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
-            //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
-            nodeStats = (GlobalStats.NodeStats) s.readObject();
-            payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
-            channelGraph = (ChannelGraph) s.readObject();
-
-            setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
-
-            this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
-            this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
-            this.pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
-            this.receivedHTLC = new HashMap<>();
-            this.pendingHTLC = new ConcurrentHashMap<>();
-            this.sentChannelOpenings = new HashMap<>();
-            this.updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
-            this.pendingInvoices = new ConcurrentHashMap<>();
-            this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
-            this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
-            this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
-            this.waitingTxConf = new HashMap<>();
+        s.defaultReadObject();
+        int num_channels = s.readInt();
+        for (int i=0;i<num_channels;i++) {
+            UVChannel c = (UVChannel)s.readObject();
+            channels.put(c.getChannelId(),c);
         }
-        catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException(e);
+        int num_peers = s.readInt();
+        for (int i=0;i<num_peers;i++) {
+            saved_peers_id.add((String)s.readObject());
         }
+
+        //noinspection unchecked
+        generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
+        //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
+        nodeStats = (GlobalStats.NodeStats) s.readObject();
+        payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
+        channelGraph = (ChannelGraph) s.readObject();
+
+        setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
+
+        this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
+        this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+        this.pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
+        this.receivedHTLC = new HashMap<>();
+        this.pendingHTLC = new ConcurrentHashMap<>();
+        this.sentChannelOpenings = new HashMap<>();
+        this.updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
+        this.pendingInvoices = new ConcurrentHashMap<>();
+        this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
+        this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
+        this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
+        this.waitingTxConf = new HashMap<>();
     }
 
 

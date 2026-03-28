@@ -42,6 +42,7 @@ public class UltraViolet {
         private static final String CYAN = "\033[36m";
         private static final String GREEN = "\033[32m";
         private static final String MAGENTA = "\033[35m";
+        private static final String RED = "\033[31m";
         private static final String YELLOW = "\033[33m";
         private final boolean enabled;
 
@@ -111,6 +112,10 @@ public class UltraViolet {
 
         String detail(String text) {
             return apply(MAGENTA, text);
+        }
+
+        String error(String text) {
+            return apply(BOLD + RED, text);
         }
     }
 
@@ -460,32 +465,15 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
-        System.out.printf(
-            "Invoice Generation Rate (events/node/block)\n[0 for defaults: rate=%.1f, blocks=%d, min=%d, max=%d, fees=%d]: ",
-            DEFAULT_NODE_EVENTS_PER_BLOCK, DEFAULT_N_BLOCKS, DEFAULT_AMT_MIN, DEFAULT_AMT_MAX, DEFAULT_FEES);
-        double node_events_per_block = Double.parseDouble(menuInputScanner.nextLine());
-
-        int n_blocks;
-        int amt_min;
-        int amt_max;
-        int fees;
-
-        if(node_events_per_block == 0) {
-            node_events_per_block = DEFAULT_NODE_EVENTS_PER_BLOCK;
-            n_blocks = DEFAULT_N_BLOCKS;
-            amt_min = DEFAULT_AMT_MIN;
-            amt_max = DEFAULT_AMT_MAX;
-            fees = DEFAULT_FEES;
-        } else {
-            System.out.print("Timechain duration (blocks): ");
-            n_blocks = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Min amount");
-            amt_min = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max amount");
-            amt_max = Integer.parseInt(menuInputScanner.nextLine());
-            System.out.println("Max fees");
-            fees = Integer.parseInt(menuInputScanner.nextLine());
-        }
+        System.out.println(ui.hint("Press ENTER to accept defaults."));
+        double node_events_per_block = readDoubleOrDefault(
+                "Invoice generation rate (events/node/block)",
+                DEFAULT_NODE_EVENTS_PER_BLOCK
+        );
+        int n_blocks = readIntOrDefault("Timechain duration (blocks)", DEFAULT_N_BLOCKS);
+        int amt_min = readIntOrDefault("Min amount", DEFAULT_AMT_MIN);
+        int amt_max = readIntOrDefault("Max amount", DEFAULT_AMT_MAX);
+        int fees = readIntOrDefault("Max fees", DEFAULT_FEES);
 
         applyPathFinderStrategyToAllNodes(readPathFinderStrategyOrDefault());
 
@@ -524,7 +512,13 @@ public class UltraViolet {
         if (networkManager.loadStatus(file_to_load)) {
             updateSelectedConfigPath(networkManager.getConfig(), selectedConfigPath);
             System.out.println("UVM LOADED");
-        } else System.out.println("ERROR LOADING UVM from " + file_to_load);
+        } else {
+            String error = networkManager.getLastLoadStatusError();
+            if (error == null || error.isBlank()) {
+                error = "ERROR LOADING UVM from " + file_to_load;
+            }
+            System.out.println(ui.error(error));
+        }
     }
 
     private void setLocalChannelsBalances(Object x) {
@@ -582,6 +576,11 @@ public class UltraViolet {
     private int readIntOrDefault(String prompt, int defaultValue) {
         String value = readLineOrDefault(prompt, Integer.toString(defaultValue));
         return Integer.parseInt(value);
+    }
+
+    private double readDoubleOrDefault(String prompt, double defaultValue) {
+        String value = readLineOrDefault(prompt, Double.toString(defaultValue));
+        return Double.parseDouble(value);
     }
 
     private PathFinderFactory.Strategy parsePathFinderStrategy(String value) {

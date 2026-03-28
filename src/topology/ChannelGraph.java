@@ -102,21 +102,16 @@ public class ChannelGraph implements Serializable  {
     }
 
     @Serial
-    private void readObject(ObjectInputStream s) {
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
         adj_map = new HashMap<>();
         int n_keys;
-        try {
-            s.defaultReadObject();
-            n_keys = s.readInt();
+        s.defaultReadObject();
+        n_keys = s.readInt();
 
-            for (int i=0;i<n_keys;i++) {
-                var pubkey = (String) s.readObject();
-                @SuppressWarnings("unchecked") var list = (HashSet<Edge>)s.readObject();
-                adj_map.put(pubkey,list);
-             }
-
-        } catch (IOException | ClassNotFoundException e) {
-            throw new RuntimeException(e);
+        for (int i=0;i<n_keys;i++) {
+            var pubkey = (String) s.readObject();
+            @SuppressWarnings("unchecked") var list = (HashSet<Edge>)s.readObject();
+            adj_map.put(pubkey,list);
         }
 
     }

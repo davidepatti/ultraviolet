@@ -61,6 +61,7 @@ public class UVNetwork implements LNetwork {
     private Random random;
     private long masterSeed;  // e.g. passed in via misc.UVConfig
     private String bootstrapSessionId;
+    private String lastLoadStatusError;
     private BufferedWriter criticalLogWriter;
     private final ThreadLocal<Random> threadRng =
             ThreadLocal.withInitial(() -> {
@@ -80,6 +81,20 @@ public class UVNetwork implements LNetwork {
                 long seed = masterSeed ^ nameHash;
                 return new Random(seed);
             });
+
+    private static final class LoadedStatus {
+        private final UVConfig config;
+        private final UVTimechain timechain;
+        private final LinkedHashMap<String, UVNode> nodes;
+        private final Random random;
+
+        private LoadedStatus(UVConfig config, UVTimechain timechain, LinkedHashMap<String, UVNode> nodes, Random random) {
+            this.config = config;
+            this.timechain = timechain;
+            this.nodes = nodes;
+            this.random = random;
+        }
+    }
 
 
     private void adjustThreadPoolSizes() {
@@ -911,47 +926,143 @@ public class UVNetwork implements LNetwork {
     }
 
     public boolean loadStatus(String file) {
+        lastLoadStatusError = null;
+
+        LoadedStatus loadedStatus;
+        try {
+            loadedStatus = readStatusSnapshot(file);
+        } catch (IOException | ClassNotFoundException | RuntimeException e) {
+            lastLoadStatusError = describeLoadStatusError(file, e);
+            log(lastLoadStatusError);
+            logException("Failed to load status from " + file, e);
+            return false;
+        }
+
         if (getTimechainStatus()) {
             setTimechainStatus(false);
             stopP2PNetwork();
         }
-        uvnodes.clear();
 
+        applyLoadedStatus(loadedStatus);
+        print_log("Loading Ended (please notice: the timechain is currently stopped)");
+        return true;
+    }
+
+    public String getLastLoadStatusError() {
+        return lastLoadStatusError;
+    }
+
+    private LoadedStatus readStatusSnapshot(String file) throws IOException, ClassNotFoundException {
         try (var s = new ObjectInputStream(new FileInputStream(file))) {
-
             print_log("Loading config...");
-            this.uvConfig = (UVConfig)s.readObject();
+            UVConfig loadedConfig = (UVConfig) s.readObject();
+
             print_log("Loading timechain status...");
-            this.uvTimechain = (UVTimechain)s.readObject();
-            this.uvTimechain.initialize(this);
+            UVTimechain loadedTimechain = (UVTimechain) s.readObject();
 
             print_log("Loading UVNodes...");
             int num_nodes = s.readInt();
-            for (int i=0;i<num_nodes;i++) {
-                UVNode n = (UVNode) s.readObject();
-                n.setUVM(this);
-                uvnodes.put(n.getPubKey(),n);
+            var loadedNodes = new LinkedHashMap<String, UVNode>();
+            for (int i = 0; i < num_nodes; i++) {
+                UVNode node = (UVNode) s.readObject();
+                loadedNodes.put(node.getPubKey(), node);
             }
 
             print_log("Load random generator");
-            this.random = (Random)s.readObject();
+            Random loadedRandom = (Random) s.readObject();
 
-            // must restore channel partners, can be done only after all nodes have been restored in UVM
-            for (UVNode n: uvnodes.values()) {
-                n.restorePersistentData();
+            if (loadedConfig == null || loadedTimechain == null || loadedRandom == null) {
+                throw new InvalidObjectException("snapshot is missing required serialized fields");
             }
 
-            refreshPubkeyList();
-            bootstrap_completed = true;
+            return new LoadedStatus(loadedConfig, loadedTimechain, loadedNodes, loadedRandom);
+        }
+    }
 
-        } catch (IOException e) {
-            return false;
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
+    private void applyLoadedStatus(LoadedStatus loadedStatus) {
+        this.uvConfig = loadedStatus.config;
+        this.masterSeed = uvConfig.getMasterSeed();
+        this.uvTimechain = loadedStatus.timechain;
+        this.uvTimechain.initialize(this);
+        this.random = loadedStatus.random;
+
+        uvnodes.clear();
+        for (UVNode node : loadedStatus.nodes.values()) {
+            node.setUVM(this);
+            uvnodes.put(node.getPubKey(), node);
         }
 
-        print_log("Loading Ended (please notice: the timechain is currently stopped)");
-        return true;
+        for (UVNode node : uvnodes.values()) {
+            node.restorePersistentData();
+        }
+
+        refreshPubkeyList();
+        bootstrap_started = true;
+        bootstrap_completed = true;
+        bootstrap_latch = null;
+        bootstraps_running = uvnodes.size();
+        bootstraps_ended = uvnodes.size();
+        adjustThreadPoolSizes();
+    }
+
+    private String describeLoadStatusError(String file, Throwable failure) {
+        Throwable root = rootCause(failure);
+        String fileName = new File(file).getName();
+        String detail = cleanFailureMessage(root);
+
+        if (root instanceof InvalidClassException) {
+            return "Cannot load " + fileName + ": the snapshot was created by an incompatible UltraViolet version"
+                    + suffixDetail(detail) + ".";
+        }
+        if (root instanceof StreamCorruptedException) {
+            return "Cannot load " + fileName + ": the file is not a valid UltraViolet snapshot"
+                    + suffixDetail(detail) + ".";
+        }
+        if (root instanceof OptionalDataException || root instanceof EOFException) {
+            return "Cannot load " + fileName + ": the snapshot is truncated or incompatible with this build"
+                    + suffixDetail(detail) + ".";
+        }
+        if (root instanceof ClassNotFoundException || root instanceof ClassCastException) {
+            return "Cannot load " + fileName + ": the snapshot structure does not match this UltraViolet build"
+                    + suffixDetail(detail) + ".";
+        }
+        if (root instanceof InvalidObjectException) {
+            return "Cannot load " + fileName + ": the snapshot is missing required data"
+                    + suffixDetail(detail) + ".";
+        }
+        if (root instanceof FileNotFoundException) {
+            return "Cannot load " + fileName + ": file not found.";
+        }
+        if (root instanceof IOException) {
+            return "Cannot load " + fileName + suffixDetail(detail) + ".";
+        }
+        return "Cannot load " + fileName + ": incompatible or corrupted snapshot" + suffixDetail(detail) + ".";
+    }
+
+    private Throwable rootCause(Throwable failure) {
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private String cleanFailureMessage(Throwable failure) {
+        if (failure == null) {
+            return "";
+        }
+        String message = failure.getMessage();
+        if (message == null) {
+            return "";
+        }
+        return message.replaceAll("\\s+", " ").trim();
+    }
+
+    private String suffixDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "";
+        }
+        return " (" + detail + ")";
     }
 
     // notice that status refer to the condition to which the tc is set to be
