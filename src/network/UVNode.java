@@ -398,12 +398,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
             final var hash = invoice.getHash();
 
-            var s = new StringBuilder();
-            s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(hash);
-            for (var path : candidatePaths)
-                s.append('\n').append(path);
-            log(s.toString());
-            if (showui) System.out.println(s);
+            logMessage = "Found " + candidatePaths.size() + " paths for " + hash;
+            log(logMessage);
+            if (showui) System.out.println(logMessage);
 
             //  conservative large delay set to the same as p2p queue updates
             final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
