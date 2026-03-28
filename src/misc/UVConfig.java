@@ -22,6 +22,7 @@ public class UVConfig implements Serializable {
 
     private final Map<String,NodeProfile> profiles = new HashMap<>();
     private final Properties properties;
+    private final String sourcePath;
 
     final public int bootstrap_nodes;
     final public int bootstrap_blocks;
@@ -56,22 +57,17 @@ public class UVConfig implements Serializable {
         }
 
         private String getAttribute(String key) {
-            try {
-                if (!attributes.containsKey(key)){
-                    throw new IllegalArgumentException("The provided key does not exist in the attributes map:"+key);
-                }
-            } catch (IllegalArgumentException e) {
-                System.err.println(e.getMessage());
-                return null; // return null or a default value
+            if (!attributes.containsKey(key)) {
+                throw new IllegalArgumentException("The provided key does not exist in the attributes map:" + key);
             }
             return attributes.get(key);
         }
 
         public int getIntAttribute(String key) {
-            return Integer.parseInt(Objects.requireNonNull(getAttribute(key)));
+            return Integer.parseInt(getAttribute(key));
         }
         public double getDoubleAttribute(String key) {
-            return Double.parseDouble(Objects.requireNonNull(getAttribute(key)));
+            return Double.parseDouble(getAttribute(key));
         }
 
         public void addAttribute(String key, String value) {
@@ -131,9 +127,21 @@ public class UVConfig implements Serializable {
         return master_seed;
     }
 
+    public String getSourcePath() {
+        return sourcePath;
+    }
+
+    public String getSourceName() {
+        if (sourcePath == null || sourcePath.isBlank()) {
+            return "<unknown>";
+        }
+        return new File(sourcePath).getName();
+    }
+
     public UVConfig(String config_file) {
 
         properties = new Properties();
+        sourcePath = new File(config_file).getPath();
 
         try {
             properties.load(new FileReader(config_file));
@@ -256,6 +264,7 @@ public class UVConfig implements Serializable {
                 ", blocktime_ms=" + blocktime_ms +
                 ", node_services_tick_ms=" + node_services_tick_ms +
                 ", gossip_flush_period_ms=" + gossip_flush_period_ms +
+                ", sourcePath='" + sourcePath + '\'' +
                 ", logfile='" + logfile + '\'' +
                 '}';
     }

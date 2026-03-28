@@ -11,18 +11,22 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 
 public class UltraViolet {
     private static final String MENU_SEPARATOR = "__________________________________________________";
     private static final int MENU_KEY_WIDTH = 8;
+    private static final String CONFIG_DIRECTORY = "uv_configs";
+    private static final String DEFAULT_CONFIG_FILE = "test.properties";
 
-    private final UVNetwork networkManager;
+    private UVNetwork networkManager;
     boolean quit = false;
     private String imported_graph_root;
     private static final int LOOP_SLEEP_TIME = 500;
     private final Scanner menuInputScanner;
     private final TerminalStyle ui;
+    private String selectedConfigPath;
 
     private static final class TerminalStyle {
         private static final String RESET = "\033[0m";
@@ -88,19 +92,24 @@ public class UltraViolet {
 
 
     private static class MenuItem {
-        public final String key, description;
+        public final String key;
+        private final Supplier<String> descriptionSupplier;
 
         public final Consumer<Void> func;
 
         public MenuItem() {
             key = "";
-            description = null;
+            descriptionSupplier = () -> "";
             func = __ -> {};
         }
 
         public MenuItem(String key, String desc, Consumer<Void> func) {
+            this(key, () -> desc, func);
+        }
+
+        public MenuItem(String key, Supplier<String> descriptionSupplier, Consumer<Void> func) {
             this.key = key;
-            this.description = desc;
+            this.descriptionSupplier = descriptionSupplier;
             this.func = func;
         }
 
@@ -108,18 +117,22 @@ public class UltraViolet {
             if (key.isEmpty()) {
                 return ui.separator();
             }
-            return ui.key(padRight(key, MENU_KEY_WIDTH)) + "- " + description;
+            return ui.key(padRight(key, MENU_KEY_WIDTH)) + "- " + descriptionSupplier.get();
         }
     }
 
 
-    public UltraViolet(UVConfig config) {
+    public UltraViolet(String configPath) {
         this.ui = TerminalStyle.detect();
-        this.networkManager = new UVNetwork(config);
-
         ArrayList<MenuItem> menuItems = new ArrayList<>();
         menuInputScanner = new Scanner(System.in);
+        networkManager = createNetworkManager(configPath);
 
+        menuItems.add(new MenuItem(
+                "cfg",
+                () -> "Select Config [" + new File(getSelectedConfigPath()).getName() + "]",
+                this::selectPropertiesConfig
+        ));
         menuItems.add(new MenuItem("boot", "Bootstrap LN from scratch", this::bootstrapNetwork));
         menuItems.add(new MenuItem("t", "Start/Stop Timechain and P2P messages", this::handleTimeChainAndP2PMessages));
         menuItems.add(new MenuItem("path", "Find paths between nodes", x -> findPathsCmd()));
@@ -422,9 +435,10 @@ public class UltraViolet {
         showAvailableFiles(".dat");
         System.out.print("Load from:");
         String file_to_load = menuInputScanner.nextLine();
-        if (networkManager.loadStatus(file_to_load))
+        if (networkManager.loadStatus(file_to_load)) {
+            updateSelectedConfigPath(networkManager.getConfig(), selectedConfigPath);
             System.out.println("UVM LOADED");
-        else System.out.println("ERROR LOADING UVM from " + file_to_load);
+        } else System.out.println("ERROR LOADING UVM from " + file_to_load);
     }
 
     private void setLocalChannelsBalances(Object x) {
@@ -485,12 +499,16 @@ public class UltraViolet {
 
     public static void main(String[] args) {
 
-        if (args.length!=1) {
-            System.out.println("No config file specified , exiting...");
+        if (args.length > 1) {
+            System.out.println("Usage: UltraViolet [config.properties]");
             System.exit(-1);
         }
 
-        new UltraViolet(new UVConfig(args[0]));
+        String configPath = args.length == 1
+                ? args[0]
+                : new File(CONFIG_DIRECTORY, DEFAULT_CONFIG_FILE).getPath();
+
+        new UltraViolet(configPath);
     }
 
     private String readLineOrDefault(String prompt, String defaultValue) {
@@ -679,6 +697,140 @@ public class UltraViolet {
         for (File match : matches) {
             System.out.println("  " + match.getName());
         }
+    }
+
+    private void selectPropertiesConfig(Object x) {
+        var availableConfigs = getAvailableConfigFiles();
+        System.out.println("Available properties in " + CONFIG_DIRECTORY + ":");
+        if (availableConfigs.isEmpty()) {
+            System.out.println("  (none found)");
+            return;
+        }
+
+        String currentConfigPath = getSelectedConfigPath();
+        for (int i = 0; i < availableConfigs.size(); i++) {
+            File configFile = availableConfigs.get(i);
+            String marker = sameFile(configFile.getPath(), currentConfigPath) ? "*" : " ";
+            System.out.println(" " + (i + 1) + ") " + marker + " " + configFile.getName());
+        }
+        System.out.println("* current selection");
+        System.out.print("Select config by number or filename [ENTER to keep current]:");
+
+        String selection = menuInputScanner.nextLine().trim();
+        if (selection.isEmpty()) {
+            System.out.println("Keeping " + formatConfigSelection(currentConfigPath));
+            return;
+        }
+
+        String chosenConfigPath = resolveConfigSelection(selection, availableConfigs);
+        if (chosenConfigPath == null) {
+            System.out.println("Invalid selection: " + selection);
+            return;
+        }
+        if (sameFile(chosenConfigPath, currentConfigPath)) {
+            System.out.println("Already using " + formatConfigSelection(currentConfigPath));
+            return;
+        }
+
+        if (hasLoadedNetworkState() && !confirmResetForConfigSwitch()) {
+            System.out.println("Config switch cancelled");
+            return;
+        }
+
+        UVConfig newConfig;
+        try {
+            newConfig = new UVConfig(chosenConfigPath);
+        } catch (RuntimeException e) {
+            String detail = e.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = e.getClass().getSimpleName();
+            }
+            System.out.println("ERROR: cannot load " + formatConfigSelection(chosenConfigPath) + ": " + detail);
+            return;
+        }
+        networkManager.shutdown();
+        networkManager = new UVNetwork(newConfig);
+        imported_graph_root = null;
+        updateSelectedConfigPath(newConfig, chosenConfigPath);
+        System.out.println("Selected " + formatConfigSelection(getSelectedConfigPath()));
+    }
+
+    private ArrayList<File> getAvailableConfigFiles() {
+        File[] matches = new File(CONFIG_DIRECTORY)
+                .listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".properties"));
+        ArrayList<File> files = new ArrayList<>();
+        if (matches == null) {
+            return files;
+        }
+        files.addAll(Arrays.asList(matches));
+        files.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+        return files;
+    }
+
+    private String resolveConfigSelection(String selection, List<File> availableConfigs) {
+        try {
+            int index = Integer.parseInt(selection);
+            if (index >= 1 && index <= availableConfigs.size()) {
+                return availableConfigs.get(index - 1).getPath();
+            }
+        } catch (NumberFormatException ignored) {
+        }
+
+        for (File configFile : availableConfigs) {
+            if (configFile.getName().equalsIgnoreCase(selection)) {
+                return configFile.getPath();
+            }
+        }
+        return null;
+    }
+
+    private boolean hasLoadedNetworkState() {
+        return networkManager.isBootstrapStarted()
+                || !networkManager.getUVNodeList().isEmpty()
+                || networkManager.getTimechainStatus();
+    }
+
+    private boolean confirmResetForConfigSwitch() {
+        System.out.print(ui.label("Changing config resets the current network") + " " + ui.hint("[y/N]:"));
+        String answer = menuInputScanner.nextLine().trim();
+        return answer.equalsIgnoreCase("y") || answer.equalsIgnoreCase("yes");
+    }
+
+    private UVNetwork createNetworkManager(String configPath) {
+        UVConfig config = new UVConfig(configPath);
+        updateSelectedConfigPath(config, configPath);
+        return new UVNetwork(config);
+    }
+
+    private void updateSelectedConfigPath(UVConfig config, String fallbackPath) {
+        if (config != null && config.getSourcePath() != null && !config.getSourcePath().isBlank()) {
+            selectedConfigPath = config.getSourcePath();
+        } else {
+            selectedConfigPath = fallbackPath;
+        }
+    }
+
+    private String getSelectedConfigPath() {
+        return selectedConfigPath;
+    }
+
+    private String formatConfigSelection(String configPath) {
+        if (configPath == null || configPath.isBlank()) {
+            return "<unknown>";
+        }
+        File configFile = new File(configPath);
+        String name = configFile.getName();
+        if (name.equals(configPath)) {
+            return name;
+        }
+        return name + " [" + configPath + "]";
+    }
+
+    private boolean sameFile(String firstPath, String secondPath) {
+        if (firstPath == null || secondPath == null) {
+            return false;
+        }
+        return new File(firstPath).getAbsoluteFile().equals(new File(secondPath).getAbsoluteFile());
     }
 
     private static String padRight(String value, int width) {
