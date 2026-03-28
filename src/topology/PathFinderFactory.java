@@ -12,4 +12,20 @@ public final class PathFinderFactory {
             case LND        -> new LNDPathFinder();
         };
     }
+
+    public static Strategy strategyOf(PathFinder pathFinder) {
+        if (pathFinder instanceof LNDPathFinder) {
+            return Strategy.LND;
+        }
+        if (pathFinder instanceof MiniDijkstra) {
+            return Strategy.MINI_DIJKSTRA;
+        }
+        if (pathFinder instanceof ShortestHop) {
+            return Strategy.SHORTEST_HOP;
+        }
+        if (pathFinder instanceof BFS) {
+            return Strategy.BFS;
+        }
+        throw new IllegalArgumentException("Unknown path finder implementation: " + pathFinder.getClass().getName());
+    }
 }

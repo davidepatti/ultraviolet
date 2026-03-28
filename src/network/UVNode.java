@@ -16,6 +16,8 @@ import java.util.concurrent.*;
 import java.util.function.Supplier;
 
 public class UVNode implements LNode, Serializable,Comparable<UVNode> {
+    // Automated invoice generation runs many concurrent searches; keep the per-invoice frontier bounded.
+    private static final int MAX_CANDIDATE_PATHS_PER_INVOICE = 64;
 
     private final UVConfig.NodeProfile profile;
 
@@ -83,6 +85,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     public PathFinder.SearchResult findPaths(String start, String end, int topk) {
         return pathFinder.findPaths(this.channelGraph, start,end,topk);
+    }
+
+    private PathFinder newSearchPathFinder(int paymentAmountSat) {
+        // Invoice routing must not mutate the node-shared path finder while other searches are in flight.
+        var searchPathFinder = PathFinderFactory.of(PathFinderFactory.strategyOf(pathFinder));
+        searchPathFinder.setPaymentAmount(paymentAmountSat);
+        return searchPathFinder;
     }
 
     public PathFinder getPathFinder() {
@@ -340,8 +349,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         String logMessage;
 
-        pathFinder.setPaymentAmount(invoice.getAmount());
-        var searchResult = findPaths(this.getPubKey(),invoice.getDestination(),1000);
+        var searchResult = newSearchPathFinder(invoice.getAmount())
+                .findPaths(this.channelGraph, this.getPubKey(), invoice.getDestination(), MAX_CANDIDATE_PATHS_PER_INVOICE);
         miss_capacity = searchResult.stats().excludedByCapacity();
         List<Path> candidatePaths = new ArrayList<>();
 
