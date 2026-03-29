@@ -72,12 +72,12 @@ Please notice that each node has its own channel graph, built according to the r
 The newer `net` view provides a denser network-wide table, with aligned capacities and balances so it is easier to scan
 large simulated topologies from the terminal.
 
-![net_view](uvpics/net_view.png)
+<img src="uvpics/net_view.png" alt="net_view" width="780">
 
 The `all` command has also been refreshed into a per-node dashboard: each block now highlights node balances, channel
 counts, and a compact channel table with outbound/inbound liquidity and fee directions.
 
-![all_view](uvpics/all_view.png)
+<img src="uvpics/all_view.png" alt="all_view" width="560">
 
 ### Deploying Events
 
@@ -91,7 +91,7 @@ Again, don't forget to give a look to the logs to follow the details of what act
 
 Also, an interesting possibility is to use the "inv" command to inject a whole set of LN events, automatically deployed over the network:
 
-![inv](uvpics/inv.png) 
+<img src="uvpics/inv.png" alt="inv" width="720">
 
 And the collected and characterized to produce statistical data such as failure rate and motivation of the failures,
 e.g. missing liquidity, insufficient channel capacity, no routes, expired timelocks and so on. See the command "rep" for
@@ -101,7 +101,7 @@ The invoice CSV schema is documented in [docs/invoice_report_format.md](docs/inv
 The `stat` command now renders the same information as a readable terminal dashboard, combining a small network summary
 with aligned min/max/average/quartile tables for graph size, channel counts, balances, invoices, and outbound ratios.
 
-![stats_view](uvpics/stats_view.png)
+<img src="uvpics/stats_view.png" alt="stats_view" width="620">
 
 ### Misc
 
@@ -120,7 +120,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
 
 
 
