@@ -3,6 +3,8 @@ package misc;
 import stats.DistributionGenerator;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 /* a .properties file is used to initialize this class with a set of key/value pair, readable from other classes
 While some of them a hardcode into UV, user can add and define new keys/value pairs for new purposes, as they
@@ -19,6 +21,8 @@ String getRandomMultivalProperty(String key)
  */
 
 public class UVConfig implements Serializable {
+    private static final String INCLUDE_DIRECTIVE = "@include";
+    private static final String IMPORT_DIRECTIVE = "@import";
 
     private final Map<String,NodeProfile> profiles = new HashMap<>();
     private final Properties properties;
@@ -31,6 +35,12 @@ public class UVConfig implements Serializable {
     final public int p2p_max_hops;
     final public int p2p_max_age;
     final public int gossip_flush_size;
+    final public int pathfinding_max_hops;
+    final public double pathfinding_lnd_risk_factor;
+    final public double pathfinding_lnd_base_attempt_cost_msat;
+    final public double pathfinding_lnd_attempt_cost_ppm;
+    final public double pathfinding_lnd_default_path_probability;
+    final public int pathfinding_lnd_default_payment_amount_sat;
     final public int to_self_delay;
     final public int minimum_depth;
     final public int max_threads;
@@ -44,6 +54,8 @@ public class UVConfig implements Serializable {
     private int master_seed;
     @Serial
     private static final long serialVersionUID = 120678L;
+
+    private record IncludeDirective(List<String> paths) {}
 
     public static class NodeProfile implements Serializable {
         private record IntDistributionSpec(int lowerLimit, int upperLimit, double median, double mean) implements Serializable {}
@@ -144,7 +156,12 @@ public class UVConfig implements Serializable {
         sourcePath = new File(config_file).getPath();
 
         try {
-            properties.load(new FileReader(config_file));
+            Path normalizedConfigPath = Path.of(config_file).toAbsolutePath().normalize();
+            properties.putAll(loadPropertiesWithIncludes(
+                    normalizedConfigPath,
+                    new LinkedHashSet<>(),
+                    new ArrayDeque<>()
+            ));
 
             // Setting node profiles
             for (String propertyName : properties.stringPropertyNames()) {
@@ -179,7 +196,11 @@ public class UVConfig implements Serializable {
             }
 
         } catch (FileNotFoundException e) {
-            System.out.println("Config file not found:"+config_file);
+            String missingPath = e.getMessage();
+            if (missingPath == null || missingPath.isBlank()) {
+                missingPath = config_file;
+            }
+            System.out.println("Config file not found:" + missingPath);
             System.out.println("Current directory:" + System.getProperty("user.dir"));
             System.out.println("\n[PRESS ENTER TO EXIT...]");
 
@@ -192,6 +213,12 @@ public class UVConfig implements Serializable {
         p2p_max_age = Integer.parseInt(properties.getProperty("p2p_max_age"));
         p2p_max_hops = Integer.parseInt(properties.getProperty("p2p_max_hops"));
         gossip_flush_size = Integer.parseInt(properties.getProperty("gossip_flush_size"));
+        pathfinding_max_hops = getIntPropertyOrDefault("pathfinding_max_hops", 6);
+        pathfinding_lnd_risk_factor = getDoublePropertyOrDefault("pathfinding_lnd_risk_factor", 15e-9);
+        pathfinding_lnd_base_attempt_cost_msat = getDoublePropertyOrDefault("pathfinding_lnd_base_attempt_cost_msat", 100.0);
+        pathfinding_lnd_attempt_cost_ppm = getDoublePropertyOrDefault("pathfinding_lnd_attempt_cost_ppm", 1000.0);
+        pathfinding_lnd_default_path_probability = getDoublePropertyOrDefault("pathfinding_lnd_default_path_probability", 0.6);
+        pathfinding_lnd_default_payment_amount_sat = getIntPropertyOrDefault("pathfinding_lnd_default_payment_amount_sat", 10_000);
         bootstrap_nodes = Integer.parseInt(properties.getProperty("bootstrap_nodes"));
         max_threads = Integer.parseInt(properties.getProperty("max_threads"));
         blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
@@ -205,6 +232,110 @@ public class UVConfig implements Serializable {
         logfile = properties.getProperty("logfile");
         debug = properties.getProperty("debug").equals("true");
 
+    }
+
+    private Properties loadPropertiesWithIncludes(Path configPath, Set<Path> activeIncludes, Deque<Path> includeStack) throws IOException {
+        if (activeIncludes.contains(configPath)) {
+            includeStack.addLast(configPath);
+            String chain = includeStack.stream().map(Path::toString).reduce((a, b) -> a + " -> " + b).orElse(configPath.toString());
+            throw new IOException("Circular config include detected: " + chain);
+        }
+        if (!Files.exists(configPath)) {
+            throw new FileNotFoundException(configPath.toString());
+        }
+
+        activeIncludes.add(configPath);
+        includeStack.addLast(configPath);
+
+        Properties mergedProperties = new Properties();
+        StringBuilder localPropertiesBuffer = new StringBuilder();
+
+        try (BufferedReader reader = Files.newBufferedReader(configPath)) {
+            String rawLine;
+            while ((rawLine = reader.readLine()) != null) {
+                IncludeDirective directive = parseIncludeDirective(rawLine);
+                if (directive == null) {
+                    localPropertiesBuffer.append(rawLine).append(System.lineSeparator());
+                    continue;
+                }
+
+                for (String relativeIncludePath : directive.paths()) {
+                    Path includePath = resolveIncludedPath(configPath, relativeIncludePath);
+                    mergedProperties.putAll(loadPropertiesWithIncludes(includePath, activeIncludes, includeStack));
+                }
+            }
+        } finally {
+            activeIncludes.remove(configPath);
+            includeStack.removeLast();
+        }
+
+        if (localPropertiesBuffer.length() > 0) {
+            Properties localProperties = new Properties();
+            try (StringReader reader = new StringReader(localPropertiesBuffer.toString())) {
+                localProperties.load(reader);
+            }
+            mergedProperties.putAll(localProperties);
+        }
+
+        return mergedProperties;
+    }
+
+    private Path resolveIncludedPath(Path sourceConfigPath, String includedPath) {
+        Path baseDirectory = sourceConfigPath.getParent();
+        if (baseDirectory == null) {
+            return Path.of(includedPath).toAbsolutePath().normalize();
+        }
+        return baseDirectory.resolve(includedPath).normalize();
+    }
+
+    private IncludeDirective parseIncludeDirective(String rawLine) {
+        String trimmedLine = rawLine.trim();
+        if (trimmedLine.isEmpty() || trimmedLine.startsWith("#") || trimmedLine.startsWith("!")) {
+            return null;
+        }
+
+        String directiveName;
+        if (matchesDirective(trimmedLine, INCLUDE_DIRECTIVE)) {
+            directiveName = INCLUDE_DIRECTIVE;
+        } else if (matchesDirective(trimmedLine, IMPORT_DIRECTIVE)) {
+            directiveName = IMPORT_DIRECTIVE;
+        } else {
+            return null;
+        }
+
+        String remainder = trimmedLine.substring(directiveName.length()).trim();
+        if (remainder.startsWith("=") || remainder.startsWith(":")) {
+            remainder = remainder.substring(1).trim();
+        }
+
+        if (remainder.isEmpty()) {
+            throw new IllegalArgumentException("Missing path in " + directiveName + " directive");
+        }
+
+        ArrayList<String> includePaths = new ArrayList<>();
+        for (String candidate : remainder.split(",")) {
+            String normalizedCandidate = candidate.trim();
+            if (!normalizedCandidate.isEmpty()) {
+                includePaths.add(normalizedCandidate);
+            }
+        }
+
+        if (includePaths.isEmpty()) {
+            throw new IllegalArgumentException("Missing path in " + directiveName + " directive");
+        }
+
+        return new IncludeDirective(includePaths);
+    }
+
+    private boolean matchesDirective(String line, String directive) {
+        if (!line.startsWith(directive)) {
+            return false;
+        }
+        if (line.length() == directive.length()) {
+            return true;
+        }
+        char separator = line.charAt(directive.length());
+        return Character.isWhitespace(separator) || separator == '=' || separator == ':';
     }
 
     private ArrayList<String> getMultivalProperty(String key) {
@@ -230,6 +361,16 @@ public class UVConfig implements Serializable {
     public int getMultivalRandomItem(Random rng, String key) {
         int index = rng.nextInt(getMultivalProperty(key).size());
         return Integer.parseInt(getMultivalProperty(key).get(index));
+    }
+
+    private int getIntPropertyOrDefault(String key, int defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Integer.parseInt(value.trim());
+    }
+
+    private double getDoublePropertyOrDefault(String key, double defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Double.parseDouble(value.trim());
     }
 
     // selects a profile according to some probabilistic criteria
@@ -258,6 +399,7 @@ public class UVConfig implements Serializable {
                 ", properties=" + properties +
                 ", p2p_max_hops=" + p2p_max_hops +
                 ", p2p_max_age=" + p2p_max_age +
+                ", pathfinding_max_hops=" + pathfinding_max_hops +
                 ", bootstrap_nodes=" + bootstrap_nodes +
                 ", max_threads=" + max_threads +
                 ", seed=" + master_seed +

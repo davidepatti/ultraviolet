@@ -38,14 +38,22 @@ its own "behavioral space".
 The basic template file just considers 100 nodes for a quick test, but by customizing the properties file you can
 experiment play with larger networks and other aspects of the deployed LN, including nodes behavior, channels,
 fee/routing policies, p2p/gossip etc...
+If no config path is provided, UV now defaults to `uv_configs/template.properties`.
 
 Just give at look at the comments in the properties file here to get an idea:
 https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.properties
+
+Config files can now inherit from another config with `@include=other.properties` (or `@import=...`).
+Included files are loaded first, and properties defined later in the current file override the inherited ones.
+See [uv_configs/example_include.properties](/Users/dpatti/IdeaProjects/ultraviolet/uv_configs/example_include.properties) for a concrete example based on `template.properties`.
+Utility scripts are documented in [tools/README.md](/Users/dpatti/IdeaProjects/ultraviolet/tools/README.md).
 
 
 ### Exploring with UV
 
 The above command will start the main menu.
+
+<img src="uvpics/main_menu.png" alt="main_menu" width="760">
 
 You can try to bootstrap a network using the commmand "boot". After a while depending on your hardware and the number of
 nodes, you will have a LN deployed.
@@ -67,12 +75,12 @@ Please notice that each node has its own channel graph, built according to the r
 The newer `net` view provides a denser network-wide table, with aligned capacities and balances so it is easier to scan
 large simulated topologies from the terminal.
 
-![net_view](uvpics/net_view.png)
+<img src="uvpics/net_view.png" alt="net_view" width="780">
 
 The `all` command has also been refreshed into a per-node dashboard: each block now highlights node balances, channel
 counts, and a compact channel table with outbound/inbound liquidity and fee directions.
 
-![all_view](uvpics/all_view.png)
+<img src="uvpics/all_view.png" alt="all_view" width="560">
 
 ### Deploying Events
 
@@ -86,7 +94,7 @@ Again, don't forget to give a look to the logs to follow the details of what act
 
 Also, an interesting possibility is to use the "inv" command to inject a whole set of LN events, automatically deployed over the network:
 
-![inv](uvpics/inv.png) 
+<img src="uvpics/inv.png" alt="inv" width="720">
 
 And the collected and characterized to produce statistical data such as failure rate and motivation of the failures,
 e.g. missing liquidity, insufficient channel capacity, no routes, expired timelocks and so on. See the command "rep" for
@@ -96,7 +104,7 @@ The invoice CSV schema is documented in [docs/invoice_report_format.md](docs/inv
 The `stat` command now renders the same information as a readable terminal dashboard, combining a small network summary
 with aligned min/max/average/quartile tables for graph size, channel counts, balances, invoices, and outbound ratios.
 
-![stats_view](uvpics/stats_view.png)
+<img src="uvpics/stats_view.png" alt="stats_view" width="620">
 
 ### Misc
 
@@ -115,11 +123,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
-
-
-
-
 
 
 

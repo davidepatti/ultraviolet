@@ -5,16 +5,40 @@ import network.LNChannel;
 import java.util.List;
 
 public class LNDPathFinder extends MiniDijkstra{
-    private static final double RISK_FACTOR = 15e-9;
-    private static final double BASE_ATTEMPT_COST_MSAT = 100.0;
-    private static final double ATTEMPT_COST_PPM = 1000.0;
-    private static final double DEFAULT_PATH_PROBABILITY = 0.6;
-    private static final int DEFAULT_PAYMENT_AMOUNT_SAT = 10_000;
+    public static final double DEFAULT_RISK_FACTOR = 15e-9;
+    public static final double DEFAULT_BASE_ATTEMPT_COST_MSAT = 100.0;
+    public static final double DEFAULT_ATTEMPT_COST_PPM = 1000.0;
+    public static final double DEFAULT_PATH_PROBABILITY = 0.6;
+    public static final int DEFAULT_PAYMENT_AMOUNT_SAT = 10_000;
 
+    private final double riskFactor;
+    private final double baseAttemptCostMsat;
+    private final double attemptCostPpm;
     private double pathProbability = DEFAULT_PATH_PROBABILITY;
 
     public LNDPathFinder() {
-        paymentAmountSat = DEFAULT_PAYMENT_AMOUNT_SAT;
+        this(
+                DEFAULT_MAX_HOPS,
+                DEFAULT_RISK_FACTOR,
+                DEFAULT_BASE_ATTEMPT_COST_MSAT,
+                DEFAULT_ATTEMPT_COST_PPM,
+                DEFAULT_PATH_PROBABILITY,
+                DEFAULT_PAYMENT_AMOUNT_SAT
+        );
+    }
+
+    public LNDPathFinder(int maxHops,
+                         double riskFactor,
+                         double baseAttemptCostMsat,
+                         double attemptCostPpm,
+                         double defaultPathProbability,
+                         int defaultPaymentAmountSat) {
+        super(maxHops);
+        this.riskFactor = riskFactor;
+        this.baseAttemptCostMsat = baseAttemptCostMsat;
+        this.attemptCostPpm = attemptCostPpm;
+        this.pathProbability = defaultPathProbability > 0.0 ? defaultPathProbability : DEFAULT_PATH_PROBABILITY;
+        paymentAmountSat = Math.max(defaultPaymentAmountSat, 0);
     }
 
     @Override
@@ -76,12 +100,12 @@ public class LNDPathFinder extends MiniDijkstra{
     }
 
     private double timelockOpportunityCost(LNChannel.Policy policy) {
-        return paymentAmountSat * policy.getCLTVDelta() * RISK_FACTOR;
+        return paymentAmountSat * policy.getCLTVDelta() * riskFactor;
     }
 
     private double probabilisticPenalty() {
-        double attemptPenaltySat = BASE_ATTEMPT_COST_MSAT / 1000.0
-                + (paymentAmountSat * ATTEMPT_COST_PPM) / 1_000_000.0;
+        double attemptPenaltySat = baseAttemptCostMsat / 1000.0
+                + (paymentAmountSat * attemptCostPpm) / 1_000_000.0;
         return attemptPenaltySat / pathProbability;
     }
 }

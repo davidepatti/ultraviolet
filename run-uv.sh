@@ -6,7 +6,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 
 BUILD_DIR="$SCRIPT_DIR/out/production/ultraviolet"
-DEFAULT_CONFIG="$SCRIPT_DIR/uv_configs/test.properties"
+DEFAULT_CONFIG="$SCRIPT_DIR/uv_configs/template.properties"
 JSON_JAR="$SCRIPT_DIR/src/json-simple-1.1.jar"
 
 if [ ! -f "$JSON_JAR" ]; then

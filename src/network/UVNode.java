@@ -75,7 +75,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.alias = alias;
         updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
-        pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS);
+        pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS, uvNetwork.getConfig());
         this.profile = profile;
     }
 
@@ -89,7 +89,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     private PathFinder newSearchPathFinder(int paymentAmountSat) {
         // Invoice routing must not mutate the node-shared path finder while other searches are in flight.
-        var searchPathFinder = PathFinderFactory.of(PathFinderFactory.strategyOf(pathFinder));
+        var searchPathFinder = PathFinderFactory.of(PathFinderFactory.strategyOf(pathFinder), uvNetwork.getConfig());
         searchPathFinder.setPaymentAmount(paymentAmountSat);
         return searchPathFinder;
     }
@@ -253,6 +253,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     public void setUVM(UVNetwork uvm) {
         this.uvNetwork = uvm;
+        if (pathFinder == null) {
+            pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS, uvm.getConfig());
+        }
     }
 
     @Override
@@ -398,12 +401,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
             final var hash = invoice.getHash();
 
-            var s = new StringBuilder();
-            s.append("Found ").append(candidatePaths.size()).append(" paths for ").append(hash);
-            for (var path : candidatePaths)
-                s.append('\n').append(path);
-            log(s.toString());
-            if (showui) System.out.println(s);
+            logMessage = "Found " + candidatePaths.size() + " paths for " + hash;
+            log(logMessage);
+            if (showui) System.out.println(logMessage);
 
             //  conservative large delay set to the same as p2p queue updates
             final long invoice_check_delay = uvNetwork.getConfig().node_services_tick_ms;
@@ -1506,7 +1506,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
         channelGraph = (ChannelGraph) s.readObject();
 
-        setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.BFS));
+        pathFinder = null;
 
         this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
         this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
