@@ -1,0 +1,7 @@
+{
+  "parameters": {
+    "bootstrap_nodes": [100, 500, 1000],
+    "seed": [1, 7],
+    "profile.hub.prob": [0.1, 0.15]
+  }
+}

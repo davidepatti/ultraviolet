@@ -42,6 +42,11 @@ fee/routing policies, p2p/gossip etc...
 Just give at look at the comments in the properties file here to get an idea:
 https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.properties
 
+Config files can now inherit from another config with `@include=other.properties` (or `@import=...`).
+Included files are loaded first, and properties defined later in the current file override the inherited ones.
+See [uv_configs/example_include.properties](/Users/dpatti/IdeaProjects/ultraviolet/uv_configs/example_include.properties) for a concrete example based on `template.properties`.
+Utility scripts are documented in [tools/README.md](/Users/dpatti/IdeaProjects/ultraviolet/tools/README.md).
+
 
 ### Exploring with UV
 
@@ -115,8 +120,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
-
 
 
 
