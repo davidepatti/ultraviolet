@@ -13,14 +13,17 @@ import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.DoubleStream;
 
 
 public class UltraViolet {
     private static final String MENU_SEPARATOR = "__________________________________________________";
     private static final int MENU_KEY_WIDTH = 8;
+    private static final int BOOTSTRAP_PROGRESS_BAR_WIDTH = 32;
     private static final String CONFIG_DIRECTORY = "uv_configs";
     private static final String DEFAULT_CONFIG_FILE = "template.properties";
+    private static final Pattern ANSI_ESCAPE_PATTERN = Pattern.compile("\\u001B\\[[;\\d]*m");
 
     private UVNetwork networkManager;
     boolean quit = false;
@@ -35,6 +38,8 @@ public class UltraViolet {
     private boolean bootstrapProgressVisible;
 
     private static final class TerminalStyle {
+        private record RgbColor(int red, int green, int blue) {}
+
         private static final String RESET = "\033[0m";
         private static final String BOLD = "\033[1m";
         private static final String DIM = "\033[2m";
@@ -44,6 +49,15 @@ public class UltraViolet {
         private static final String MAGENTA = "\033[35m";
         private static final String RED = "\033[31m";
         private static final String YELLOW = "\033[33m";
+        private static final RgbColor[] BOOTSTRAP_RAINBOW = {
+                new RgbColor(255, 48, 48),
+                new RgbColor(255, 140, 0),
+                new RgbColor(255, 215, 0),
+                new RgbColor(70, 200, 70),
+                new RgbColor(0, 190, 255),
+                new RgbColor(45, 85, 255),
+                new RgbColor(148, 0, 211)
+        };
         private final boolean enabled;
 
         private TerminalStyle(boolean enabled) {
@@ -70,12 +84,21 @@ public class UltraViolet {
             return enabled ? prefix + text + RESET : text;
         }
 
+        private String applyTrueColor(int red, int green, int blue, String text) {
+            return enabled
+                    ? BOLD + String.format(Locale.ROOT, "\033[38;2;%d;%d;%dm", red, green, blue) + text + RESET
+                    : text;
+        }
+
         String separator() {
             return apply(DIM, MENU_SEPARATOR);
         }
 
         String title(String text) {
-            return apply(BOLD + CYAN, text);
+            if (!enabled) {
+                return text;
+            }
+            return applyGradient(text);
         }
 
         String key(String text) {
@@ -116,6 +139,77 @@ public class UltraViolet {
 
         String error(String text) {
             return apply(BOLD + RED, text);
+        }
+
+        String bootstrapProgressFilled(char c, int index, int width) {
+            if (!enabled) {
+                return String.valueOf(c);
+            }
+            if (width <= 1) {
+                RgbColor single = BOOTSTRAP_RAINBOW[BOOTSTRAP_RAINBOW.length - 1];
+                return applyTrueColor(single.red(), single.green(), single.blue(), String.valueOf(c));
+            }
+            double ratio = (double) index / (width - 1);
+            double scaled = ratio * (BOOTSTRAP_RAINBOW.length - 1);
+            int lowerIndex = (int) Math.floor(scaled);
+            int upperIndex = Math.min(BOOTSTRAP_RAINBOW.length - 1, lowerIndex + 1);
+            double blend = scaled - lowerIndex;
+
+            RgbColor lower = BOOTSTRAP_RAINBOW[lowerIndex];
+            RgbColor upper = BOOTSTRAP_RAINBOW[upperIndex];
+
+            int red = interpolate(lower.red(), upper.red(), blend);
+            int green = interpolate(lower.green(), upper.green(), blend);
+            int blue = interpolate(lower.blue(), upper.blue(), blend);
+
+            return applyTrueColor(red, green, blue, String.valueOf(c));
+        }
+
+        String bootstrapProgressPending(char c) {
+            return apply(DIM, String.valueOf(c));
+        }
+
+        private int interpolate(int start, int end, double blend) {
+            return (int) Math.round(start + (end - start) * blend);
+        }
+
+        private String applyGradient(String text) {
+            int visibleChars = 0;
+            for (int i = 0; i < text.length(); i++) {
+                if (!Character.isWhitespace(text.charAt(i))) {
+                    visibleChars++;
+                }
+            }
+            if (visibleChars == 0) {
+                return text;
+            }
+
+            StringBuilder gradientText = new StringBuilder(text.length() * 12);
+            int visibleIndex = 0;
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (Character.isWhitespace(c)) {
+                    gradientText.append(c);
+                    continue;
+                }
+
+                double ratio = visibleChars == 1 ? 1.0 : (double) visibleIndex / (visibleChars - 1);
+                double scaled = ratio * (BOOTSTRAP_RAINBOW.length - 1);
+                int lowerIndex = (int) Math.floor(scaled);
+                int upperIndex = Math.min(BOOTSTRAP_RAINBOW.length - 1, lowerIndex + 1);
+                double blend = scaled - lowerIndex;
+
+                RgbColor lower = BOOTSTRAP_RAINBOW[lowerIndex];
+                RgbColor upper = BOOTSTRAP_RAINBOW[upperIndex];
+
+                int red = interpolate(lower.red(), upper.red(), blend);
+                int green = interpolate(lower.green(), upper.green(), blend);
+                int blue = interpolate(lower.blue(), upper.blue(), blend);
+
+                gradientText.append(applyTrueColor(red, green, blue, String.valueOf(c)));
+                visibleIndex++;
+            }
+            return gradientText.toString();
         }
     }
 
@@ -1440,15 +1534,30 @@ public class UltraViolet {
     private String formatBootstrapProgressLine(int totalNodes) {
         int completed = networkManager.getBootstrapsEnded();
         int running = networkManager.getBootstrapsRunning();
-        double percent = totalNodes == 0 ? 100.0 : 100.0 * completed / totalNodes;
+        double ratio = totalNodes == 0 ? 1.0 : (double) completed / totalNodes;
+        ratio = Math.max(0.0, Math.min(1.0, ratio));
+        double percent = 100.0 * ratio;
         return String.format(
                 Locale.ROOT,
-                "Bootstrapping (%5.1f%%) (Completed %d of %d, running:%d)",
+                "Bootstrapping [%s] %5.1f%% (Completed %d of %d, running:%d)",
+                buildProgressBar(ratio, BOOTSTRAP_PROGRESS_BAR_WIDTH),
                 percent,
                 completed,
                 totalNodes,
                 running
         );
+    }
+
+    private String buildProgressBar(double ratio, int width) {
+        int filled = (int) Math.round(ratio * width);
+        filled = Math.max(0, Math.min(width, filled));
+        StringBuilder bar = new StringBuilder(width);
+        for (int i = 0; i < width; i++) {
+            bar.append(i < filled
+                    ? ui.bootstrapProgressFilled('#', i, width)
+                    : ui.bootstrapProgressPending('.'));
+        }
+        return bar.toString();
     }
 
     private void resetBootstrapProgressOutput() {
@@ -1464,8 +1573,12 @@ public class UltraViolet {
             if (Objects.equals(lastBootstrapProgressLine, progressLine)) {
                 return;
             }
-            bootstrapProgressWidth = Math.max(bootstrapProgressWidth, progressLine.length());
-            System.out.print("\r" + padRight(progressLine, bootstrapProgressWidth));
+            int visibleLength = visibleLength(progressLine);
+            bootstrapProgressWidth = Math.max(bootstrapProgressWidth, visibleLength);
+            System.out.print("\r" + progressLine);
+            if (visibleLength < bootstrapProgressWidth) {
+                System.out.print(padRight("", bootstrapProgressWidth - visibleLength));
+            }
             System.out.flush();
             lastBootstrapProgressLine = progressLine;
             bootstrapProgressVisible = true;
@@ -1485,12 +1598,20 @@ public class UltraViolet {
     private void printNetworkLogLine(String message) {
         synchronized (consoleOutputLock) {
             if (bootstrapProgressVisible) {
-                System.out.print("\r" + padRight("", bootstrapProgressWidth) + "\r");
-                System.out.flush();
+                if (networkManager.isBootstrapCompleted()) {
+                    System.out.println();
+                } else {
+                    System.out.print("\r" + padRight("", bootstrapProgressWidth) + "\r");
+                    System.out.flush();
+                }
                 bootstrapProgressVisible = false;
             }
             System.out.println(message);
         }
+    }
+
+    private int visibleLength(String value) {
+        return ANSI_ESCAPE_PATTERN.matcher(value).replaceAll("").length();
     }
 
     private static String padRight(String value, int width) {

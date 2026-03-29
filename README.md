@@ -53,6 +53,8 @@ Utility scripts are documented in [tools/README.md](/Users/dpatti/IdeaProjects/u
 
 The above command will start the main menu.
 
+<img src="uvpics/main_menu.png" alt="main_menu" width="760">
+
 You can try to bootstrap a network using the commmand "boot". After a while depending on your hardware and the number of
 nodes, you will have a LN deployed.
 *ALWAYS* check the log files to get a detailed understanding of what's happening under the hood. For example, you may see
@@ -121,7 +123,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
 
 
 
