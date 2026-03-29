@@ -31,6 +31,12 @@ public class UVConfig implements Serializable {
     final public int p2p_max_hops;
     final public int p2p_max_age;
     final public int gossip_flush_size;
+    final public int pathfinding_max_hops;
+    final public double pathfinding_lnd_risk_factor;
+    final public double pathfinding_lnd_base_attempt_cost_msat;
+    final public double pathfinding_lnd_attempt_cost_ppm;
+    final public double pathfinding_lnd_default_path_probability;
+    final public int pathfinding_lnd_default_payment_amount_sat;
     final public int to_self_delay;
     final public int minimum_depth;
     final public int max_threads;
@@ -192,6 +198,12 @@ public class UVConfig implements Serializable {
         p2p_max_age = Integer.parseInt(properties.getProperty("p2p_max_age"));
         p2p_max_hops = Integer.parseInt(properties.getProperty("p2p_max_hops"));
         gossip_flush_size = Integer.parseInt(properties.getProperty("gossip_flush_size"));
+        pathfinding_max_hops = getIntPropertyOrDefault("pathfinding_max_hops", 6);
+        pathfinding_lnd_risk_factor = getDoublePropertyOrDefault("pathfinding_lnd_risk_factor", 15e-9);
+        pathfinding_lnd_base_attempt_cost_msat = getDoublePropertyOrDefault("pathfinding_lnd_base_attempt_cost_msat", 100.0);
+        pathfinding_lnd_attempt_cost_ppm = getDoublePropertyOrDefault("pathfinding_lnd_attempt_cost_ppm", 1000.0);
+        pathfinding_lnd_default_path_probability = getDoublePropertyOrDefault("pathfinding_lnd_default_path_probability", 0.6);
+        pathfinding_lnd_default_payment_amount_sat = getIntPropertyOrDefault("pathfinding_lnd_default_payment_amount_sat", 10_000);
         bootstrap_nodes = Integer.parseInt(properties.getProperty("bootstrap_nodes"));
         max_threads = Integer.parseInt(properties.getProperty("max_threads"));
         blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
@@ -232,6 +244,16 @@ public class UVConfig implements Serializable {
         return Integer.parseInt(getMultivalProperty(key).get(index));
     }
 
+    private int getIntPropertyOrDefault(String key, int defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Integer.parseInt(value.trim());
+    }
+
+    private double getDoublePropertyOrDefault(String key, double defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Double.parseDouble(value.trim());
+    }
+
     // selects a profile according to some probabilistic criteria
     public NodeProfile selectProfileBy(Random rng, String attribute) {
         double p = rng.nextDouble();
@@ -258,6 +280,7 @@ public class UVConfig implements Serializable {
                 ", properties=" + properties +
                 ", p2p_max_hops=" + p2p_max_hops +
                 ", p2p_max_age=" + p2p_max_age +
+                ", pathfinding_max_hops=" + pathfinding_max_hops +
                 ", bootstrap_nodes=" + bootstrap_nodes +
                 ", max_threads=" + max_threads +
                 ", seed=" + master_seed +

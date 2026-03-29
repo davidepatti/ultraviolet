@@ -608,14 +608,14 @@ public class UltraViolet {
     }
 
     private void applyPathFinderStrategy(UVNode node, PathFinderFactory.Strategy strategy, int amount) {
-        var pathFinder = PathFinderFactory.of(strategy);
+        var pathFinder = PathFinderFactory.of(strategy, networkManager.getConfig());
         pathFinder.setPaymentAmount(amount);
         node.setPathFinder(pathFinder);
     }
 
     private void applyPathFinderStrategyToAllNodes(PathFinderFactory.Strategy strategy) {
         for (UVNode node : networkManager.getUVNodeList().values()) {
-            node.setPathFinder(PathFinderFactory.of(strategy));
+            node.setPathFinder(PathFinderFactory.of(strategy, networkManager.getConfig()));
         }
     }
 

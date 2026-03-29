@@ -13,8 +13,17 @@ import java.util.*;
      * Paths longer than max hops are pruned; vertices already on the partial path are skipped to avoid cycles.
      */
 public class MiniDijkstra extends PathFinder {
+    public static final int DEFAULT_MAX_HOPS = 6;
 
-    public final int max_hops = 6;
+    private final int maxHops;
+
+    public MiniDijkstra() {
+        this(DEFAULT_MAX_HOPS);
+    }
+
+    public MiniDijkstra(int maxHops) {
+        this.maxHops = Math.max(0, maxHops);
+    }
 
     public double weight(ChannelGraph.Edge e, Path p) {
         return 1.0;
@@ -38,7 +47,7 @@ public class MiniDijkstra extends PathFinder {
         while (!queue.isEmpty() && paths.size() < topk) {
             var currentCandidate = queue.poll();
             stats.investigatedStates++;
-            if (currentCandidate.path().getSize()>max_hops) {
+            if (currentCandidate.path().getSize()>maxHops) {
                 stats.excludedByMaxHops++;
                 continue;
             }
