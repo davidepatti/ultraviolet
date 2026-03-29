@@ -38,6 +38,7 @@ its own "behavioral space".
 The basic template file just considers 100 nodes for a quick test, but by customizing the properties file you can
 experiment play with larger networks and other aspects of the deployed LN, including nodes behavior, channels,
 fee/routing policies, p2p/gossip etc...
+If no config path is provided, UV now defaults to `uv_configs/template.properties`.
 
 Just give at look at the comments in the properties file here to get an idea:
 https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.properties
@@ -120,7 +121,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
 
 
 

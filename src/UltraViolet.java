@@ -20,7 +20,7 @@ public class UltraViolet {
     private static final String MENU_SEPARATOR = "__________________________________________________";
     private static final int MENU_KEY_WIDTH = 8;
     private static final String CONFIG_DIRECTORY = "uv_configs";
-    private static final String DEFAULT_CONFIG_FILE = "test.properties";
+    private static final String DEFAULT_CONFIG_FILE = "template.properties";
 
     private UVNetwork networkManager;
     boolean quit = false;
