@@ -28,7 +28,7 @@ its own "behavioral space".
 * **Pathfinding and Routing**: it is possible to test the routing of payment invoices, emulating the exchange of HTLC
   update/fulfill messages to experiment with new potential protocol evolutions, e.g., new routing strategies etc...
 
-* [November 2025: Last year Changelog Summary](Changelog_November2025.md)
+* [Development Milestones](Development_Milestones.md)
 
 ## Quick Start
 
@@ -123,8 +123,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
-
 
 
 
