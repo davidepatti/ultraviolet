@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
+    private static final int TOTAL_TESTS = 6;
+    private static int testIndex = 0;
+
     private static final String TOPOLOGY_JSON = """
             {
               "nodes": [
@@ -47,17 +50,59 @@ public class DeterminismRegressionTest {
             Path topologyPath = workDir.resolve("linear-topology.json");
             Files.writeString(topologyPath, TOPOLOGY_JSON);
 
-            assertConfigIncludesAreDeterministic(workDir);
-            assertDistributionGenerationIsDeterministic();
-            assertImportedTopologyIsDeterministic(workDir, topologyPath);
-            assertPathFindingIsDeterministic(workDir, topologyPath);
-            assertSaveLoadRoundTripIsDeterministic(workDir, topologyPath);
-            assertNetworkReportIsDeterministic(workDir, topologyPath);
+            System.out.println("Using temporary deterministic fixture directory: " + workDir);
+            System.out.println("Fixture topology: seven imported nodes, five ordered channels, no timechain/P2P services.");
+            System.out.println();
+
+            runCase(
+                    "Config includes and profile selection",
+                    "Loads a generated config that includes template.properties, checks local overrides, then repeats profile selection with the same explicit RNG seed.",
+                    () -> assertConfigIncludesAreDeterministic(workDir)
+            );
+            runCase(
+                    "Distribution generator",
+                    "Generates integer and double samples from freshly seeded Random instances and checks equal seeds match while another seed changes the integer sample.",
+                    DeterminismRegressionTest::assertDistributionGenerationIsDeterministic
+            );
+            runCase(
+                    "Imported topology snapshot",
+                    "Imports the same JSON topology twice with seed 7, compares a sorted canonical state snapshot, then checks at least one alternate seed changes imported channel balances.",
+                    () -> assertImportedTopologyIsDeterministic(workDir, topologyPath)
+            );
+            runCase(
+                    "Pathfinding on fixed graph",
+                    "Runs BFS, SHORTEST_HOP, MINI_DIJKSTRA, and LND on the same imported graph and compares deterministic path/result snapshots.",
+                    () -> assertPathFindingIsDeterministic(workDir, topologyPath)
+            );
+            runCase(
+                    "Save/load round trip",
+                    "Saves an imported frozen topology, loads it into a fresh network created from a different seed, and compares canonical structural snapshots.",
+                    () -> assertSaveLoadRoundTripIsDeterministic(workDir, topologyPath)
+            );
+            runCase(
+                    "Frozen network report",
+                    "Generates the network report twice from equal imported states while suppressing incidental console chatter, then compares the report text.",
+                    () -> assertNetworkReportIsDeterministic(workDir, topologyPath)
+            );
 
             System.out.println("Determinism regression passed");
         } finally {
             deleteRecursively(workDir);
         }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    private static void runCase(String name, String description, ThrowingRunnable test) throws Exception {
+        testIndex++;
+        System.out.println("[" + testIndex + "/" + TOTAL_TESTS + "] " + name);
+        System.out.println("    " + description);
+        test.run();
+        System.out.println("    OK");
+        System.out.println();
     }
 
     private static void assertConfigIncludesAreDeterministic(Path workDir) throws IOException {
