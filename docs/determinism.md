@@ -19,4 +19,11 @@ UltraViolet has a `seed` setting, but the live simulation is intentionally threa
 
 ## Regression Target
 
-Use a fixed, imported topology rather than a bootstrapped threaded topology. The regression test in `tools/determinism_regression.sh` imports the same topology twice with the same seed, compares a canonical sorted snapshot, and checks that another seed can alter seeded channel-balance choices.
+Use fixed inputs rather than bootstrapped threaded topology. The regression test in `tools/determinism_regression.sh` covers:
+
+- config include and override parsing with repeated profile selection from the same RNG seed;
+- distribution generation from explicitly seeded `Random` instances;
+- imported-topology canonical snapshots with same-seed equality and alternate-seed sensitivity;
+- deterministic pathfinding snapshots on the fixed graph;
+- save/load structural round trips;
+- network reports generated from a frozen imported state.
