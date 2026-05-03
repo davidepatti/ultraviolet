@@ -37,6 +37,6 @@ source_count="$(wc -l < "$sources_file" | tr -d ' ')"
 echo "Compiling $source_count Java source files..."
 javac -d "$build_dir" -cp "src/json-simple-1.1.jar" @"$sources_file"
 
-echo "Running DeterminismRegressionTest..."
+echo "Running tests.DeterminismRegressionTest..."
 echo
-java -cp "$build_dir:src/json-simple-1.1.jar" DeterminismRegressionTest
+java -cp "$build_dir:src/json-simple-1.1.jar" tests.DeterminismRegressionTest

@@ -1,3 +1,5 @@
+package tests;
+
 import misc.UVConfig;
 import network.LNChannel;
 import network.UVChannel;
