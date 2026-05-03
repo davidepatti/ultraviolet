@@ -19,7 +19,7 @@ UltraViolet has a `seed` setting, but the live simulation is intentionally threa
 
 ## Regression Target
 
-Use fixed inputs rather than bootstrapped threaded topology. The regression test in `tools/determinism_regression.sh` covers:
+Use fixed inputs rather than bootstrapped threaded topology. The regression test in `tools/determinism-regression/determinism_regression.sh` covers:
 
 - config include and override parsing with repeated profile selection from the same RNG seed;
 - distribution generation from explicitly seeded `Random` instances;

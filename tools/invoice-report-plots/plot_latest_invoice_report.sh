@@ -3,7 +3,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 
 LATEST_REPORT=$(find "$ROOT_DIR" -maxdepth 1 -type f -name '*_invoice.*.csv' | sort | tail -n 1)
 

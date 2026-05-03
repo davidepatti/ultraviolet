@@ -45,8 +45,21 @@ https://github.com/davidepatti/ultraviolet/blob/main/uv_configs/template.propert
 
 Config files can now inherit from another config with `@include=other.properties` (or `@import=...`).
 Included files are loaded first, and properties defined later in the current file override the inherited ones.
-See [uv_configs/example_include.properties](/Users/dpatti/IdeaProjects/ultraviolet/uv_configs/example_include.properties) for a concrete example based on `template.properties`.
-Utility scripts are documented in [tools/README.md](/Users/dpatti/IdeaProjects/ultraviolet/tools/README.md).
+See [uv_configs/example_include.properties](uv_configs/example_include.properties) for a concrete example based on `template.properties`.
+
+## Documentation
+
+The visual walkthrough below gives a quick sense of the interface. For detailed usage and interpretation, see:
+
+* [Documentation index](docs/README.md)
+* [Interactive menu and workflows](docs/simulator_usage.md)
+* [Configuration reference](docs/configuration.md)
+* [Results and report interpretation](docs/results.md)
+* [Invoice report CSV schema](docs/invoice_report_format.md)
+* [Simulation model](docs/simulation_model.md)
+* [Class and package map](docs/classes.md)
+* [Determinism and regression-test scope](docs/determinism.md)
+* [Tooling index](tools/README.md)
 
 
 ### Exploring with UV
@@ -99,7 +112,7 @@ Also, an interesting possibility is to use the "inv" command to inject a whole s
 And the collected and characterized to produce statistical data such as failure rate and motivation of the failures,
 e.g. missing liquidity, insufficient channel capacity, no routes, expired timelocks and so on. See the command "rep" for
 a complete report, and "wr" to the export reports.
-The invoice CSV schema is documented in [docs/invoice_report_format.md](docs/invoice_report_format.md).
+The exported result files are documented in [docs/results.md](docs/results.md), and the invoice CSV schema is documented in [docs/invoice_report_format.md](docs/invoice_report_format.md).
 
 The `stat` command now renders the same information as a readable terminal dashboard, combining a small network summary
 with aligned min/max/average/quartile tables for graph size, channel counts, balances, invoices, and outbound ratios.
@@ -123,9 +136,6 @@ PS. We have a few scientific publication coming in the next months to be used as
 Feel free to join our LN node *lynchlight*,  pubkey:
 
 03740f82191202480ace717fcdf00f71a8b1eb9bdc2bb5e2106cd0ab5cb4d7a54e
-
-
-
 
 
 
