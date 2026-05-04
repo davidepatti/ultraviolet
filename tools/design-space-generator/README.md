@@ -1,209 +1,291 @@
-# Design-Space Generator
+# Design-Space Generator And Runner
 
-`uv_dse_gen` generates a directory of layered `.properties` files for design-space exploration.
+This folder contains two related DSE tools:
 
-Each generated file starts with `@include=<relative path to base config>` and then overrides one unique combination from the JSON parameter space. The tool also writes a `manifest.json` file that records every generated config and its override values.
+| Tool | Purpose |
+| --- | --- |
+| `uv_dse_gen` | Generate one `.properties` file for each parameter combination. |
+| `uv_dse_run` | Generate configs, compile UltraViolet, run experiments for each config, and collect reports. |
 
-## Usage
-
-The simplest workflow is to enter this tool directory first:
+The intended workflow starts from this folder:
 
 ```bash
 cd tools/design-space-generator
+```
+
+## Quick Start
+
+Generate configs only:
+
+```bash
 ./uv_dse_gen ../../uv_configs/template.properties uv_dse_example.json
 ```
 
-By default the output directory is named `<base_stem>_<json_stem>` next to the base properties file. From the command above, that is:
+Run the full DSE automation:
 
-```text
-uv_configs/template_uv_dse_example/
+```bash
+./uv_dse_run ../../uv_configs/template.properties uv_dse_example.json \
+  --output-dir ../../dse_runs/quickstart \
+  --force
 ```
 
-Use `--output-dir <dir>` to choose a destination and `--force` to replace an existing output directory.
+Use `--limit 1` during development to run only the first generated config.
 
-## JSON Schema
+```bash
+./uv_dse_run ../../uv_configs/template.properties uv_dse_example.json \
+  --output-dir ../../dse_runs/smoke \
+  --limit 1 \
+  --force
+```
 
-The JSON file can either be a plain object of `property -> values[]`, or an object with a `parameters` field:
+## DSE JSON
+
+The JSON file has two sections:
+
+- `parameters`: property values to sweep over the base `.properties` template.
+- `experiments`: command sequences to run for every generated config.
+
+```json
+{
+  "parameters": {
+    "bootstrap_nodes": [100, 500],
+    "bootstrap_blocks": [100],
+    "seed": [1, 7]
+  },
+  "experiments": [
+    {
+      "name": "bootstrap_stats",
+      "commands": ["boot"],
+      "outputs": ["network"]
+    },
+    {
+      "name": "random_balance_path",
+      "commands": [
+        "boot",
+        "rndbal",
+        {
+          "command": "path",
+          "start": "pk0",
+          "destination": "pk99",
+          "amount": 10000,
+          "path_finder": "all",
+          "topk": 5
+        }
+      ],
+      "outputs": ["network"]
+    }
+  ]
+}
+```
+
+`uv_dse_gen` reads only `parameters`, so existing generator-only JSON files still work. `uv_dse_run` requires both `parameters` and `experiments`.
+
+## Experiment Commands
+
+Commands run in the order listed. A command can be a string when no parameters are needed, or an object when options are needed.
+
+| Command | Effect | Common options |
+| --- | --- | --- |
+| `boot` | Bootstrap the network from the generated config. | none |
+| `bal` | Set initiator-side channel balances to a fixed fraction. | `level`, `min_delta` |
+| `rndbal` | Randomize initiator-side channel balances. | `min_delta` |
+| `path` | Run path finding between two nodes and store results in `run.json`. | `start`, `destination`, `amount`, `path_finder`, `topk` |
+| `route` | Generate one invoice and try to pay it. | `sender`, `destination`, `amount`, `max_fees`, `path_finder` |
+| `inv` | Generate invoice traffic over a number of blocks. | `node_events_per_block`, `blocks`, `min_amt`, `max_amt`, `max_fees`, `path_finder` |
+
+Supported `path_finder` values are `lnd`, `mini_dijkstra`, `shortest_hop`, and `bfs`. For `path`, `path_finder: "all"` runs all strategies and records each result.
+
+Supported report outputs are:
+
+| Output | File |
+| --- | --- |
+| `network`, `stat`, or `stats` | `reports/network.csv` |
+| `invoice` or `invoices` | `reports/invoice.csv` |
+
+If `outputs` is omitted, `uv_dse_run` writes the network report.
+
+## Output Layout
+
+`uv_dse_run` writes stable paths for post-processing:
+
+```text
+dse_runs/quickstart/
+  configs/
+    cfg_0001__seed-1.properties
+    manifest.json
+  runs/
+    cfg_0001/
+      bootstrap_stats/
+        run.properties
+        experiment.json
+        run.json
+        runner_stdout.txt
+        runner_stderr.txt
+        uv.log
+        reports/
+          network.csv
+      invoice_campaign/
+        run.properties
+        experiment.json
+        run.json
+        reports/
+          network.csv
+          invoice.csv
+  manifest.json
+  runs_index.csv
+  runs_index.jsonl
+```
+
+The top-level `manifest.json` summarizes the DSE execution. `runs_index.csv` is convenient for spreadsheets. `runs_index.jsonl` preserves structured fields such as parameter overrides and is usually the best input for scripts and notebooks.
+
+`run.json` records command-level metadata, durations, path-search results, route success, and relative report paths. The report files are produced through the same report-export code used by the simulator `wr` command, so DSE does not maintain a separate report implementation.
+
+## Examples
+
+All examples assume the current directory is `tools/design-space-generator`.
+
+### Bootstrap Stats Only
 
 ```json
 {
   "parameters": {
     "bootstrap_nodes": [100, 500, 1000],
-    "seed": [1, 7],
-    "profile.hub.prob": [0.1, 0.15]
-  }
+    "bootstrap_blocks": [100, 500],
+    "seed": [1, 7]
+  },
+  "experiments": [
+    {
+      "name": "bootstrap_stats",
+      "commands": ["boot"],
+      "outputs": ["network"]
+    }
+  ]
 }
 ```
 
-The tool computes the Cartesian product of all arrays. Only strings, numbers, and booleans are supported as values.
-
-## Examples
-
-All examples below assume you are inside the tool folder:
+Run it:
 
 ```bash
-cd tools/design-space-generator
+./uv_dse_run ../../uv_configs/template.properties bootstrap_stats.json \
+  --output-dir ../../dse_runs/bootstrap_stats \
+  --force
 ```
 
-### 1. Run The Included Example
+This is the cheapest automated exploration: it checks how topology and aggregate network metrics change across the parameter space.
 
-```bash
-./uv_dse_gen ../../uv_configs/template.properties uv_dse_example.json
+### Fixed Balance Path Search
+
+```json
+{
+  "parameters": {
+    "bootstrap_nodes": [100],
+    "seed": [1, 7, 13],
+    "pathfinding_max_hops": [4, 6, 8]
+  },
+  "experiments": [
+    {
+      "name": "fixed_balance_path",
+      "commands": [
+        "boot",
+        { "command": "bal", "level": 0.5 },
+        {
+          "command": "path",
+          "start": "pk0",
+          "destination": "pk99",
+          "amount": 10000,
+          "path_finder": "all",
+          "topk": 10
+        }
+      ],
+      "outputs": ["network"]
+    }
+  ]
+}
 ```
 
-This generates every combination of:
+`path` writes search statistics and candidate path details into each run's `run.json`. It does not create a separate path report in this phase.
 
-- `bootstrap_nodes`: `100`, `500`, `1000`
-- `seed`: `1`, `7`
-- `profile.hub.prob`: `0.1`, `0.15`
+### Random Liquidity And Invoice Traffic
 
-Total generated configs: `3 * 2 * 2 = 12`.
+```json
+{
+  "parameters": {
+    "bootstrap_nodes": [100],
+    "seed": [1, 7],
+    "profile.hub.mean_ppm_fee": [300, 700, 1200]
+  },
+  "experiments": [
+    {
+      "name": "invoice_campaign",
+      "commands": [
+        "boot",
+        "rndbal",
+        {
+          "command": "inv",
+          "node_events_per_block": 0.05,
+          "blocks": 100,
+          "min_amt": 1000,
+          "max_amt": 100000,
+          "max_fees": 1000,
+          "path_finder": "lnd"
+        }
+      ],
+      "outputs": ["network", "invoice"]
+    }
+  ]
+}
+```
 
-### 2. Write To A Named Output Directory
+This is the main workflow for invoice success/failure analysis because it produces both the network report and the invoice report.
+
+### Single Route Probe
+
+```json
+{
+  "parameters": {
+    "bootstrap_nodes": [100],
+    "seed": [1, 7]
+  },
+  "experiments": [
+    {
+      "name": "single_route_probe",
+      "commands": [
+        "boot",
+        { "command": "bal", "level": 0.5 },
+        {
+          "command": "route",
+          "sender": "pk0",
+          "destination": "pk99",
+          "amount": 25000,
+          "max_fees": 1500,
+          "path_finder": "lnd"
+        }
+      ],
+      "outputs": ["network", "invoice"]
+    }
+  ]
+}
+```
+
+`route` creates one deterministic invoice and attempts payment. The route result is stored in `run.json`, and the invoice attempt contributes to `reports/invoice.csv`.
+
+## Generator-Only Usage
+
+`uv_dse_gen` still creates only `.properties` variations:
 
 ```bash
 ./uv_dse_gen ../../uv_configs/template.properties uv_dse_example.json \
   --output-dir ../../uv_configs/dse_quickstart
 ```
 
-Use this when you want a stable directory name for scripts, notebooks, or batch runs.
+By default the output directory is named `<base_stem>_<json_stem>` next to the base properties file. Use `--output-dir <dir>` to choose a destination and `--force` to replace an existing output directory.
 
-### 3. Replace An Existing Output Directory
-
-```bash
-./uv_dse_gen ../../uv_configs/template.properties uv_dse_example.json \
-  --output-dir ../../uv_configs/dse_quickstart \
-  --force
-```
-
-`--force` removes and recreates the output directory. Use it only when generated configs can be discarded.
-
-### 4. Sweep Network Size And Seeds
-
-Create `network_size_sweep.json` in this folder:
-
-```json
-{
-  "parameters": {
-    "bootstrap_nodes": [100, 500, 1000, 2000],
-    "bootstrap_blocks": [100, 500, 1000, 2000],
-    "seed": [1, 7, 13]
-  }
-}
-```
-
-Generate configs:
-
-```bash
-./uv_dse_gen ../../uv_configs/template.properties network_size_sweep.json \
-  --output-dir ../../uv_configs/dse_network_size
-```
-
-This is useful for studying scaling effects while keeping each size paired with a coherent bootstrap period.
-
-### 5. Sweep Pathfinding Parameters
-
-Create `pathfinding_sweep.json`:
-
-```json
-{
-  "parameters": {
-    "pathfinding_max_hops": [4, 6, 8],
-    "pathfinding_lnd_default_path_probability": [0.4, 0.6, 0.8],
-    "pathfinding_lnd_attempt_cost_ppm": [500.0, 1000.0, 2000.0],
-    "seed": [1, 7]
-  }
-}
-```
-
-Generate configs:
-
-```bash
-./uv_dse_gen ../../uv_configs/template.properties pathfinding_sweep.json \
-  --output-dir ../../uv_configs/dse_pathfinding
-```
-
-Use these configs when comparing path search complexity, returned candidate paths, and invoice success rates under different cost assumptions.
-
-### 6. Sweep Liquidity And Fee Profiles
-
-Create `profile_sweep.json`:
-
-```json
-{
-  "parameters": {
-    "profile.small.max_channels": [5, 10, 20],
-    "profile.medium.max_channels": [50, 100],
-    "profile.hub.max_channels": [250, 500],
-    "profile.hub.mean_ppm_fee": [300, 700, 1200],
-    "seed": [1, 7]
-  }
-}
-```
-
-Generate configs:
-
-```bash
-./uv_dse_gen ../../uv_configs/template.properties profile_sweep.json \
-  --output-dir ../../uv_configs/dse_profiles
-```
-
-Use this for topology-density and fee-policy experiments. Keep an eye on total combinations: this example creates `3 * 2 * 2 * 3 * 2 = 72` configs.
-
-### 7. Sweep Timechain And Gossip Timing
-
-Create `timing_sweep.json`:
-
-```json
-{
-  "parameters": {
-    "blocktime_ms": [50, 100],
-    "node_services_tick_ms": [5, 10],
-    "gossip_flush_period_ms": [5, 10],
-    "gossip_flush_size": [100, 500],
-    "seed": [1]
-  }
-}
-```
-
-Generate configs:
-
-```bash
-./uv_dse_gen ../../uv_configs/template.properties timing_sweep.json \
-  --output-dir ../../uv_configs/dse_timing
-```
-
-Timing sweeps affect thread scheduling pressure. Treat exact run replay as nondeterministic; compare aggregate statistics and invariants instead.
-
-### 8. Run A Generated Config
-
-From the repository root:
-
-```bash
-java -jar UltraViolet.jar uv_configs/dse_quickstart/cfg_0001__bootstrap-nodes-100__seed-1__profile-hub-prob-0-1.properties
-```
-
-From this tool directory:
-
-```bash
-cd ../..
-java -jar UltraViolet.jar uv_configs/dse_quickstart/cfg_0001__bootstrap-nodes-100__seed-1__profile-hub-prob-0-1.properties
-```
-
-## Output Interpretation
-
-Generated configs are intended to be passed directly to UltraViolet:
-
-```bash
-java -jar UltraViolet.jar uv_configs/template_uv_dse_example/cfg_0001__bootstrap-nodes-100__seed-1__profile-hub-prob-0-1.properties
-```
-
-The `manifest.json` file is useful for automation because it maps each generated filename to the parameter values that produced it.
+Generated files start with `@include=<relative path to base config>` and then override one unique combination from the parameter space. The generated `manifest.json` maps each filename to the parameter values that produced it.
 
 ## Practical Notes
 
-- Generated files are ordinary UltraViolet config files. You can inspect or edit them manually.
-- The include path inside each generated file is relative to the generated output directory, not to this tool directory.
-- The generator does not run simulations. It only creates configs.
-- Large parameter spaces grow quickly because every array is combined with every other array.
-- Keep generated DSE directories under `uv_configs/` when you want them to appear naturally in the simulator's `cfg` menu.
+- Large parameter spaces grow as the Cartesian product of every parameter array.
+- Keep generated config-only directories under `uv_configs/` when you want them to appear in the simulator `cfg` menu.
+- Keep full DSE run outputs under `dse_runs/` or another analysis directory; they contain logs and reports, not only configs.
+- Use small `bootstrap_nodes`, low `bootstrap_blocks`, and `--limit 1` for smoke tests before launching a large exploration.
+- Exact replay can still be affected by threaded simulator behavior. Prefer comparing stable aggregate reports, structured command metadata, and regression invariants.

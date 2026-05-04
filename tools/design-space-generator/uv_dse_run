@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import csv
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+sys.dont_write_bytecode = True
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
+JSON_JAR = REPO_ROOT / "src" / "json-simple-1.1.jar"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run a full UltraViolet design-space exploration: generate config variations, "
+            "execute the requested experiments, and collect structured reports."
+        )
+    )
+    parser.add_argument("base_properties", help="Base .properties file to include from each generated config")
+    parser.add_argument("dse_json", help="JSON file with 'parameters' and 'experiments' sections")
+    parser.add_argument(
+        "--output-dir",
+        help="Destination run directory. Defaults to ../../dse_runs/<dse_json_stem> from this tool directory.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace the output directory if it already exists.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Run only the first N generated parameter combinations. Useful for smoke tests.",
+    )
+    parser.add_argument("--java", default="java", help="Java launcher command. Defaults to java.")
+    parser.add_argument("--javac", default="javac", help="Java compiler command. Defaults to javac.")
+    parser.add_argument(
+        "--keep-build-dir",
+        action="store_true",
+        help="Keep the temporary Java build directory and record it in the manifest.",
+    )
+    return parser.parse_args()
+
+
+def load_uv_dse_gen_module() -> Any:
+    loader = importlib.machinery.SourceFileLoader("uv_dse_gen", str(SCRIPT_DIR / "uv_dse_gen"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise RuntimeError("Could not load uv_dse_gen module")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def load_dse_payload(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("DSE JSON must be an object with 'parameters' and 'experiments' sections.")
+    if "parameters" not in payload:
+        raise ValueError("DSE JSON for uv_dse_run must contain a 'parameters' object.")
+    return payload
+
+
+def validate_experiments(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_experiments = payload.get("experiments")
+    if not isinstance(raw_experiments, list) or not raw_experiments:
+        raise ValueError("DSE JSON must contain a non-empty 'experiments' array.")
+
+    experiments: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for index, raw_experiment in enumerate(raw_experiments, start=1):
+        if not isinstance(raw_experiment, dict):
+            raise ValueError(f"Experiment #{index} must be a JSON object.")
+
+        experiment = dict(raw_experiment)
+        name = str(experiment.get("name") or f"experiment_{index}").strip()
+        if not name:
+            raise ValueError(f"Experiment #{index} has an empty name.")
+        if name in seen_names:
+            raise ValueError(f"Duplicate experiment name: {name}")
+        seen_names.add(name)
+
+        commands = experiment.get("commands")
+        if not isinstance(commands, list) or not commands:
+            raise ValueError(f"Experiment '{name}' must contain a non-empty 'commands' array.")
+        for command_index, command in enumerate(commands, start=1):
+            if isinstance(command, str):
+                if not command.strip():
+                    raise ValueError(f"Experiment '{name}' command #{command_index} is empty.")
+                continue
+            if not isinstance(command, dict):
+                raise ValueError(f"Experiment '{name}' command #{command_index} must be an object or string.")
+            command_name = command.get("command", command.get("cmd"))
+            if not isinstance(command_name, str) or not command_name.strip():
+                raise ValueError(f"Experiment '{name}' command #{command_index} must define 'command'.")
+
+        outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
+        if isinstance(outputs, str):
+            outputs = [outputs]
+        if not isinstance(outputs, list) or not outputs:
+            raise ValueError(f"Experiment '{name}' outputs must be a non-empty array or string when provided.")
+
+        experiment["name"] = name
+        experiment["outputs"] = outputs
+        experiments.append(experiment)
+
+    return experiments
+
+
+def ensure_output_directory(path: Path, force: bool) -> None:
+    if path.exists():
+        if not path.is_dir():
+            raise ValueError(f"Output path exists but is not a directory: {path}")
+        if not force:
+            raise ValueError(f"Output directory already exists: {path} (use --force to replace it)")
+        shutil.rmtree(path)
+    path.mkdir(parents=True)
+
+
+def compile_java_sources(javac: str, build_dir: Path) -> None:
+    sources = sorted((REPO_ROOT / "src").rglob("*.java"))
+    if not sources:
+        raise ValueError("No Java sources found under src/")
+    if not JSON_JAR.is_file():
+        raise ValueError(f"Missing json-simple dependency: {JSON_JAR}")
+
+    source_list = build_dir / "sources.txt"
+    source_list.write_text("\n".join(str(source) for source in sources) + "\n", encoding="utf-8")
+    command = [
+        javac,
+        "-d",
+        str(build_dir),
+        "-cp",
+        str(JSON_JAR),
+        f"@{source_list}",
+    ]
+    print(f"[compile] Compiling {len(sources)} Java source files into {build_dir}", flush=True)
+    completed = subprocess.run(command, cwd=REPO_ROOT, text=True)
+    if completed.returncode != 0:
+        raise RuntimeError(f"Java compilation failed with exit code {completed.returncode}")
+
+
+def sanitize_fragment(text: str) -> str:
+    fragment = re.sub(r"[^A-Za-z0-9]+", "-", text.strip()).strip("-").lower()
+    return fragment or "value"
+
+
+def generated_config_stem(file_name: str) -> str:
+    stem = Path(file_name).stem
+    if "__" in stem:
+        return stem.split("__", 1)[0]
+    return stem
+
+
+def relative_include(from_dir: Path, target: Path) -> str:
+    return Path(os.path.relpath(target.resolve(), from_dir.resolve())).as_posix()
+
+
+def write_run_config(run_dir: Path, generated_config: Path) -> Path:
+    config_path = run_dir / "run.properties"
+    logfile = run_dir / "uv.log"
+    lines = [
+        "# Generated by uv_dse_run",
+        f"@include={relative_include(run_dir, generated_config)}",
+        f"logfile={logfile.resolve()}",
+        "",
+    ]
+    config_path.write_text("\n".join(lines), encoding="utf-8")
+    return config_path
+
+
+def write_experiment_spec(run_dir: Path, experiment: dict[str, Any]) -> Path:
+    path = run_dir / "experiment.json"
+    path.write_text(json.dumps(experiment, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def run_single_experiment(
+    *,
+    java: str,
+    classpath: str,
+    config_path: Path,
+    experiment_path: Path,
+    run_dir: Path,
+) -> int:
+    command = [
+        java,
+        "-cp",
+        classpath,
+        "DseExperimentRunner",
+        str(config_path),
+        str(experiment_path),
+        str(run_dir),
+    ]
+
+    stdout_path = run_dir / "runner_stdout.txt"
+    stderr_path = run_dir / "runner_stderr.txt"
+    with stdout_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
+        completed = subprocess.run(command, cwd=REPO_ROOT, stdout=stdout, stderr=stderr, text=True)
+    return completed.returncode
+
+
+def load_run_json(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / "run.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def report_path_from_run_json(run_json: dict[str, Any] | None, report_type: str) -> str:
+    if not run_json:
+        return ""
+    for report in run_json.get("reports", []):
+        if isinstance(report, dict) and report.get("type") == report_type:
+            return str(report.get("path", ""))
+    return ""
+
+
+def write_run_indexes(output_dir: Path, runs: list[dict[str, Any]]) -> None:
+    jsonl_path = output_dir / "runs_index.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as jsonl_file:
+        for run in runs:
+            jsonl_file.write(json.dumps(run, sort_keys=True) + "\n")
+
+    csv_path = output_dir / "runs_index.csv"
+    fieldnames = [
+        "combination_index",
+        "config_file",
+        "experiment",
+        "status",
+        "return_code",
+        "run_dir",
+        "run_json",
+        "network_report",
+        "invoice_report",
+    ]
+    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for run in runs:
+            writer.writerow({field: run.get(field, "") for field in fieldnames})
+
+
+def write_manifest(
+    *,
+    output_dir: Path,
+    base_properties: Path,
+    dse_json: Path,
+    generated_manifest: dict[str, Any],
+    experiments: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+    build_dir: Path,
+    kept_build_dir: bool,
+) -> None:
+    manifest = {
+        "tool": "uv_dse_run",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "base_properties": str(base_properties),
+        "dse_json": str(dse_json),
+        "output_dir": str(output_dir),
+        "configs_manifest": "configs/manifest.json",
+        "total_parameter_combinations": generated_manifest["total_combinations"],
+        "total_experiments": len(experiments),
+        "total_runs": len(runs),
+        "successful_runs": sum(1 for run in runs if run["status"] == "success"),
+        "failed_runs": sum(1 for run in runs if run["status"] != "success"),
+        "experiments": experiments,
+        "runs_index_csv": "runs_index.csv",
+        "runs_index_jsonl": "runs_index.jsonl",
+    }
+    if kept_build_dir:
+        manifest["build_dir"] = str(build_dir)
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    base_properties = Path(args.base_properties).expanduser().resolve()
+    dse_json = Path(args.dse_json).expanduser().resolve()
+
+    if not base_properties.is_file():
+        print(f"Base properties file not found: {base_properties}", file=sys.stderr)
+        return 1
+    if not dse_json.is_file():
+        print(f"DSE JSON file not found: {dse_json}", file=sys.stderr)
+        return 1
+    if args.limit is not None and args.limit <= 0:
+        print("--limit must be a positive integer", file=sys.stderr)
+        return 1
+
+    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else (REPO_ROOT / "dse_runs" / dse_json.stem)
+
+    try:
+        payload = load_dse_payload(dse_json)
+        experiments = validate_experiments(payload)
+        ensure_output_directory(output_dir, args.force)
+
+        configs_dir = output_dir / "configs"
+        runs_dir = output_dir / "runs"
+        runs_dir.mkdir(parents=True)
+
+        print(f"[plan] Output directory: {output_dir}", flush=True)
+        print(f"[plan] Experiments: {', '.join(experiment['name'] for experiment in experiments)}", flush=True)
+
+        uv_dse_gen = load_uv_dse_gen_module()
+        generated_manifest = uv_dse_gen.generate_design_space(
+            base_properties,
+            dse_json,
+            configs_dir,
+            force=False,
+        )
+
+        generated_files = list(generated_manifest["generated_files"])
+        if args.limit is not None:
+            generated_files = generated_files[: args.limit]
+            print(f"[plan] Limiting run to first {len(generated_files)} generated configs", flush=True)
+
+        build_parent = tempfile.mkdtemp(prefix="uv-dse-build.")
+        build_dir = Path(build_parent) / "classes"
+        build_dir.mkdir(parents=True)
+        compile_java_sources(args.javac, build_dir)
+        classpath = os.pathsep.join([str(build_dir), str(JSON_JAR)])
+
+        runs: list[dict[str, Any]] = []
+        total_runs = len(generated_files) * len(experiments)
+        run_counter = 0
+
+        for generated_file in generated_files:
+            config_index = int(generated_file["index"])
+            config_file = str(generated_file["file"])
+            generated_config = configs_dir / config_file
+            config_run_dir = runs_dir / generated_config_stem(config_file)
+
+            for experiment in experiments:
+                run_counter += 1
+                experiment_name = str(experiment["name"])
+                experiment_slug = sanitize_fragment(experiment_name)
+                run_dir = config_run_dir / experiment_slug
+                run_dir.mkdir(parents=True)
+
+                config_path = write_run_config(run_dir, generated_config)
+                experiment_path = write_experiment_spec(run_dir, experiment)
+
+                print(
+                    f"[run {run_counter}/{total_runs}] cfg #{config_index}: "
+                    f"{experiment_name} -> {run_dir.relative_to(output_dir)}",
+                    flush=True,
+                )
+                return_code = run_single_experiment(
+                    java=args.java,
+                    classpath=classpath,
+                    config_path=config_path,
+                    experiment_path=experiment_path,
+                    run_dir=run_dir,
+                )
+
+                run_json = load_run_json(run_dir)
+                status = str(run_json.get("status", "")) if run_json else ""
+                if not status:
+                    status = "success" if return_code == 0 else "failed"
+
+                run_record = {
+                    "combination_index": config_index,
+                    "config_file": config_file,
+                    "overrides": generated_file.get("overrides", {}),
+                    "experiment": experiment_name,
+                    "status": status,
+                    "return_code": return_code,
+                    "run_dir": str(run_dir.relative_to(output_dir)),
+                    "run_json": str((run_dir / "run.json").relative_to(output_dir)) if (run_dir / "run.json").exists() else "",
+                    "network_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "network"))
+                    if report_path_from_run_json(run_json, "network")
+                    else "",
+                    "invoice_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "invoice"))
+                    if report_path_from_run_json(run_json, "invoice")
+                    else "",
+                }
+                runs.append(run_record)
+                print(f"[run {run_counter}/{total_runs}] status={status} return_code={return_code}", flush=True)
+
+        write_run_indexes(output_dir, runs)
+        write_manifest(
+            output_dir=output_dir,
+            base_properties=base_properties,
+            dse_json=dse_json,
+            generated_manifest=generated_manifest,
+            experiments=experiments,
+            runs=runs,
+            build_dir=build_dir,
+            kept_build_dir=args.keep_build_dir,
+        )
+
+        if args.keep_build_dir:
+            print(f"[done] Kept Java build directory: {build_dir}", flush=True)
+        else:
+            shutil.rmtree(build_parent, ignore_errors=True)
+
+        failures = [run for run in runs if run["status"] != "success" or run["return_code"] != 0]
+        print(f"[done] Completed {len(runs)} runs: {len(runs) - len(failures)} success, {len(failures)} failed", flush=True)
+        print(f"[done] Manifest: {output_dir / 'manifest.json'}", flush=True)
+        print(f"[done] Indexes: {output_dir / 'runs_index.csv'} and {output_dir / 'runs_index.jsonl'}", flush=True)
+        return 1 if failures else 0
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

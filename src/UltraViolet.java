@@ -4,9 +4,8 @@ import stats.*;
 import topology.*;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -489,55 +488,12 @@ public class UltraViolet {
             return;
         }
 
-        var networkReport = networkManager.getStats().generateNetworkReport();
-        var invoiceReport = networkManager.getStats().generateInvoiceReport();
-
-        String labels = GlobalStats.NodeStats.generateStatsHeader();
-        StringBuilder r = new StringBuilder(labels).append('\n');
-        for (var n : networkManager.getSortedNodeListByPubkey()) {
-            r.append(n.getNodeStats().generateStatsCSV(n)).append("\n");
-        }
-        var csvReport = r.toString();
         System.out.print("Enter description prefix:");
         var prefix = menuInputScanner.nextLine();
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
         try {
-            // For network report
-            var filenameNetwork = new StringBuilder(prefix).append("_network.").append(sdf.format(new Date())).append(".csv");
-            var fwNetwork = new FileWriter(filenameNetwork.toString());
-            fwNetwork.write(networkReport);
-            fwNetwork.close();
-            System.out.println("Written " + filenameNetwork);
-
-            // For invoice report
-            var filenameInvoice = new StringBuilder(prefix).append("_invoice.").append(sdf.format(new Date())).append(".csv");
-            var fwInvoice = new FileWriter(filenameInvoice.toString());
-            fwInvoice.write(invoiceReport);
-            fwInvoice.close();
-            System.out.println("Written " + filenameInvoice);
-
-            // For csv report
-            var filenameCsv = new StringBuilder(prefix).append("_nodes.").append(sdf.format(new Date())).append(".csv");
-            var fwCsv = new FileWriter(filenameCsv.toString());
-            fwCsv.write(csvReport);
-            fwCsv.close();
-            System.out.println("Written " + filenameCsv);
-
-            // For "all" report, similar to showNodesAndChannels
-            var filenameAll = new StringBuilder(prefix).append("_all.").append(sdf.format(new Date())).append(".txt");
-            StringBuilder allReport = new StringBuilder();
-            var ln = networkManager.getUVNodeList().values().stream().sorted().toList();
-            for (UVNode n : ln) {
-                allReport.append("--------------------------------------------\n");
-                allReport.append(UVNode.generateNodeLabelString()).append('\n');
-                allReport.append(n.toString()).append('\n');
-                allReport.append(UVChannel.generateLabels()).append('\n');
-                n.getChannels().values().forEach(c -> allReport.append(c).append('\n'));
+            for (ReportExporter.WrittenReport report : ReportExporter.writeTimestampedReports(networkManager, Path.of("."), prefix)) {
+                System.out.println("Written " + report.path().getFileName());
             }
-            var fwAll = new FileWriter(filenameAll.toString());
-            fwAll.write(allReport.toString());
-            fwAll.close();
-            System.out.println("Written " + filenameAll);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
