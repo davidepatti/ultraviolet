@@ -7,11 +7,36 @@ This folder contains the UltraViolet design-space exploration workflow:
 | `uv_dse_gen` | Generate `.properties` files from a JSON parameter space. |
 | `uv_dse_run` | Generate configs, run UltraViolet experiments, and collect structured outputs. |
 | `uv_dse_visualizer.py` | Open a GUI or export PDFs from DSE runner outputs. |
+| `uv_dse_wizard.py` | Open a single browser wizard for creating JSON, running DSE, and visualizing results. |
 
 The normal workflow is:
 
 ```text
 write DSE JSON -> run uv_dse_run -> open uv_dse_visualizer.py -> export figures
+```
+
+## GUI Wizard
+
+The wizard is the single visual entry point for the DSE workflow. It keeps the command-line tools available, but lets you perform the same workflow from a browser UI.
+
+From this folder:
+
+```bash
+./uv_dse_wizard.py
+```
+
+The main menu has three actions:
+
+| Action | What It Opens |
+| --- | --- |
+| `Create DSE JSON` | A form that loads a properties file, lists parameters and current values, lets you select DSE value ranges, edit experiments, and load/save DSE JSON files. |
+| `Run DSE` | A form for base properties, DSE JSON path, output directory, `--force`, and optional `--limit`, then runs `uv_dse_run`. |
+| `Open DSE Visualizer` | The integrated report visualizer for selecting experiment, report, metric, graph type, filters, and PDF export. |
+
+The JSON creator uses `../../uv_configs/template.properties` by default. DSE outputs are expected under `dse_runs/` inside this folder. Browse buttons open native OS file selectors: Finder dialogs on macOS, and `zenity` or `kdialog` on Ubuntu/Linux. If Ubuntu does not open a dialog, install `zenity`:
+
+```bash
+sudo apt install zenity
 ```
 
 ## End-To-End Quickstart
