@@ -1,0 +1,32 @@
+{
+  "parameters": {
+    "bootstrap_nodes": [8],
+    "bootstrap_blocks": [6],
+    "blocktime_ms": [2],
+    "node_services_tick_ms": [2],
+    "gossip_flush_period_ms": [2],
+    "p2p_max_age": [2],
+    "gossip_flush_size": [200],
+    "pathfinding_max_hops": [3, 6],
+    "seed": [1, 7]
+  },
+  "experiments": [
+    {
+      "name": "quick_invoice_hops",
+      "commands": [
+        "boot",
+        "rndbal",
+        {
+          "command": "inv",
+          "node_events_per_block": 0.10,
+          "blocks": 4,
+          "min_amt": 50000,
+          "max_amt": 100000,
+          "max_fees": 1000,
+          "path_finder": "lnd"
+        }
+      ],
+      "outputs": ["network", "invoice"]
+    }
+  ]
+}

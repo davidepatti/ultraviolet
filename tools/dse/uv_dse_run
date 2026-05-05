@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("dse_json", help="JSON file with 'parameters' and 'experiments' sections")
     parser.add_argument(
         "--output-dir",
-        help="Destination run directory. Defaults to ../../dse_runs/<dse_json_stem> from this tool directory.",
+        help="Destination run directory. Defaults to dse_runs/<dse_json_stem> inside this tool directory.",
     )
     parser.add_argument(
         "--force",
@@ -311,7 +311,7 @@ def main() -> int:
         print("--limit must be a positive integer", file=sys.stderr)
         return 1
 
-    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else (REPO_ROOT / "dse_runs" / dse_json.stem)
+    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else (SCRIPT_DIR / "dse_runs" / dse_json.stem)
 
     try:
         payload = load_dse_payload(dse_json)
