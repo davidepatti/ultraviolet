@@ -12,6 +12,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import uv_dse_common as dse_common
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -37,51 +39,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_parameter_space(parameter_space_path: Path) -> tuple[list[str], dict[str, list[str]]]:
-    try:
-        payload = json.loads(parameter_space_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Invalid JSON in {parameter_space_path}: line {exc.lineno}, column {exc.colno}: {exc.msg}"
-        ) from exc
-
-    if isinstance(payload, dict) and "parameters" in payload:
-        raw_parameters = payload["parameters"]
-    else:
-        raw_parameters = payload
-
-    if not isinstance(raw_parameters, dict) or not raw_parameters:
-        raise ValueError(
-            "Parameter space must be a non-empty object, or an object with a non-empty 'parameters' object."
-        )
-
-    ordered_names: list[str] = []
-    normalized_parameters: dict[str, list[str]] = {}
-
-    for raw_name, raw_values in raw_parameters.items():
-        if not isinstance(raw_name, str) or not raw_name.strip():
-            raise ValueError("Every parameter name must be a non-empty string.")
-        if not isinstance(raw_values, list) or not raw_values:
-            raise ValueError(f"Parameter '{raw_name}' must provide a non-empty JSON array of values.")
-
-        ordered_names.append(raw_name)
-        normalized_parameters[raw_name] = [stringify_property_value(raw_name, value) for value in raw_values]
-
-    return ordered_names, normalized_parameters
+    return dse_common.load_parameter_space(parameter_space_path)
 
 
 def stringify_property_value(parameter_name: str, value: object) -> str:
-    if value is None:
-        raise ValueError(f"Parameter '{parameter_name}' cannot contain null values.")
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
-    if isinstance(value, str):
-        return value
-    raise ValueError(
-        f"Parameter '{parameter_name}' contains an unsupported value type: {type(value).__name__}. "
-        "Only strings, numbers, and booleans are supported."
-    )
+    return dse_common.stringify_property_value(parameter_name, value)
 
 
 def default_output_dir(base_properties_path: Path, parameter_space_path: Path) -> Path:

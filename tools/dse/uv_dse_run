@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import uv_dse_common as dse_common
+
 
 sys.dont_write_bytecode = True
 
@@ -69,62 +71,11 @@ def load_uv_dse_gen_module() -> Any:
 
 
 def load_dse_payload(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
-
-    if not isinstance(payload, dict):
-        raise ValueError("DSE JSON must be an object with 'parameters' and 'experiments' sections.")
-    if "parameters" not in payload:
-        raise ValueError("DSE JSON for uv_dse_run must contain a 'parameters' object.")
-    return payload
+    return dse_common.load_dse_payload(path)
 
 
 def validate_experiments(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_experiments = payload.get("experiments")
-    if not isinstance(raw_experiments, list) or not raw_experiments:
-        raise ValueError("DSE JSON must contain a non-empty 'experiments' array.")
-
-    experiments: list[dict[str, Any]] = []
-    seen_names: set[str] = set()
-    for index, raw_experiment in enumerate(raw_experiments, start=1):
-        if not isinstance(raw_experiment, dict):
-            raise ValueError(f"Experiment #{index} must be a JSON object.")
-
-        experiment = dict(raw_experiment)
-        name = str(experiment.get("name") or f"experiment_{index}").strip()
-        if not name:
-            raise ValueError(f"Experiment #{index} has an empty name.")
-        if name in seen_names:
-            raise ValueError(f"Duplicate experiment name: {name}")
-        seen_names.add(name)
-
-        commands = experiment.get("commands")
-        if not isinstance(commands, list) or not commands:
-            raise ValueError(f"Experiment '{name}' must contain a non-empty 'commands' array.")
-        for command_index, command in enumerate(commands, start=1):
-            if isinstance(command, str):
-                if not command.strip():
-                    raise ValueError(f"Experiment '{name}' command #{command_index} is empty.")
-                continue
-            if not isinstance(command, dict):
-                raise ValueError(f"Experiment '{name}' command #{command_index} must be an object or string.")
-            command_name = command.get("command", command.get("cmd"))
-            if not isinstance(command_name, str) or not command_name.strip():
-                raise ValueError(f"Experiment '{name}' command #{command_index} must define 'command'.")
-
-        outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
-        if isinstance(outputs, str):
-            outputs = [outputs]
-        if not isinstance(outputs, list) or not outputs:
-            raise ValueError(f"Experiment '{name}' outputs must be a non-empty array or string when provided.")
-
-        experiment["name"] = name
-        experiment["outputs"] = outputs
-        experiments.append(experiment)
-
-    return experiments
+    return dse_common.validate_experiments(payload)
 
 
 def ensure_output_directory(path: Path, force: bool) -> None:

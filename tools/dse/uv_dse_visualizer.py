@@ -489,6 +489,44 @@ def parse_filters(values: list[str] | None, text: str = "") -> dict[str, str]:
     return filters
 
 
+def report_type_from_params(params: dict[str, str]) -> str:
+    report = params.get("report", "network")
+    return report if report in {"network", "invoice"} else "network"
+
+
+def chart_spec_from_params(
+    dataset: DseDataset,
+    params: dict[str, str],
+    *,
+    report_type: str | None = None,
+) -> ChartSpec:
+    report = report_type or report_type_from_params(params)
+    metric_keys = {metric.key for metric in available_metrics(report)}
+    metric = params.get("metric") or default_metric(report)
+    if metric not in metric_keys:
+        metric = default_metric(report)
+
+    graph = params.get("graph", "bar")
+    if graph not in GRAPH_TYPES:
+        graph = "bar"
+
+    aggregation = params.get("aggregation", "mean")
+    if aggregation not in AGGREGATIONS:
+        aggregation = "mean"
+
+    return ChartSpec(
+        report_type=report,
+        metric_key=metric,
+        x_param=params.get("x_param") or default_x_parameter(dataset),
+        graph_type=graph,
+        aggregation=aggregation,
+        experiment=params.get("experiment", "All"),
+        filters=parse_filters(None, params.get("filter", "")),
+        title=params.get("title", ""),
+        font_size=parse_int(params.get("font_size"), 10),
+    )
+
+
 class PdfCanvas:
     def __init__(self, width: float = 792.0, height: float = 612.0) -> None:
         self.width = width
@@ -1364,32 +1402,7 @@ def run_web_gui(initial_dir: Path | None, reason: str | None = None) -> int:
 
     def build_web_selection(params: dict[str, str]) -> tuple[DseDataset, ChartSpec, ChartData]:
         dataset = load_dataset(Path(params.get("input_dir", str(initial_dir) if initial_dir else "")))
-        report = params.get("report", "network")
-        if report not in {"network", "invoice"}:
-            report = "network"
-        metric_keys = {metric.key for metric in available_metrics(report)}
-        metric = params.get("metric") or default_metric(report)
-        if metric not in metric_keys:
-            metric = default_metric(report)
-        x_param = params.get("x_param") or default_x_parameter(dataset)
-        experiment = params.get("experiment", "All")
-        graph = params.get("graph", "bar")
-        if graph not in GRAPH_TYPES:
-            graph = "bar"
-        aggregation = params.get("aggregation", "mean")
-        if aggregation not in AGGREGATIONS:
-            aggregation = "mean"
-        spec = ChartSpec(
-            report_type=report,
-            metric_key=metric,
-            x_param=x_param,
-            graph_type=graph,
-            aggregation=aggregation,
-            experiment=experiment,
-            filters=parse_filters(None, params.get("filter", "")),
-            title=params.get("title", ""),
-            font_size=parse_int(params.get("font_size"), 10),
-        )
+        spec = chart_spec_from_params(dataset, params)
         data = prepare_chart_data(dataset, spec)
         return dataset, spec, data
 

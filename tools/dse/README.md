@@ -30,7 +30,7 @@ The main menu has three actions:
 | Action | What It Opens |
 | --- | --- |
 | `Create DSE JSON` | A form that loads a properties file, lists parameters and current values, lets you select DSE value ranges, edit experiments, and load/save DSE JSON files. |
-| `Run DSE` | A form for base properties, DSE JSON path, output directory, `--force`, and optional `--limit`, then runs `uv_dse_run`. |
+| `Run DSE` | A form for base properties, DSE JSON path, output directory, safe replacement controls, and optional `--limit`, then runs `uv_dse_run` as a background job with live output. |
 | `Open DSE Visualizer` | The integrated report visualizer for selecting experiment, report, metric, graph type, filters, and PDF export. |
 
 The JSON creator uses `../../uv_configs/template.properties` by default. DSE outputs are expected under `dse_runs/` inside this folder. Browse buttons open native OS file selectors: Finder dialogs on macOS, and `zenity` or `kdialog` on Ubuntu/Linux. If Ubuntu does not open a dialog, install `zenity`:
@@ -38,6 +38,17 @@ The JSON creator uses `../../uv_configs/template.properties` by default. DSE out
 ```bash
 sudo apt install zenity
 ```
+
+For safety, the wizard binds to `127.0.0.1` by default. Binding to a non-loopback host requires `--allow-remote`, and should be avoided unless the machine is otherwise protected. The GUI uses a per-session token for local action endpoints.
+
+The Run DSE screen does not replace existing output directories unless replacement is explicitly enabled and confirmed. Long runs continue in the background; the page polls status and streams runner output.
+
+The parameter editor has two value modes:
+
+| Mode | Use It For |
+| --- | --- |
+| `single property value` | One property value, including comma-containing values such as `base_fee_set=0,100,1000`. |
+| `list of DSE values` | A comma-separated list crossed into the Cartesian parameter space, such as `1, 7, 13`. |
 
 ## End-To-End Quickstart
 
@@ -710,3 +721,11 @@ Aggregation: mean
 - Start with `--limit 1` before running a large parameter space.
 - Exact replay can still be affected by threaded simulator behavior. Prefer aggregate metrics, report-level invariants, and repeated seeds.
 - Always inspect parameter context before using a figure: it tells you what is varied, what is fixed, and what is aggregated.
+
+## Regression Checks
+
+Run the focused DSE wizard and validation tests from the repository root:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/dse/tests -p 'test_*.py'
+```

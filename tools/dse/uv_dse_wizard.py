@@ -7,10 +7,15 @@ import html
 import json
 import math
 import os
+import secrets
+import signal
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+import uuid
 import webbrowser
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +24,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 sys.dont_write_bytecode = True
 
+import uv_dse_common as dse_common
 import uv_dse_visualizer as visualizer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -27,6 +33,8 @@ DEFAULT_PROPERTIES = "../../uv_configs/template.properties"
 DEFAULT_RUN_DIR = "dse_runs/quickstart"
 DEFAULT_DSE_JSON = "quickstart_dse.json"
 DEFAULT_SAVE_JSON = "dse_runs/tutorial/first_dse.json"
+MAX_JOB_OUTPUT_CHARS = 500_000
+SESSION_TOKEN = secrets.token_urlsafe(24)
 
 
 PARAMETER_CATEGORY_ORDER = [
@@ -73,8 +81,30 @@ class WizardState:
     parameters: dict[str, str]
     selected_parameters: dict[str, list[object]]
     experiments: list[dict[str, object]]
+    value_text_overrides: dict[str, str]
+    value_modes: dict[str, str]
+    experiments_text: str | None = None
     message: str = ""
     error: str = ""
+
+
+@dataclass
+class RunJob:
+    job_id: str
+    command: list[str]
+    query: dict[str, str]
+    status: str = "running"
+    return_code: int | None = None
+    output: str = ""
+    error: str = ""
+    started_at: float = 0.0
+    finished_at: float | None = None
+    process: subprocess.Popen[str] | None = None
+    lock: threading.Lock | None = None
+
+
+RUN_JOBS: dict[str, RunJob] = {}
+RUN_JOBS_LOCK = threading.Lock()
 
 
 def resolve_tool_path(value: str | None, *, default: str | None = None) -> Path:
@@ -269,60 +299,25 @@ def run_dialog_command(command: list[str], input_text: str | None = None) -> Pat
     return Path(selected).expanduser().resolve()
 
 
+def native_selector_diagnostic() -> str:
+    if sys.platform == "darwin":
+        return "" if shutil.which("osascript") else "Native macOS file selection requires osascript."
+    if sys.platform.startswith("linux"):
+        if shutil.which("zenity") or shutil.which("kdialog"):
+            return ""
+        return "Native file selection on Ubuntu/Linux requires zenity or kdialog. Install zenity with: sudo apt install zenity"
+    return "Native file selection is supported only on macOS and Ubuntu/Linux."
+
+
+def native_selector_notice_html() -> str:
+    diagnostic = native_selector_diagnostic()
+    if not diagnostic:
+        return ""
+    return f'<div class="notice">{escape(diagnostic)}</div>'
+
+
 def load_properties_with_includes(path: Path) -> dict[str, str]:
-    merged: dict[str, str] = {}
-    load_properties_into(path.resolve(), merged, [])
-    return merged
-
-
-def load_properties_into(path: Path, merged: dict[str, str], stack: list[Path]) -> None:
-    if path in stack:
-        chain = " -> ".join(str(item) for item in stack + [path])
-        raise ValueError(f"Circular properties include: {chain}")
-    if not path.is_file():
-        raise ValueError(f"Properties file not found: {path}")
-
-    local: dict[str, str] = {}
-    stack.append(path)
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or line.startswith("!"):
-                continue
-            directive = parse_include_directive(line)
-            if directive:
-                for include_text in directive:
-                    include_path = (path.parent / include_text).resolve()
-                    load_properties_into(include_path, merged, stack)
-                continue
-
-            key, value = parse_property_line(line)
-            if key:
-                local[key] = value
-    finally:
-        stack.pop()
-    merged.update(local)
-
-
-def parse_include_directive(line: str) -> list[str] | None:
-    for directive in ("@include", "@import"):
-        if line.startswith(directive):
-            remainder = line[len(directive):].strip()
-            if remainder.startswith("=") or remainder.startswith(":"):
-                remainder = remainder[1:].strip()
-            if not remainder:
-                raise ValueError(f"Missing path in {directive} directive")
-            return [part.strip() for part in remainder.split(",") if part.strip()]
-    return None
-
-
-def parse_property_line(line: str) -> tuple[str, str]:
-    separators = [index for index in (line.find("="), line.find(":")) if index >= 0]
-    if not separators:
-        return line.strip(), ""
-    index = min(separators)
-    return line[:index].strip(), line[index + 1:].strip()
-
+    return dse_common.load_properties_with_includes(path)
 
 def parse_json_values(text: str) -> list[object]:
     cleaned = text.strip()
@@ -347,36 +342,51 @@ def parse_json_values(text: str) -> list[object]:
     return values
 
 
-def stringify_values(values: list[object]) -> str:
-    return ", ".join(stringify_value(value) for value in values)
+def parse_single_value(text: str) -> object:
+    token = text.strip()
+    if token == "":
+        raise ValueError("Single-value mode requires a non-empty value")
+    try:
+        return json.loads(token)
+    except json.JSONDecodeError:
+        return token
 
 
-def stringify_value(value: object) -> str:
+def parse_parameter_values(text: str, mode: str) -> list[object]:
+    if mode == "single":
+        return [parse_single_value(text)]
+    return parse_json_values(text)
+
+
+def value_mode_for_values(values: list[object] | None) -> str:
+    if values is None:
+        return "single"
+    if len(values) == 1:
+        return "single"
+    return "list"
+
+
+def stringify_values(values: list[object], *, quote_strings: bool = False) -> str:
+    return ", ".join(stringify_value(value, quote_string=quote_strings) for value in values)
+
+
+def stringify_value(value: object, *, quote_string: bool = False) -> str:
     if isinstance(value, str):
-        if "," in value or value.strip() != value or value == "":
+        if quote_string or value.strip() != value or value == "":
             return json.dumps(value, separators=(",", ":"))
         return value
     return json.dumps(value, separators=(",", ":"))
 
 
 def default_value_text(value: str) -> str:
-    return stringify_values([value])
+    return value
 
 
 def load_dse_json(path: Path) -> tuple[dict[str, list[object]], list[dict[str, object]]]:
     if not path.is_file():
         raise ValueError(f"DSE JSON file not found: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("DSE JSON must be an object")
-    parameters = payload.get("parameters", {})
-    experiments = payload.get("experiments", DEFAULT_EXPERIMENTS)
-    if not isinstance(parameters, dict):
-        raise ValueError("'parameters' must be an object")
-    if not isinstance(experiments, list):
-        raise ValueError("'experiments' must be an array")
-    normalized = {str(key): list(value) for key, value in parameters.items() if isinstance(value, list)}
-    return normalized, experiments
+    payload = dse_common.validate_dse_payload(dse_common.load_json_object(path))
+    return payload["parameters"], payload["experiments"]
 
 
 def default_create_state(params: dict[str, str], message: str = "", error: str = "") -> WizardState:
@@ -406,6 +416,60 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
         parameters=properties,
         selected_parameters=selected,
         experiments=experiments,
+        value_text_overrides={},
+        value_modes={name: value_mode_for_values(values) for name, values in selected.items()},
+        message=message,
+        error=error,
+    )
+
+
+def create_state_from_form(form: dict[str, list[str]], error: str = "", message: str = "") -> WizardState:
+    properties_path = form_value(form, "properties_path", DEFAULT_PROPERTIES)
+    dse_json_path = form_value(form, "dse_json_path", DEFAULT_DSE_JSON)
+    save_path = form_value(form, "save_path", DEFAULT_SAVE_JSON)
+    try:
+        properties = load_properties_with_includes(resolve_tool_path(properties_path))
+    except Exception as exc:
+        properties = {}
+        error = f"{error}\n{exc}".strip()
+
+    count = safe_form_count(form)
+    selected: dict[str, list[object]] = {}
+    value_text_overrides: dict[str, str] = {}
+    value_modes: dict[str, str] = {}
+    for index in range(count):
+        name = form_value(form, f"name_{index}", "")
+        if not name:
+            continue
+        value_text = form_value(form, f"values_{index}", "")
+        mode = form_value(form, f"mode_{index}", "single")
+        value_text_overrides[name] = value_text
+        value_modes[name] = mode if mode in {"single", "list"} else "single"
+        if form_value(form, f"include_{index}", "") == "on":
+            try:
+                selected[name] = parse_parameter_values(value_text, value_modes[name])
+            except ValueError:
+                selected[name] = []
+
+    experiments_text = form_value(form, "experiments_json", json.dumps(DEFAULT_EXPERIMENTS, indent=2))
+    try:
+        parsed = json.loads(experiments_text)
+        experiments = parsed["experiments"] if isinstance(parsed, dict) and "experiments" in parsed else parsed
+        if not isinstance(experiments, list):
+            experiments = []
+    except json.JSONDecodeError:
+        experiments = []
+
+    return WizardState(
+        properties_path=properties_path,
+        dse_json_path=dse_json_path,
+        save_path=save_path,
+        parameters=properties,
+        selected_parameters=selected,
+        experiments=experiments,
+        value_text_overrides=value_text_overrides,
+        value_modes=value_modes,
+        experiments_text=experiments_text,
         message=message,
         error=error,
     )
@@ -463,19 +527,21 @@ def selected_space_size(selected_parameters: dict[str, list[object]]) -> tuple[i
 
 
 def save_dse_from_form(form: dict[str, list[str]]) -> tuple[Path, dict[str, object]]:
-    count = int(form_value(form, "parameter_count", "0"))
+    count = strict_form_count(form)
     parameters: dict[str, list[object]] = {}
     for index in range(count):
         name = form_value(form, f"name_{index}", "")
         if not name or form_value(form, f"include_{index}", "") != "on":
             continue
-        values = parse_json_values(form_value(form, f"values_{index}", ""))
+        mode = form_value(form, f"mode_{index}", "single")
+        values = parse_parameter_values(form_value(form, f"values_{index}", ""), mode)
         if not values:
             raise ValueError(f"Parameter '{name}' has no values")
         parameters[name] = values
 
     if not parameters:
         raise ValueError("Select at least one parameter")
+    dse_common.validate_parameters(parameters)
 
     experiments_raw = form_value(form, "experiments_json", "")
     try:
@@ -486,10 +552,7 @@ def save_dse_from_form(form: dict[str, list[str]]) -> tuple[Path, dict[str, obje
         experiments = parsed_experiments["experiments"]
     else:
         experiments = parsed_experiments
-    if not isinstance(experiments, list) or not experiments:
-        raise ValueError("Experiments JSON must be a non-empty array")
-
-    payload = {"parameters": parameters, "experiments": experiments}
+    payload = dse_common.validate_dse_payload({"parameters": parameters, "experiments": experiments})
     save_path = resolve_tool_path(form_value(form, "save_path", DEFAULT_SAVE_JSON))
     save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -501,28 +564,175 @@ def form_value(form: dict[str, list[str]], key: str, default: str = "") -> str:
     return values[-1] if values else default
 
 
-def run_dse_from_form(form: dict[str, list[str]]) -> tuple[int, str]:
+def safe_form_count(form: dict[str, list[str]]) -> int:
+    try:
+        return max(0, int(form_value(form, "parameter_count", "0")))
+    except ValueError:
+        return 0
+
+
+def strict_form_count(form: dict[str, list[str]]) -> int:
+    try:
+        count = int(form_value(form, "parameter_count", "0"))
+    except ValueError as exc:
+        raise ValueError("Invalid parameter count in submitted form.") from exc
+    if count < 0:
+        raise ValueError("Invalid parameter count in submitted form.")
+    return count
+
+
+def build_run_query(form: dict[str, list[str]]) -> dict[str, str]:
+    return {
+        "base_properties": form_value(form, "base_properties", DEFAULT_PROPERTIES),
+        "dse_json": form_value(form, "dse_json", DEFAULT_DSE_JSON),
+        "output_dir": form_value(form, "output_dir", DEFAULT_RUN_DIR),
+        "limit": form_value(form, "limit", ""),
+        "force": "1" if form_value(form, "force", "") == "on" else "",
+        "force_confirm": "1" if form_value(form, "force_confirm", "") == "on" else "",
+    }
+
+
+def build_dse_command(form: dict[str, list[str]]) -> tuple[list[str], dict[str, str]]:
+    force = form_value(form, "force", "") == "on"
+    if force and form_value(form, "force_confirm", "") != "on":
+        raise ValueError("Confirm replacement before running with --force.")
+
+    base_properties = resolve_tool_path(form_value(form, "base_properties", DEFAULT_PROPERTIES))
+    dse_json = resolve_tool_path(form_value(form, "dse_json", DEFAULT_DSE_JSON))
+    output_dir = resolve_tool_path(form_value(form, "output_dir", DEFAULT_RUN_DIR))
+    if not base_properties.is_file():
+        raise ValueError(f"Base properties file not found: {display_path(base_properties)}")
+    if not dse_json.is_file():
+        raise ValueError(f"DSE JSON file not found: {display_path(dse_json)}")
+    if output_dir.exists() and not output_dir.is_dir():
+        raise ValueError(f"Output path exists but is not a directory: {display_path(output_dir)}")
+    if output_dir.exists() and not force:
+        raise ValueError("Output directory already exists. Choose a new directory or explicitly enable replacement.")
+
+    limit = form_value(form, "limit", "").strip()
+    if limit:
+        try:
+            if int(limit) <= 0:
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError("Limit must be a positive integer.") from exc
+
     command = [
         sys.executable,
         str(SCRIPT_DIR / "uv_dse_run"),
-        str(resolve_tool_path(form_value(form, "base_properties", DEFAULT_PROPERTIES))),
-        str(resolve_tool_path(form_value(form, "dse_json", DEFAULT_DSE_JSON))),
+        str(base_properties),
+        str(dse_json),
         "--output-dir",
-        str(resolve_tool_path(form_value(form, "output_dir", DEFAULT_RUN_DIR))),
+        str(output_dir),
     ]
-    if form_value(form, "force", "") == "on":
+    if force:
         command.append("--force")
-    limit = form_value(form, "limit", "").strip()
     if limit:
         command.extend(["--limit", limit])
+    return command, build_run_query(form)
 
-    completed = subprocess.run(command, cwd=SCRIPT_DIR, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return completed.returncode, completed.stdout
+
+def start_run_job(form: dict[str, list[str]]) -> RunJob:
+    command, query = build_dse_command(form)
+    job = RunJob(
+        job_id=uuid.uuid4().hex,
+        command=command,
+        query=query,
+        started_at=time.time(),
+        lock=threading.Lock(),
+    )
+    with RUN_JOBS_LOCK:
+        RUN_JOBS[job.job_id] = job
+    thread = threading.Thread(target=run_job_worker, args=(job,), daemon=True)
+    thread.start()
+    return job
+
+
+def run_job_worker(job: RunJob) -> None:
+    try:
+        process = subprocess.Popen(
+            job.command,
+            cwd=SCRIPT_DIR,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            start_new_session=True,
+        )
+        with job.lock or threading.Lock():
+            job.process = process
+        assert process.stdout is not None
+        try:
+            for line in process.stdout:
+                append_job_output(job, line)
+        finally:
+            process.stdout.close()
+        return_code = process.wait()
+        with job.lock or threading.Lock():
+            if job.status != "cancelled":
+                job.status = "completed" if return_code == 0 else "failed"
+            job.return_code = return_code
+            job.finished_at = time.time()
+    except Exception as exc:
+        with job.lock or threading.Lock():
+            job.status = "failed"
+            job.error = str(exc)
+            job.finished_at = time.time()
+        append_job_output(job, f"\n{exc}\n")
+
+
+def append_job_output(job: RunJob, text: str) -> None:
+    with job.lock or threading.Lock():
+        job.output = (job.output + text)[-MAX_JOB_OUTPUT_CHARS:]
+
+
+def cancel_run_job(job_id: str) -> bool:
+    job = get_run_job(job_id)
+    if not job:
+        return False
+    with job.lock or threading.Lock():
+        job.status = "cancelled"
+        process = job.process
+    if process and process.poll() is None:
+        terminate_process_group(process)
+    return True
+
+
+def terminate_process_group(process: subprocess.Popen[str]) -> None:
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(process.pid, signal.SIGTERM)
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        return
+
+
+def get_run_job(job_id: str) -> RunJob | None:
+    with RUN_JOBS_LOCK:
+        return RUN_JOBS.get(job_id)
+
+
+def run_job_payload(job_id: str) -> dict[str, object]:
+    job = get_run_job(job_id)
+    if not job:
+        return {"error": "Run job not found."}
+    with job.lock or threading.Lock():
+        return {
+            "job_id": job.job_id,
+            "status": job.status,
+            "return_code": job.return_code,
+            "output": job.output,
+            "error": job.error,
+            "done": job.status in {"completed", "failed", "cancelled"},
+            "elapsed_seconds": round((job.finished_at or time.time()) - job.started_at, 1),
+        }
 
 
 def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     message_html = f'<div class="notice">{escape(message)}</div>' if message else ""
     error_html = f'<div class="error">{escape(error)}</div>' if error else ""
+    selector_notice = native_selector_notice_html()
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -569,9 +779,11 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
 </head>
 <body>
   <header><a href="/">UV DSE Wizard</a><h1>{escape(title)}</h1></header>
-  <main>{message_html}{error_html}{body}</main>
+  <main>{message_html}{error_html}{selector_notice}{body}</main>
   <script>
   (() => {{
+    const WIZARD_TOKEN = "{SESSION_TOKEN}";
+
     function countValues(text) {{
       const cleaned = (text || "").trim();
       if (!cleaned) return 0;
@@ -590,8 +802,9 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       for (const row of rows) {{
         const checkbox = row.querySelector("[data-dse-include]");
         const values = row.querySelector("[data-dse-values]");
+        const mode = row.querySelector("[data-dse-mode]");
         if (!checkbox || !values || !checkbox.checked) continue;
-        const valueCount = countValues(values.value);
+        const valueCount = mode && mode.value === "single" ? (values.value.trim() ? 1 : 0) : countValues(values.value);
         if (valueCount <= 0) {{
           total = 0;
         }} else if (total !== 0) {{
@@ -621,7 +834,8 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       try {{
         const params = new URLSearchParams({{
           mode: button.dataset.browseMode || "file",
-          path: target.value || "."
+          path: target.value || ".",
+          token: WIZARD_TOKEN
         }});
         const response = await fetch("/api/select-path?" + params.toString());
         const data = await response.json();
@@ -686,9 +900,32 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     }});
     document.addEventListener("change", (event) => {{
       if (event.target.matches("[data-dse-include]")) updateSpaceCount();
+      if (event.target.matches("[data-dse-mode]")) updateSpaceCount();
     }});
+    function updateRunStatus() {{
+      const panel = document.querySelector("[data-run-job]");
+      if (!panel) return;
+      const jobId = panel.dataset.runJob;
+      const output = panel.querySelector("[data-run-output]");
+      const status = panel.querySelector("[data-run-status]");
+      fetch("/api/run-status?" + new URLSearchParams({{ job_id: jobId, token: WIZARD_TOKEN }}).toString())
+        .then((response) => response.json())
+        .then((data) => {{
+          if (data.error) {{
+            status.textContent = data.error;
+            return;
+          }}
+          status.textContent = "Status: " + data.status + "; exit code: " + (data.return_code ?? "running") + "; elapsed: " + data.elapsed_seconds + "s";
+          output.textContent = data.output || "";
+          if (!data.done) window.setTimeout(updateRunStatus, 1000);
+        }})
+        .catch((error) => {{
+          status.textContent = "Could not read run status: " + error.message;
+        }});
+    }}
     updateSpaceCount();
     updateExperimentSummary();
+    updateRunStatus();
   }})();
   </script>
 </body>
@@ -701,6 +938,14 @@ def escape(value: object) -> str:
 
 def redirect(location: str) -> tuple[int, list[tuple[str, str]], bytes]:
     return 303, [("Location", location)], b""
+
+
+def token_input() -> str:
+    return f'<input type="hidden" name="token" value="{escape(SESSION_TOKEN)}">'
+
+
+def token_query() -> str:
+    return urlencode({"token": SESSION_TOKEN})
 
 
 def render_home() -> bytes:
@@ -770,10 +1015,17 @@ def experiment_summary_html(experiments: list[dict[str, object]]) -> str:
     return '<ul class="experiment-list">' + "".join(items) + "</ul>"
 
 
-def render_create(query: dict[str, str], message: str = "", error: str = "") -> bytes:
-    state = default_create_state(query, message or query.get("message", ""), error or query.get("error", ""))
+def render_create(
+    query: dict[str, str],
+    message: str = "",
+    error: str = "",
+    *,
+    state: WizardState | None = None,
+) -> bytes:
+    if state is None:
+        state = default_create_state(query, message or query.get("message", ""), error or query.get("error", ""))
     parameter_names = sorted(set(state.parameters) | set(state.selected_parameters), key=parameter_sort_key)
-    experiments_json = json.dumps(state.experiments, indent=2)
+    experiments_json = state.experiments_text if state.experiments_text is not None else json.dumps(state.experiments, indent=2)
     selected_count, space_size = selected_space_size(state.selected_parameters)
 
     grouped_rows: dict[str, list[str]] = {}
@@ -781,13 +1033,23 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
         value = state.parameters.get(name, "")
         selected_values = state.selected_parameters.get(name)
         checked = " checked" if selected_values is not None else ""
-        values_text = stringify_values(selected_values) if selected_values is not None else default_value_text(value)
+        mode = state.value_modes.get(name, value_mode_for_values(selected_values))
+        values_text = state.value_text_overrides.get(
+            name,
+            stringify_values(selected_values, quote_strings=(mode == "list")) if selected_values is not None else default_value_text(value),
+        )
+        single_selected = " selected" if mode == "single" else ""
+        list_selected = " selected" if mode == "list" else ""
         category = parameter_category(name) if name in state.parameters else "DSE JSON only"
         grouped_rows.setdefault(category, []).append(
             f"<tr data-dse-row>"
             f"<td><input type=\"checkbox\" name=\"include_{index}\" data-dse-include{checked}></td>"
             f"<td><code>{escape(name)}</code><input type=\"hidden\" name=\"name_{index}\" value=\"{escape(name)}\"></td>"
             f"<td>{escape(value or 'not present in loaded properties')}</td>"
+            f"<td><select name=\"mode_{index}\" data-dse-mode>"
+            f"<option value=\"single\"{single_selected}>single property value</option>"
+            f"<option value=\"list\"{list_selected}>list of DSE values</option>"
+            f"</select></td>"
             f"<td><input name=\"values_{index}\" data-dse-values value=\"{escape(values_text)}\"></td>"
             f"</tr>"
         )
@@ -805,7 +1067,7 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
     <span class="muted">{len(rows)} parameters</span>
   </div>
   <table>
-    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
+    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>Value mode</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
 </div>
@@ -820,7 +1082,7 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
     <span class="muted">{len(rows)} parameters</span>
   </div>
   <table>
-    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
+    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>Value mode</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
 </div>
@@ -829,6 +1091,7 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
 
     body = f"""
 <form id="create-save-form" method="post" action="/create/save">
+  {token_input()}
   <section class="panel">
     <h2>DSE JSON files</h2>
     <div class="row3">
@@ -861,7 +1124,7 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
     <div class="space-summary">
       <span><strong id="parameter-space-size">{space_size}</strong> configurations</span>
       <span><strong id="selected-parameter-count">{selected_count}</strong> selected parameters</span>
-      <span class="muted">Values start from the loaded base properties file.</span>
+      <span class="muted">Use "single property value" for comma-containing values like base_fee_set; use "list of DSE values" for Cartesian products.</span>
     </div>
     <input type="hidden" name="parameter_count" value="{len(parameter_names)}">
     {"".join(category_html)}
@@ -870,9 +1133,30 @@ def render_create(query: dict[str, str], message: str = "", error: str = "") -> 
 """
     return page("Create DSE JSON", body, state.message, state.error)
 
-def render_run(query: dict[str, str], message: str = "", output: str = "", return_code: int | None = None) -> bytes:
+def render_run(query: dict[str, str], message: str = "", error: str = "") -> bytes:
+    force_checked = " checked" if query.get("force") == "1" else ""
+    force_confirm_checked = " checked" if query.get("force_confirm") == "1" else ""
+    job_id = query.get("job_id", "")
+    job_panel = ""
+    if job_id:
+        job = get_run_job(job_id)
+        initial_status = job.status if job else "unknown"
+        initial_output = job.output if job else ""
+        job_panel = f"""
+<section class="panel" data-run-job="{escape(job_id)}">
+  <h2>DSE run</h2>
+  <p class="muted" data-run-status>Status: {escape(initial_status)}</p>
+  <form method="post" action="/run/cancel" class="actions">
+    {token_input()}
+    <input type="hidden" name="job_id" value="{escape(job_id)}">
+    <button type="submit" class="secondary">Cancel Run</button>
+  </form>
+  <pre data-run-output>{escape(initial_output)}</pre>
+</section>
+"""
     body = f"""
 <form method="post" action="/run/start" class="panel">
+  {token_input()}
   <div class="row">
     {path_control("Base properties", "base_properties", query.get("base_properties", DEFAULT_PROPERTIES), "properties")}
     {path_control("DSE JSON", "dse_json", query.get("dse_json", DEFAULT_DSE_JSON), "json")}
@@ -881,14 +1165,13 @@ def render_run(query: dict[str, str], message: str = "", output: str = "", retur
       <input name="limit" value="{escape(query.get("limit", ""))}">
     </label>
   </div>
-  <label><span><input type="checkbox" name="force" checked> Replace output directory if it already exists</span></label>
-  <button type="submit">Run DSE</button>
+  <label><span><input type="checkbox" name="force"{force_checked}> Replace output directory if it already exists</span></label>
+  <label><span><input type="checkbox" name="force_confirm"{force_confirm_checked}> I understand replacement can delete the selected output directory contents</span></label>
+  <div class="actions"><button type="submit">Start DSE Run</button></div>
 </form>
+{job_panel}
 """
-    if output:
-        status = f"Process exit code: {return_code}"
-        body += f"<section class=\"panel\"><h2>{escape(status)}</h2><pre>{escape(output)}</pre></section>"
-    return page("Run DSE", body, message)
+    return page("Run DSE", body, message, error)
 
 
 def render_visualize(query: dict[str, str], error: str = "") -> bytes:
@@ -935,6 +1218,7 @@ def render_visualize(query: dict[str, str], error: str = "") -> bytes:
             "filter": filter_text,
             "title": title,
             "font_size": str(font_size),
+            "token": SESSION_TOKEN,
         }
     )
 
@@ -990,27 +1274,7 @@ def render_visualize(query: dict[str, str], error: str = "") -> bytes:
 
 
 def build_visualizer_spec(dataset: visualizer.DseDataset, query: dict[str, str], report: str) -> visualizer.ChartSpec:
-    metrics = {metric.key for metric in visualizer.available_metrics(report)}
-    metric = query.get("metric") or visualizer.default_metric(report)
-    if metric not in metrics:
-        metric = visualizer.default_metric(report)
-    graph = query.get("graph", "bar")
-    if graph not in visualizer.GRAPH_TYPES:
-        graph = "bar"
-    aggregation = query.get("aggregation", "mean")
-    if aggregation not in visualizer.AGGREGATIONS:
-        aggregation = "mean"
-    return visualizer.ChartSpec(
-        report_type=report,
-        metric_key=metric,
-        x_param=query.get("x_param") or visualizer.default_x_parameter(dataset),
-        graph_type=graph,
-        aggregation=aggregation,
-        experiment=query.get("experiment", "All"),
-        filters=visualizer.parse_filters(None, query.get("filter", "")),
-        title=query.get("title", ""),
-        font_size=visualizer.parse_int(query.get("font_size"), 10),
-    )
+    return visualizer.chart_spec_from_params(dataset, query, report_type=report)
 
 
 def select_html(name: str, options: list[str], selected: str, labels: dict[str, str] | None = None) -> str:
@@ -1053,13 +1317,15 @@ class WizardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = {key: values[-1] for key, values in parse_qs(parsed.query).items()}
         if parsed.path == "/api/select-path":
-            self.respond_json(native_select_path(query))
+            self.respond_json_with_token(query, lambda: native_select_path(query))
+        elif parsed.path == "/api/run-status":
+            self.respond_json_with_token(query, lambda: run_job_payload(query.get("job_id", "")))
         elif parsed.path == "/":
             self.respond(200, [], render_home())
         elif parsed.path == "/create":
             self.respond(200, [], render_create(query))
         elif parsed.path == "/run":
-            self.respond(200, [], render_run(query))
+            self.respond(200, [], render_run(query, query.get("message", ""), query.get("error", "")))
         elif parsed.path == "/visualize":
             self.respond(200, [], render_visualize(query))
         elif parsed.path == "/visualize/pdf":
@@ -1072,6 +1338,7 @@ class WizardHandler(BaseHTTPRequestHandler):
         form = parse_qs(self.rfile.read(length).decode("utf-8"))
         if self.path == "/create/save":
             try:
+                require_token(form)
                 save_path, _payload = save_dse_from_form(form)
                 params = {
                     "properties_path": form_value(form, "properties_path", DEFAULT_PROPERTIES),
@@ -1082,36 +1349,47 @@ class WizardHandler(BaseHTTPRequestHandler):
                 }
                 self.respond(*redirect("/create?" + urlencode(params)))
             except Exception as exc:
-                query = {
-                    "properties_path": form_value(form, "properties_path", DEFAULT_PROPERTIES),
-                    "dse_json_path": form_value(form, "dse_json_path", DEFAULT_DSE_JSON),
-                    "save_path": form_value(form, "save_path", DEFAULT_SAVE_JSON),
-                }
-                self.respond(200, [], render_create(query, error=str(exc)))
+                state = create_state_from_form(form, error=str(exc))
+                self.respond(200, [], render_create({}, state=state))
         elif self.path == "/create/load":
-            params = create_redirect_params(form, load_json=True)
-            self.respond(*redirect("/create?" + urlencode(params)))
+            try:
+                require_token(form)
+                params = create_redirect_params(form, load_json=True)
+                self.respond(*redirect("/create?" + urlencode(params)))
+            except Exception as exc:
+                state = create_state_from_form(form, error=str(exc))
+                self.respond(200, [], render_create({}, state=state))
         elif self.path == "/create/refresh":
-            params = create_redirect_params(form, load_json=False)
-            self.respond(*redirect("/create?" + urlencode(params)))
+            try:
+                require_token(form)
+                params = create_redirect_params(form, load_json=False)
+                self.respond(*redirect("/create?" + urlencode(params)))
+            except Exception as exc:
+                state = create_state_from_form(form, error=str(exc))
+                self.respond(200, [], render_create({}, state=state))
         elif self.path == "/run/start":
             try:
-                return_code, output = run_dse_from_form(form)
-                query = {
-                    "base_properties": form_value(form, "base_properties", DEFAULT_PROPERTIES),
-                    "dse_json": form_value(form, "dse_json", DEFAULT_DSE_JSON),
-                    "output_dir": form_value(form, "output_dir", DEFAULT_RUN_DIR),
-                    "limit": form_value(form, "limit", ""),
-                }
-                message = "DSE run completed." if return_code == 0 else "DSE run failed."
-                self.respond(200, [], render_run(query, message, output, return_code))
+                require_token(form)
+                job = start_run_job(form)
+                query = dict(job.query)
+                query["job_id"] = job.job_id
+                self.respond(*redirect("/run?" + urlencode(query)))
             except Exception as exc:
-                self.respond(200, [], render_run({}, error_page_text(exc), "", None))
+                self.respond(200, [], render_run(build_run_query(form), error=error_page_text(exc)))
+        elif self.path == "/run/cancel":
+            try:
+                require_token(form)
+                job_id = form_value(form, "job_id", "")
+                cancel_run_job(job_id)
+                self.respond(*redirect("/run?" + urlencode({"job_id": job_id, "message": "Cancellation requested."})))
+            except Exception as exc:
+                self.respond(200, [], render_run({}, error=error_page_text(exc)))
         else:
             self.respond(404, [], page("Not Found", "<p>Unknown wizard action.</p>"))
 
     def respond_pdf(self, query: dict[str, str]) -> None:
         try:
+            require_token(query)
             dataset = load_wizard_dataset(query.get("input_dir", DEFAULT_RUN_DIR))
             report = query.get("report", "network")
             if report not in {"network", "invoice"}:
@@ -1145,6 +1423,14 @@ class WizardHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.respond(200, [("Content-Type", "application/json; charset=utf-8")], body)
 
+    def respond_json_with_token(self, query: dict[str, str], callback: object) -> None:
+        try:
+            require_token(query)
+            payload = callback()
+        except Exception as exc:
+            payload = {"error": str(exc)}
+        self.respond_json(payload)
+
 
 def error_page_text(exc: Exception) -> str:
     return str(exc)
@@ -1161,16 +1447,33 @@ def create_redirect_params(form: dict[str, list[str]], *, load_json: bool) -> di
     return params
 
 
+def require_token(values: dict[str, str] | dict[str, list[str]]) -> None:
+    token: str
+    raw = values.get("token") if values else None
+    if isinstance(raw, list):
+        token = raw[-1] if raw else ""
+    else:
+        token = str(raw or "")
+    if not secrets.compare_digest(token, SESSION_TOKEN):
+        raise PermissionError("Invalid or missing wizard session token.")
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Open the UltraViolet DSE browser wizard.")
     parser.add_argument("--host", default="127.0.0.1", help="Host for the local wizard server.")
     parser.add_argument("--port", type=int, default=0, help="Port for the local wizard server. Defaults to an available port.")
     parser.add_argument("--no-browser", action="store_true", help="Print the URL without opening a browser.")
+    parser.add_argument("--allow-remote", action="store_true", help="Allow binding to a non-loopback host.")
     return parser
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if not args.allow_remote and args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print("Refusing to bind the wizard to a non-loopback host without --allow-remote.", file=sys.stderr)
+        return 1
+    if args.allow_remote and args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print("WARNING: remote wizard access can run local DSE commands and write files.", file=sys.stderr, flush=True)
     server = ThreadingHTTPServer((args.host, args.port), WizardHandler)
     url = f"http://{server.server_address[0]}:{server.server_address[1]}/"
     print(f"Starting UV DSE Wizard at {url}", flush=True)
