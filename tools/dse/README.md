@@ -45,7 +45,7 @@ For safety, the wizard binds to `127.0.0.1` by default. Binding to a non-loopbac
 
 The Run DSE screen does not replace existing output directories unless replacement is explicitly enabled and confirmed. Long runs continue in the background; the page polls status and streams runner output.
 
-In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: select which experiment recipes to include, choose their balance setup and report outputs, and edit command parameters in form fields. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
+In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: select which experiment recipes to include, choose their balance setup and report outputs, and edit command parameters in command-specific form sections. Major sections, experiment rows, parameter categories, and command blocks start collapsed; expand only the parts you need. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
 
 The parameter editor treats each field as a comma-separated list of DSE alternatives:
 

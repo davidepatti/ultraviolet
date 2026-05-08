@@ -1049,6 +1049,11 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     main {{ padding: 16px 18px 28px; }}
     .grid {{ display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 14px; }}
     .card, .panel {{ background: #ffffff; border: 1px solid #d8dde3; padding: 14px; }}
+    details.panel, details.category, details.command-block {{ display: block; }}
+    details > summary {{ cursor: pointer; }}
+    details.panel > summary {{ list-style-position: inside; }}
+    details.panel > summary h2 {{ display: inline; margin: 0; }}
+    .disclosure-body {{ margin-top: 12px; }}
     .card a, button, .button {{ display: inline-block; border: 1px solid #174f91; background: #1a5fa8; color: #ffffff; padding: 8px 11px; font-weight: 700; text-decoration: none; cursor: pointer; }}
     form {{ display: grid; gap: 12px; }}
     label {{ display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: #33383d; }}
@@ -1065,12 +1070,13 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     .space-summary {{ display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; margin: 0 0 12px; }}
     .space-summary strong {{ font-size: 18px; }}
     .category {{ border: 1px solid #e2e6ea; margin-top: 10px; }}
-    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f8f9fa; border-bottom: 1px solid #e2e6ea; }}
+    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f8f9fa; border-bottom: 1px solid #e2e6ea; cursor: pointer; }}
+    details.category:not([open]) > .category-header {{ border-bottom: 0; }}
     .category-header h3 {{ margin: 0; font-size: 14px; }}
     .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; }}
     .command-block {{ border-top: 1px solid #e2e6ea; padding-top: 10px; }}
     .command-block:first-child {{ border-top: 0; padding-top: 0; }}
-    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-weight: 700; }}
+    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-weight: 700; cursor: pointer; }}
     .command-title code {{ font-size: 12px; }}
     .command-fields {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }}
     .experiment-grid {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; }}
@@ -1519,15 +1525,16 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
         output_invoice = " checked" if row.get("output_invoice") == "on" else ""
         row_html.append(
             f"""
-<div class="category" data-experiment-row>
-  <div class="category-header">
-    <h3><label><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</label></h3>
+<details class="category" data-experiment-row>
+  <summary class="category-header">
+    <h3>{escape(row.get("name", "experiment"))}</h3>
     <span class="muted">{escape(row.get("kind", "invoice"))}</span>
-  </div>
+  </summary>
   <div class="experiment-command-grid">
-    <div class="command-block">
-      <div class="command-title"><span>Experiment definition</span><code>experiment</code></div>
+    <details class="command-block">
+      <summary class="command-title"><span>Experiment definition</span><code>experiment</code></summary>
       <div class="command-fields">
+        <label><span><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</span></label>
         <label>Name
           <input name="exp_name_{index}" data-experiment-field value="{escape(row.get("name", ""))}">
         </label>
@@ -1535,15 +1542,15 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
           {select_html(f"exp_kind_{index}", list(EXPERIMENT_KIND_LABELS), row.get("kind", "invoice"), EXPERIMENT_KIND_LABELS)}
         </label>
       </div>
-    </div>
+    </details>
 
-    <div class="command-block">
-      <div class="command-title"><span>Bootstrap command</span><code>boot</code></div>
+    <details class="command-block">
+      <summary class="command-title"><span>Bootstrap command</span><code>boot</code></summary>
       <p class="muted">Always runs first. It loads the generated properties and bootstraps the network.</p>
-    </div>
+    </details>
 
-    <div class="command-block" data-balance-block>
-      <div class="command-title"><span>Balance command</span><code>bal / rndbal</code></div>
+    <details class="command-block" data-balance-block>
+      <summary class="command-title"><span>Balance command</span><code>bal / rndbal</code></summary>
       <div class="command-fields">
         <label>Balance setup
           {select_html(f"exp_balance_{index}", list(BALANCE_MODE_LABELS), row.get("balance", "none"), BALANCE_MODE_LABELS)}
@@ -1555,10 +1562,10 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
           <input name="exp_min_delta_{index}" data-experiment-field value="{escape(row.get("min_delta", ""))}">
         </label>
       </div>
-    </div>
+    </details>
 
-    <div class="command-block" data-command-block="path">
-      <div class="command-title"><span>Path finding command</span><code>path</code></div>
+    <details class="command-block" data-command-block="path">
+      <summary class="command-title"><span>Path finding command</span><code>path</code></summary>
       <div class="command-fields">
         <label>Start node
           <input name="exp_path_start_{index}" data-experiment-field value="{escape(row.get("path_start", ""))}">
@@ -1576,10 +1583,10 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
           <input name="exp_path_topk_{index}" data-experiment-field value="{escape(row.get("path_topk", ""))}">
         </label>
       </div>
-    </div>
+    </details>
 
-    <div class="command-block" data-command-block="route">
-      <div class="command-title"><span>Single payment command</span><code>route</code></div>
+    <details class="command-block" data-command-block="route">
+      <summary class="command-title"><span>Single payment command</span><code>route</code></summary>
       <div class="command-fields">
         <label>Sender node
           <input name="exp_route_sender_{index}" data-experiment-field value="{escape(row.get("route_sender", ""))}">
@@ -1600,10 +1607,10 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
           <input name="exp_route_message_{index}" data-experiment-field value="{escape(row.get("route_message", ""))}">
         </label>
       </div>
-    </div>
+    </details>
 
-    <div class="command-block" data-command-block="invoice">
-      <div class="command-title"><span>Invoice campaign command</span><code>inv</code></div>
+    <details class="command-block" data-command-block="invoice">
+      <summary class="command-title"><span>Invoice campaign command</span><code>inv</code></summary>
       <div class="command-fields">
         <label>Node events / block
           <input name="exp_inv_node_events_per_block_{index}" data-experiment-field value="{escape(row.get("inv_node_events_per_block", ""))}">
@@ -1624,17 +1631,17 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
           {select_html(f"exp_inv_path_finder_{index}", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("inv_path_finder", "lnd"))}
         </label>
       </div>
-    </div>
+    </details>
 
-    <div class="command-block">
-      <div class="command-title"><span>Report outputs</span><code>outputs</code></div>
+    <details class="command-block">
+      <summary class="command-title"><span>Report outputs</span><code>outputs</code></summary>
       <div class="actions">
         <label><span><input type="checkbox" name="exp_output_network_{index}" data-experiment-output{output_network}> Network stats</span></label>
         <label><span><input type="checkbox" name="exp_output_invoice_{index}" data-experiment-output{output_invoice}> Invoice report</span></label>
       </div>
-    </div>
+    </details>
   </div>
-</div>
+</details>
 """
         )
     return f'<input type="hidden" name="experiment_count" value="{len(rows)}">' + "".join(row_html)
@@ -1680,39 +1687,40 @@ def render_create(
             continue
         category_html.append(
             f"""
-<div class="category">
-  <div class="category-header">
+<details class="category">
+  <summary class="category-header">
     <h3>{escape(category)}</h3>
     <span class="muted">{len(rows)} parameters</span>
-  </div>
+  </summary>
   <table>
     <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
-</div>
+</details>
 """
         )
     for category, rows in sorted(grouped_rows.items()):
         category_html.append(
             f"""
-<div class="category">
-  <div class="category-header">
+<details class="category">
+  <summary class="category-header">
     <h3>{escape(category)}</h3>
     <span class="muted">{len(rows)} parameters</span>
-  </div>
+  </summary>
   <table>
     <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
-</div>
+</details>
 """
         )
 
     body = f"""
 <form id="create-save-form" method="post" action="/create/save">
   {token_input()}
-  <section class="panel">
-    <h2>DSE JSON files</h2>
+  <details class="panel">
+    <summary><h2>DSE JSON files</h2></summary>
+    <div class="disclosure-body">
     <div class="row3">
       {path_control("Properties file", "properties_path", state.properties_path, "properties")}
       {path_control("Load DSE JSON", "dse_json_path", state.dse_json_path, "json", "/create/load")}
@@ -1721,18 +1729,22 @@ def render_create(
     <div class="actions">
       <button type="submit" class="secondary" formaction="/create/refresh">Reload properties</button>
     </div>
-  </section>
+    </div>
+  </details>
 
-  <section class="panel">
-    <h2>Experiments section of the DSE JSON</h2>
+  <details class="panel">
+    <summary><h2>Experiments section of the DSE JSON</h2></summary>
+    <div class="disclosure-body">
     <p class="muted">Select experiments, choose their command recipe, and edit the command parameters. The JSON preview below shows the generated experiment specification.</p>
     {render_experiment_editor(experiment_rows)}
     <h2>Configured experiments</h2>
     <div id="experiments-summary">{experiment_summary_html(state.experiments)}</div>
-  </section>
+    </div>
+  </details>
 
-  <section class="panel">
-    <h2>Parameter space section of the DSE JSON</h2>
+  <details class="panel">
+    <summary><h2>Parameter space section of the DSE JSON</h2></summary>
+    <div class="disclosure-body">
     <div class="space-summary">
       <span><strong id="parameter-space-size">{space_size}</strong> configurations</span>
       <span><strong id="selected-parameter-count">{selected_count}</strong> selected parameters</span>
@@ -1741,13 +1753,16 @@ def render_create(
     </div>
     <input type="hidden" name="parameter_count" value="{len(parameter_names)}">
     {"".join(category_html)}
-  </section>
+    </div>
+  </details>
 
-  <section class="panel">
-    <h2>Resulting DSE JSON</h2>
+  <details class="panel">
+    <summary><h2>Resulting DSE JSON</h2></summary>
+    <div class="disclosure-body">
     <p id="dse-json-preview-status" class="muted">{selected_count} selected parameters, {space_size} configurations</p>
     <pre id="dse-json-preview">{escape(preview_json)}</pre>
-  </section>
+    </div>
+  </details>
 </form>
 """
     return page("Create DSE JSON", body, state.message, state.error)
