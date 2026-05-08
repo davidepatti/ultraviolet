@@ -72,6 +72,62 @@ DEFAULT_EXPERIMENTS = [
     }
 ]
 
+EXPERIMENT_KIND_LABELS = {
+    "bootstrap": "Bootstrap and network stats",
+    "path": "Bootstrap, balance, and path finding",
+    "route": "Bootstrap, balance, and single route",
+    "invoice": "Bootstrap, balance, and invoice campaign",
+}
+
+BALANCE_MODE_LABELS = {
+    "none": "Do not set balances",
+    "rndbal": "Random local balances",
+    "bal": "Fixed local balance level",
+}
+
+PATH_FINDER_OPTIONS = ["lnd", "mini_dijkstra", "shortest_hop", "bfs", "all"]
+
+EXPERIMENT_PRESETS = [
+    {
+        "name": "bootstrap_stats",
+        "commands": ["boot"],
+        "outputs": ["network"],
+    },
+    {
+        "name": "random_balance_path",
+        "commands": [
+            "boot",
+            "rndbal",
+            {
+                "command": "path",
+                "start": "pk0",
+                "destination": "pk7",
+                "amount": 10000,
+                "path_finder": "all",
+                "topk": 5,
+            },
+        ],
+        "outputs": ["network"],
+    },
+    {
+        "name": "invoice_campaign",
+        "commands": [
+            "boot",
+            "rndbal",
+            {
+                "command": "inv",
+                "node_events_per_block": 0.08,
+                "blocks": 4,
+                "min_amt": 50000,
+                "max_amt": 100000,
+                "max_fees": 1000,
+                "path_finder": "lnd",
+            },
+        ],
+        "outputs": ["network", "invoice"],
+    },
+]
+
 
 @dataclass(frozen=True)
 class WizardState:
@@ -82,8 +138,7 @@ class WizardState:
     selected_parameters: dict[str, list[object]]
     experiments: list[dict[str, object]]
     value_text_overrides: dict[str, str]
-    value_modes: dict[str, str]
-    experiments_text: str | None = None
+    experiment_rows: list[dict[str, str]] | None = None
     message: str = ""
     error: str = ""
 
@@ -327,8 +382,12 @@ def parse_json_values(text: str) -> list[object]:
         parsed = json.loads(f"[{cleaned}]")
         if isinstance(parsed, list):
             return parsed
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as exc:
+        if '"' in cleaned:
+            raise ValueError(
+                "Invalid DSE value list. Use commas between alternatives and JSON double quotes "
+                "around any single value that contains commas."
+            ) from exc
 
     values: list[object] = []
     for raw in text.split(","):
@@ -342,44 +401,20 @@ def parse_json_values(text: str) -> list[object]:
     return values
 
 
-def parse_single_value(text: str) -> object:
-    token = text.strip()
-    if token == "":
-        raise ValueError("Single-value mode requires a non-empty value")
-    try:
-        return json.loads(token)
-    except json.JSONDecodeError:
-        return token
-
-
-def parse_parameter_values(text: str, mode: str) -> list[object]:
-    if mode == "single":
-        return [parse_single_value(text)]
-    return parse_json_values(text)
-
-
-def value_mode_for_values(values: list[object] | None) -> str:
-    if values is None:
-        return "single"
-    if len(values) == 1:
-        return "single"
-    return "list"
-
-
 def stringify_values(values: list[object], *, quote_strings: bool = False) -> str:
     return ", ".join(stringify_value(value, quote_string=quote_strings) for value in values)
 
 
 def stringify_value(value: object, *, quote_string: bool = False) -> str:
     if isinstance(value, str):
-        if quote_string or value.strip() != value or value == "":
+        if quote_string or "," in value or value.strip() != value or value == "":
             return json.dumps(value, separators=(",", ":"))
         return value
     return json.dumps(value, separators=(",", ":"))
 
 
 def default_value_text(value: str) -> str:
-    return value
+    return stringify_value(value)
 
 
 def load_dse_json(path: Path) -> tuple[dict[str, list[object]], list[dict[str, object]]]:
@@ -387,6 +422,285 @@ def load_dse_json(path: Path) -> tuple[dict[str, list[object]], list[dict[str, o
         raise ValueError(f"DSE JSON file not found: {path}")
     payload = dse_common.validate_dse_payload(dse_common.load_json_object(path))
     return payload["parameters"], payload["experiments"]
+
+
+def command_name(command: object) -> str:
+    if isinstance(command, str):
+        return command.strip().lower()
+    if isinstance(command, dict):
+        return str(command.get("command", command.get("cmd", ""))).strip().lower()
+    return ""
+
+
+def command_value(command: object, key: str, default: object = "") -> object:
+    if isinstance(command, dict):
+        return command.get(key, default)
+    return default
+
+
+def command_for_name(commands: list[object], name: str) -> object | None:
+    for command in commands:
+        if command_name(command) == name:
+            return command
+    return None
+
+
+def string_field(value: object, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value)
+
+
+def experiment_row_from_spec(experiment: dict[str, object], *, enabled: bool = True) -> dict[str, str]:
+    commands = experiment.get("commands", [])
+    if not isinstance(commands, list):
+        commands = []
+
+    row = default_experiment_row()
+    row["enabled"] = "on" if enabled else ""
+    row["name"] = string_field(experiment.get("name"), "experiment")
+
+    outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
+    if isinstance(outputs, str):
+        outputs = [outputs]
+    row["output_network"] = "on" if "network" in outputs or "stat" in outputs or "stats" in outputs else ""
+    row["output_invoice"] = "on" if "invoice" in outputs or "invoices" in outputs or "invoice_report" in outputs else ""
+
+    rndbal = command_for_name(commands, "rndbal")
+    bal = command_for_name(commands, "bal")
+    if bal is not None:
+        row["balance"] = "bal"
+        row["bal_level"] = string_field(command_value(bal, "level", row["bal_level"]))
+        row["min_delta"] = string_field(command_value(bal, "min_delta", row["min_delta"]))
+    elif rndbal is not None:
+        row["balance"] = "rndbal"
+        row["min_delta"] = string_field(command_value(rndbal, "min_delta", row["min_delta"]))
+
+    path = command_for_name(commands, "path")
+    route = command_for_name(commands, "route")
+    inv = command_for_name(commands, "inv")
+    if path is not None:
+        row["kind"] = "path"
+        row["path_start"] = string_field(command_value(path, "start", command_value(path, "sender", row["path_start"])))
+        row["path_destination"] = string_field(
+            command_value(path, "destination", command_value(path, "dest", row["path_destination"]))
+        )
+        row["path_amount"] = string_field(command_value(path, "amount", row["path_amount"]))
+        row["path_path_finder"] = string_field(command_value(path, "path_finder", row["path_path_finder"]))
+        row["path_topk"] = string_field(command_value(path, "topk", row["path_topk"]))
+    elif route is not None:
+        row["kind"] = "route"
+        row["route_sender"] = string_field(command_value(route, "sender", command_value(route, "start", row["route_sender"])))
+        row["route_destination"] = string_field(
+            command_value(route, "destination", command_value(route, "dest", row["route_destination"]))
+        )
+        row["route_amount"] = string_field(command_value(route, "amount", row["route_amount"]))
+        row["route_max_fees"] = string_field(command_value(route, "max_fees", row["route_max_fees"]))
+        row["route_path_finder"] = string_field(command_value(route, "path_finder", row["route_path_finder"]))
+        row["route_message"] = string_field(command_value(route, "message", row["route_message"]))
+    elif inv is not None:
+        row["kind"] = "invoice"
+        row["inv_node_events_per_block"] = string_field(
+            command_value(inv, "node_events_per_block", row["inv_node_events_per_block"])
+        )
+        row["inv_blocks"] = string_field(command_value(inv, "blocks", command_value(inv, "duration_blocks", row["inv_blocks"])))
+        row["inv_min_amt"] = string_field(command_value(inv, "min_amt", command_value(inv, "amount_min", row["inv_min_amt"])))
+        row["inv_max_amt"] = string_field(command_value(inv, "max_amt", command_value(inv, "amount_max", row["inv_max_amt"])))
+        row["inv_max_fees"] = string_field(command_value(inv, "max_fees", row["inv_max_fees"]))
+        row["inv_path_finder"] = string_field(command_value(inv, "path_finder", row["inv_path_finder"]))
+    else:
+        row["kind"] = "bootstrap"
+
+    return row
+
+
+def default_experiment_row() -> dict[str, str]:
+    return {
+        "enabled": "",
+        "name": "experiment",
+        "kind": "invoice",
+        "balance": "rndbal",
+        "output_network": "on",
+        "output_invoice": "on",
+        "bal_level": "0.5",
+        "min_delta": "10000",
+        "path_start": "pk0",
+        "path_destination": "pk7",
+        "path_amount": "10000",
+        "path_path_finder": "lnd",
+        "path_topk": "5",
+        "route_sender": "pk0",
+        "route_destination": "pk7",
+        "route_amount": "10000",
+        "route_path_finder": "lnd",
+        "route_max_fees": "1000",
+        "route_message": "",
+        "inv_node_events_per_block": "0.08",
+        "inv_blocks": "4",
+        "inv_min_amt": "50000",
+        "inv_max_amt": "100000",
+        "inv_max_fees": "1000",
+        "inv_path_finder": "lnd",
+    }
+
+
+def experiment_rows_for_render(experiments: list[dict[str, object]]) -> list[dict[str, str]]:
+    rows = [experiment_row_from_spec(experiment, enabled=True) for experiment in experiments]
+    existing_names = {row["name"] for row in rows}
+    for preset in EXPERIMENT_PRESETS:
+        preset_name = str(preset["name"])
+        if preset_name not in existing_names:
+            rows.append(experiment_row_from_spec(preset, enabled=False))
+    return rows
+
+
+def experiment_rows_from_form(form: dict[str, list[str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    count = safe_experiment_count(form)
+    for index in range(count):
+        row = default_experiment_row()
+        row["enabled"] = "on" if form_value(form, f"exp_enabled_{index}", "") == "on" else ""
+        for key in row:
+            if key == "enabled":
+                continue
+            row[key] = form_value(form, f"exp_{key}_{index}", row[key])
+        row["output_network"] = "on" if form_value(form, f"exp_output_network_{index}", "") == "on" else ""
+        row["output_invoice"] = "on" if form_value(form, f"exp_output_invoice_{index}", "") == "on" else ""
+        rows.append(row)
+    return rows
+
+
+def safe_experiment_count(form: dict[str, list[str]]) -> int:
+    try:
+        return max(0, int(form_value(form, "experiment_count", "0")))
+    except ValueError:
+        return 0
+
+
+def build_experiments_from_form(form: dict[str, list[str]]) -> list[dict[str, object]]:
+    return build_experiments_from_rows(experiment_rows_from_form(form))
+
+
+def build_experiments_from_rows(rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    experiments: list[dict[str, object]] = []
+    for index, row in enumerate(rows, start=1):
+        if row.get("enabled") != "on":
+            continue
+        experiments.append(build_experiment_from_row(row, index))
+    if not experiments:
+        raise ValueError("Select at least one experiment.")
+    return experiments
+
+
+def build_experiment_from_row(row: dict[str, str], index: int) -> dict[str, object]:
+    name = row.get("name", "").strip() or f"experiment_{index}"
+    kind = row.get("kind", "invoice")
+    if kind not in EXPERIMENT_KIND_LABELS:
+        raise ValueError(f"Experiment '{name}' has unsupported type '{kind}'.")
+
+    commands: list[object] = ["boot"]
+    balance = row.get("balance", "none")
+    if kind == "bootstrap":
+        balance = "none"
+    min_delta = optional_int(row, "min_delta", f"Experiment '{name}' min_delta")
+    if balance == "rndbal":
+        commands.append({"command": "rndbal", "min_delta": min_delta} if min_delta is not None else "rndbal")
+    elif balance == "bal":
+        level = required_float(row, "bal_level", f"Experiment '{name}' balance level")
+        command: dict[str, object] = {"command": "bal", "level": level}
+        if min_delta is not None:
+            command["min_delta"] = min_delta
+        commands.append(command)
+    elif balance != "none":
+        raise ValueError(f"Experiment '{name}' has unsupported balance mode '{balance}'.")
+
+    path_finder_by_kind = {
+        "path": row.get("path_path_finder", row.get("path_finder", "lnd")).strip() or "lnd",
+        "route": row.get("route_path_finder", row.get("path_finder", "lnd")).strip() or "lnd",
+        "invoice": row.get("inv_path_finder", row.get("path_finder", "lnd")).strip() or "lnd",
+        "bootstrap": "lnd",
+    }
+    path_finder = path_finder_by_kind.get(kind, "lnd")
+    if path_finder == "all" and kind != "path":
+        raise ValueError(f"Experiment '{name}' can use path_finder=all only for path experiments.")
+
+    if kind == "path":
+        commands.append(
+            {
+                "command": "path",
+                "start": row.get("path_start", row.get("start", "pk0")).strip() or "pk0",
+                "destination": row.get("path_destination", row.get("destination", "pk7")).strip() or "pk7",
+                "amount": required_int(row, "path_amount", f"Experiment '{name}' path amount"),
+                "path_finder": path_finder,
+                "topk": required_int(row, "path_topk", f"Experiment '{name}' topk"),
+            }
+        )
+    elif kind == "route":
+        route_command: dict[str, object] = {
+            "command": "route",
+            "sender": row.get("route_sender", row.get("start", "pk0")).strip() or "pk0",
+            "destination": row.get("route_destination", row.get("destination", "pk7")).strip() or "pk7",
+            "amount": required_int(row, "route_amount", f"Experiment '{name}' route amount"),
+            "max_fees": required_int(row, "route_max_fees", f"Experiment '{name}' route max_fees"),
+            "path_finder": path_finder,
+        }
+        message = row.get("route_message", row.get("message", "")).strip()
+        if message:
+            route_command["message"] = message
+        commands.append(route_command)
+    elif kind == "invoice":
+        commands.append(
+            {
+                "command": "inv",
+                "node_events_per_block": required_float(
+                    row, "inv_node_events_per_block", f"Experiment '{name}' node_events_per_block"
+                ),
+                "blocks": required_int(row, "inv_blocks", f"Experiment '{name}' blocks"),
+                "min_amt": required_int(row, "inv_min_amt", f"Experiment '{name}' min_amt"),
+                "max_amt": required_int(row, "inv_max_amt", f"Experiment '{name}' max_amt"),
+                "max_fees": required_int(row, "inv_max_fees", f"Experiment '{name}' max_fees"),
+                "path_finder": path_finder,
+            }
+        )
+
+    outputs = []
+    if row.get("output_network") == "on":
+        outputs.append("network")
+    if row.get("output_invoice") == "on":
+        outputs.append("invoice")
+    if not outputs:
+        outputs.append("network")
+    return {"name": name, "commands": commands, "outputs": outputs}
+
+
+def required_int(row: dict[str, str], key: str, label: str) -> int:
+    value = row.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{label} is required.")
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an integer.") from exc
+
+
+def optional_int(row: dict[str, str], key: str, label: str) -> int | None:
+    value = row.get(key, "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an integer.") from exc
+
+
+def required_float(row: dict[str, str], key: str, label: str) -> float:
+    value = row.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{label} is required.")
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be numeric.") from exc
 
 
 def default_create_state(params: dict[str, str], message: str = "", error: str = "") -> WizardState:
@@ -397,9 +711,10 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
     selected: dict[str, list[object]] = {}
     experiments = DEFAULT_EXPERIMENTS
     try:
-        if params.get("load_json") and dse_json_path:
+        if dse_json_path:
             selected, experiments = load_dse_json(resolve_tool_path(dse_json_path))
-            message = f"Loaded {dse_json_path}"
+            if params.get("load_json") or dse_json_path == DEFAULT_DSE_JSON:
+                message = message or f"Loaded {dse_json_path}"
     except Exception as exc:
         error = str(exc)
 
@@ -417,7 +732,6 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
         selected_parameters=selected,
         experiments=experiments,
         value_text_overrides={},
-        value_modes={name: value_mode_for_values(values) for name, values in selected.items()},
         message=message,
         error=error,
     )
@@ -436,28 +750,22 @@ def create_state_from_form(form: dict[str, list[str]], error: str = "", message:
     count = safe_form_count(form)
     selected: dict[str, list[object]] = {}
     value_text_overrides: dict[str, str] = {}
-    value_modes: dict[str, str] = {}
     for index in range(count):
         name = form_value(form, f"name_{index}", "")
         if not name:
             continue
         value_text = form_value(form, f"values_{index}", "")
-        mode = form_value(form, f"mode_{index}", "single")
         value_text_overrides[name] = value_text
-        value_modes[name] = mode if mode in {"single", "list"} else "single"
         if form_value(form, f"include_{index}", "") == "on":
             try:
-                selected[name] = parse_parameter_values(value_text, value_modes[name])
+                selected[name] = parse_json_values(value_text)
             except ValueError:
                 selected[name] = []
 
-    experiments_text = form_value(form, "experiments_json", json.dumps(DEFAULT_EXPERIMENTS, indent=2))
+    experiment_rows = experiment_rows_from_form(form)
     try:
-        parsed = json.loads(experiments_text)
-        experiments = parsed["experiments"] if isinstance(parsed, dict) and "experiments" in parsed else parsed
-        if not isinstance(experiments, list):
-            experiments = []
-    except json.JSONDecodeError:
+        experiments = build_experiments_from_rows(experiment_rows)
+    except ValueError:
         experiments = []
 
     return WizardState(
@@ -468,8 +776,7 @@ def create_state_from_form(form: dict[str, list[str]], error: str = "", message:
         selected_parameters=selected,
         experiments=experiments,
         value_text_overrides=value_text_overrides,
-        value_modes=value_modes,
-        experiments_text=experiments_text,
+        experiment_rows=experiment_rows,
         message=message,
         error=error,
     )
@@ -533,8 +840,10 @@ def save_dse_from_form(form: dict[str, list[str]]) -> tuple[Path, dict[str, obje
         name = form_value(form, f"name_{index}", "")
         if not name or form_value(form, f"include_{index}", "") != "on":
             continue
-        mode = form_value(form, f"mode_{index}", "single")
-        values = parse_parameter_values(form_value(form, f"values_{index}", ""), mode)
+        try:
+            values = parse_json_values(form_value(form, f"values_{index}", ""))
+        except ValueError as exc:
+            raise ValueError(f"Parameter '{name}' has invalid DSE values: {exc}") from exc
         if not values:
             raise ValueError(f"Parameter '{name}' has no values")
         parameters[name] = values
@@ -543,15 +852,7 @@ def save_dse_from_form(form: dict[str, list[str]]) -> tuple[Path, dict[str, obje
         raise ValueError("Select at least one parameter")
     dse_common.validate_parameters(parameters)
 
-    experiments_raw = form_value(form, "experiments_json", "")
-    try:
-        parsed_experiments = json.loads(experiments_raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid experiments JSON: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
-    if isinstance(parsed_experiments, dict) and "experiments" in parsed_experiments:
-        experiments = parsed_experiments["experiments"]
-    else:
-        experiments = parsed_experiments
+    experiments = build_experiments_from_form(form)
     payload = dse_common.validate_dse_payload({"parameters": parameters, "experiments": experiments})
     save_path = resolve_tool_path(form_value(form, "save_path", DEFAULT_SAVE_JSON))
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -766,6 +1067,12 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     .category {{ border: 1px solid #e2e6ea; margin-top: 10px; }}
     .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f8f9fa; border-bottom: 1px solid #e2e6ea; }}
     .category-header h3 {{ margin: 0; font-size: 14px; }}
+    .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; }}
+    .command-block {{ border-top: 1px solid #e2e6ea; padding-top: 10px; }}
+    .command-block:first-child {{ border-top: 0; padding-top: 0; }}
+    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-weight: 700; }}
+    .command-title code {{ font-size: 12px; }}
+    .command-fields {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }}
     .experiment-grid {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; }}
     .experiment-list {{ margin: 0; padding-left: 18px; }}
     .experiment-list li {{ margin: 0 0 8px; }}
@@ -784,14 +1091,31 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
   (() => {{
     const WIZARD_TOKEN = "{SESSION_TOKEN}";
 
-    function countValues(text) {{
+    function parseDseValues(text) {{
       const cleaned = (text || "").trim();
-      if (!cleaned) return 0;
+      if (!cleaned) return [];
       try {{
         const parsed = JSON.parse("[" + cleaned + "]");
-        return Array.isArray(parsed) ? parsed.length : 0;
+        if (Array.isArray(parsed)) return parsed;
+      }} catch (error) {{
+        if (cleaned.includes('"')) {{
+          throw new Error("Invalid DSE value list. Quote comma-containing values with JSON double quotes.");
+        }}
+      }}
+      return cleaned.split(",").map((item) => item.trim()).filter(Boolean).map((item) => {{
+        try {{
+          return JSON.parse(item);
+        }} catch (_error) {{
+          return item;
+        }}
+      }});
+    }}
+
+    function countValues(text) {{
+      try {{
+        return parseDseValues(text).length;
       }} catch (_error) {{
-        return cleaned.split(",").map((item) => item.trim()).filter(Boolean).length;
+        return 0;
       }}
     }}
 
@@ -802,9 +1126,8 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       for (const row of rows) {{
         const checkbox = row.querySelector("[data-dse-include]");
         const values = row.querySelector("[data-dse-values]");
-        const mode = row.querySelector("[data-dse-mode]");
         if (!checkbox || !values || !checkbox.checked) continue;
-        const valueCount = mode && mode.value === "single" ? (values.value.trim() ? 1 : 0) : countValues(values.value);
+        const valueCount = countValues(values.value);
         if (valueCount <= 0) {{
           total = 0;
         }} else if (total !== 0) {{
@@ -842,6 +1165,8 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         if (data.path) {{
           target.value = data.path;
           target.dispatchEvent(new Event("input", {{ bubbles: true }}));
+          const action = button.dataset.browseAction || "";
+          if (action) submitWizardForm(button, action);
         }} else if (data.error) {{
           window.alert(data.error);
         }}
@@ -853,14 +1178,174 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       }}
     }}
 
+    function submitWizardForm(button, action) {{
+      const form = button.closest("form");
+      if (!form) return;
+      form.action = action;
+      form.method = "post";
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    }}
+
+    function updateJsonPreview() {{
+      const preview = document.getElementById("dse-json-preview");
+      const status = document.getElementById("dse-json-preview-status");
+      if (!preview) return;
+      const parameters = {{}};
+      const errors = [];
+      for (const row of document.querySelectorAll("[data-dse-row]")) {{
+        const checkbox = row.querySelector("[data-dse-include]");
+        const nameInput = row.querySelector('input[name^="name_"]');
+        const valuesInput = row.querySelector("[data-dse-values]");
+        if (!checkbox || !nameInput || !valuesInput || !checkbox.checked) continue;
+        try {{
+          const values = parseDseValues(valuesInput.value);
+          if (values.length === 0) {{
+            errors.push(nameInput.value + " has no values");
+          }} else {{
+            parameters[nameInput.value] = values;
+          }}
+        }} catch (error) {{
+          errors.push(nameInput.value + ": " + error.message);
+        }}
+      }}
+
+      let experiments = [];
+      try {{
+        experiments = buildExperimentsFromForm();
+      }} catch (error) {{
+        experiments = [];
+        errors.push("experiments: " + error.message);
+      }}
+
+      preview.textContent = JSON.stringify({{ parameters, experiments }}, null, 2);
+      if (status) {{
+        const selected = Object.keys(parameters).length;
+        const sizeNode = document.getElementById("parameter-space-size");
+        const size = sizeNode ? sizeNode.textContent : "0";
+        status.textContent = errors.length
+          ? "Preview has errors: " + errors.join("; ")
+          : selected + " selected parameters, " + size + " configurations";
+      }}
+    }}
+
+    function experimentField(row, prefix) {{
+      const input = row.querySelector('[name^="' + prefix + '"]');
+      return input ? input.value.trim() : "";
+    }}
+
+    function experimentChecked(row, prefix) {{
+      const input = row.querySelector('[name^="' + prefix + '"]');
+      return Boolean(input && input.checked);
+    }}
+
+    function parseRequiredInt(value, label) {{
+      if (!value) throw new Error(label + " is required");
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed) || String(parsed) !== String(Number(value))) {{
+        throw new Error(label + " must be an integer");
+      }}
+      return parsed;
+    }}
+
+    function parseOptionalInt(value, label) {{
+      if (!value) return null;
+      return parseRequiredInt(value, label);
+    }}
+
+    function parseRequiredFloat(value, label) {{
+      if (!value) throw new Error(label + " is required");
+      const parsed = Number.parseFloat(value);
+      if (!Number.isFinite(parsed)) throw new Error(label + " must be numeric");
+      return parsed;
+    }}
+
+    function buildExperimentsFromForm() {{
+      const experiments = [];
+      for (const row of document.querySelectorAll("[data-experiment-row]")) {{
+        if (!experimentChecked(row, "exp_enabled_")) continue;
+        const name = experimentField(row, "exp_name_") || "experiment";
+        const kind = experimentField(row, "exp_kind_") || "invoice";
+        const balance = kind === "bootstrap" ? "none" : (experimentField(row, "exp_balance_") || "none");
+        const pathFinderByKind = {{
+          path: experimentField(row, "exp_path_path_finder_") || "lnd",
+          route: experimentField(row, "exp_route_path_finder_") || "lnd",
+          invoice: experimentField(row, "exp_inv_path_finder_") || "lnd",
+          bootstrap: "lnd"
+        }};
+        const pathFinder = pathFinderByKind[kind] || "lnd";
+        if (pathFinder === "all" && kind !== "path") throw new Error(name + " can use path_finder=all only for path experiments");
+
+        const commands = ["boot"];
+        const minDelta = parseOptionalInt(experimentField(row, "exp_min_delta_"), name + " min_delta");
+        if (balance === "rndbal") {{
+          commands.push(minDelta === null ? "rndbal" : {{ command: "rndbal", min_delta: minDelta }});
+        }} else if (balance === "bal") {{
+          const command = {{ command: "bal", level: parseRequiredFloat(experimentField(row, "exp_bal_level_"), name + " balance level") }};
+          if (minDelta !== null) command.min_delta = minDelta;
+          commands.push(command);
+        }}
+
+        if (kind === "path") {{
+          commands.push({{
+            command: "path",
+            start: experimentField(row, "exp_path_start_") || "pk0",
+            destination: experimentField(row, "exp_path_destination_") || "pk7",
+            amount: parseRequiredInt(experimentField(row, "exp_path_amount_"), name + " path amount"),
+            path_finder: pathFinder,
+            topk: parseRequiredInt(experimentField(row, "exp_path_topk_"), name + " topk")
+          }});
+        }} else if (kind === "route") {{
+          const routeCommand = {{
+            command: "route",
+            sender: experimentField(row, "exp_route_sender_") || "pk0",
+            destination: experimentField(row, "exp_route_destination_") || "pk7",
+            amount: parseRequiredInt(experimentField(row, "exp_route_amount_"), name + " route amount"),
+            max_fees: parseRequiredInt(experimentField(row, "exp_route_max_fees_"), name + " route max_fees"),
+            path_finder: pathFinder
+          }};
+          const message = experimentField(row, "exp_route_message_");
+          if (message) routeCommand.message = message;
+          commands.push(routeCommand);
+        }} else if (kind === "invoice") {{
+          commands.push({{
+            command: "inv",
+            node_events_per_block: parseRequiredFloat(experimentField(row, "exp_inv_node_events_per_block_"), name + " node_events_per_block"),
+            blocks: parseRequiredInt(experimentField(row, "exp_inv_blocks_"), name + " blocks"),
+            min_amt: parseRequiredInt(experimentField(row, "exp_inv_min_amt_"), name + " min_amt"),
+            max_amt: parseRequiredInt(experimentField(row, "exp_inv_max_amt_"), name + " max_amt"),
+            max_fees: parseRequiredInt(experimentField(row, "exp_inv_max_fees_"), name + " max_fees"),
+            path_finder: pathFinder
+          }});
+        }}
+
+        const outputs = [];
+        if (experimentChecked(row, "exp_output_network_")) outputs.push("network");
+        if (experimentChecked(row, "exp_output_invoice_")) outputs.push("invoice");
+        experiments.push({{ name, commands, outputs: outputs.length ? outputs : ["network"] }});
+      }}
+      if (experiments.length === 0) throw new Error("select at least one experiment");
+      return experiments;
+    }}
+
+    function updateExperimentVisibility() {{
+      for (const row of document.querySelectorAll("[data-experiment-row]")) {{
+        const kind = experimentField(row, "exp_kind_") || "invoice";
+        for (const block of row.querySelectorAll("[data-command-block]")) {{
+          block.hidden = block.dataset.commandBlock !== kind;
+        }}
+        const balanceBlock = row.querySelector("[data-balance-block]");
+        if (balanceBlock) balanceBlock.hidden = kind === "bootstrap";
+      }}
+    }}
+
     function updateExperimentSummary() {{
-      const textarea = document.getElementById("experiments_json");
+      updateExperimentVisibility();
       const summary = document.getElementById("experiments-summary");
-      if (!textarea || !summary) return;
+      if (!summary) return;
       summary.textContent = "";
       try {{
-        const parsed = JSON.parse(textarea.value);
-        const experiments = Array.isArray(parsed) ? parsed : parsed.experiments;
+        const experiments = buildExperimentsFromForm();
         if (!Array.isArray(experiments) || experiments.length === 0) {{
           summary.textContent = "No experiments configured.";
           return;
@@ -889,18 +1374,26 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
 
     document.addEventListener("click", (event) => {{
       const button = event.target.closest("[data-browse-target]");
-      if (!button) return;
-      event.preventDefault();
-      selectNativePath(button);
+      if (button) {{
+        event.preventDefault();
+        selectNativePath(button);
+        return;
+      }}
+      const refreshPreview = event.target.closest("#refresh-json-preview");
+      if (refreshPreview) {{
+        event.preventDefault();
+        updateSpaceCount();
+        updateJsonPreview();
+      }}
     }});
 
     document.addEventListener("input", (event) => {{
       if (event.target.matches("[data-dse-values]")) updateSpaceCount();
-      if (event.target.matches("#experiments_json")) updateExperimentSummary();
+      if (event.target.matches("[data-experiment-field]")) updateExperimentSummary();
     }});
     document.addEventListener("change", (event) => {{
       if (event.target.matches("[data-dse-include]")) updateSpaceCount();
-      if (event.target.matches("[data-dse-mode]")) updateSpaceCount();
+      if (event.target.matches("[data-experiment-enabled], [name^='exp_kind_'], [name^='exp_balance_'], [name^='exp_path_path_finder_'], [name^='exp_route_path_finder_'], [name^='exp_inv_path_finder_'], [data-experiment-output]")) updateExperimentSummary();
     }});
     function updateRunStatus() {{
       const panel = document.querySelector("[data-run-job]");
@@ -924,6 +1417,8 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         }});
     }}
     updateSpaceCount();
+    updateExperimentVisibility();
+    updateJsonPreview();
     updateExperimentSummary();
     updateRunStatus();
   }})();
@@ -971,13 +1466,14 @@ def render_home() -> bytes:
     return page("Main Menu", body)
 
 
-def path_control(label: str, name: str, value: str, mode: str) -> str:
+def path_control(label: str, name: str, value: str, mode: str, browse_action: str = "") -> str:
     safe_name = escape(name)
+    action_attr = f' data-browse-action="{escape(browse_action)}"' if browse_action else ""
     return f"""
 <label>{escape(label)}
   <div class="path-field">
     <input id="{safe_name}" class="path-input" name="{safe_name}" value="{escape(value)}">
-    <button type="button" class="secondary" data-browse-target="{safe_name}" data-browse-mode="{escape(mode)}">Browse</button>
+    <button type="button" class="secondary" data-browse-target="{safe_name}" data-browse-mode="{escape(mode)}"{action_attr}>Browse</button>
   </div>
 </label>
 """
@@ -1015,6 +1511,135 @@ def experiment_summary_html(experiments: list[dict[str, object]]) -> str:
     return '<ul class="experiment-list">' + "".join(items) + "</ul>"
 
 
+def render_experiment_editor(rows: list[dict[str, str]]) -> str:
+    row_html = []
+    for index, row in enumerate(rows):
+        enabled = " checked" if row.get("enabled") == "on" else ""
+        output_network = " checked" if row.get("output_network") == "on" else ""
+        output_invoice = " checked" if row.get("output_invoice") == "on" else ""
+        row_html.append(
+            f"""
+<div class="category" data-experiment-row>
+  <div class="category-header">
+    <h3><label><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</label></h3>
+    <span class="muted">{escape(row.get("kind", "invoice"))}</span>
+  </div>
+  <div class="experiment-command-grid">
+    <div class="command-block">
+      <div class="command-title"><span>Experiment definition</span><code>experiment</code></div>
+      <div class="command-fields">
+        <label>Name
+          <input name="exp_name_{index}" data-experiment-field value="{escape(row.get("name", ""))}">
+        </label>
+        <label>Recipe
+          {select_html(f"exp_kind_{index}", list(EXPERIMENT_KIND_LABELS), row.get("kind", "invoice"), EXPERIMENT_KIND_LABELS)}
+        </label>
+      </div>
+    </div>
+
+    <div class="command-block">
+      <div class="command-title"><span>Bootstrap command</span><code>boot</code></div>
+      <p class="muted">Always runs first. It loads the generated properties and bootstraps the network.</p>
+    </div>
+
+    <div class="command-block" data-balance-block>
+      <div class="command-title"><span>Balance command</span><code>bal / rndbal</code></div>
+      <div class="command-fields">
+        <label>Balance setup
+          {select_html(f"exp_balance_{index}", list(BALANCE_MODE_LABELS), row.get("balance", "none"), BALANCE_MODE_LABELS)}
+        </label>
+        <label>Balance level for bal
+          <input name="exp_bal_level_{index}" data-experiment-field value="{escape(row.get("bal_level", ""))}">
+        </label>
+        <label>Min balance delta
+          <input name="exp_min_delta_{index}" data-experiment-field value="{escape(row.get("min_delta", ""))}">
+        </label>
+      </div>
+    </div>
+
+    <div class="command-block" data-command-block="path">
+      <div class="command-title"><span>Path finding command</span><code>path</code></div>
+      <div class="command-fields">
+        <label>Start node
+          <input name="exp_path_start_{index}" data-experiment-field value="{escape(row.get("path_start", ""))}">
+        </label>
+        <label>Destination node
+          <input name="exp_path_destination_{index}" data-experiment-field value="{escape(row.get("path_destination", ""))}">
+        </label>
+        <label>Amount
+          <input name="exp_path_amount_{index}" data-experiment-field value="{escape(row.get("path_amount", ""))}">
+        </label>
+        <label>Path finder
+          {select_html(f"exp_path_path_finder_{index}", PATH_FINDER_OPTIONS, row.get("path_path_finder", "lnd"))}
+        </label>
+        <label>Top K paths
+          <input name="exp_path_topk_{index}" data-experiment-field value="{escape(row.get("path_topk", ""))}">
+        </label>
+      </div>
+    </div>
+
+    <div class="command-block" data-command-block="route">
+      <div class="command-title"><span>Single payment command</span><code>route</code></div>
+      <div class="command-fields">
+        <label>Sender node
+          <input name="exp_route_sender_{index}" data-experiment-field value="{escape(row.get("route_sender", ""))}">
+        </label>
+        <label>Destination node
+          <input name="exp_route_destination_{index}" data-experiment-field value="{escape(row.get("route_destination", ""))}">
+        </label>
+        <label>Amount
+          <input name="exp_route_amount_{index}" data-experiment-field value="{escape(row.get("route_amount", ""))}">
+        </label>
+        <label>Max fees
+          <input name="exp_route_max_fees_{index}" data-experiment-field value="{escape(row.get("route_max_fees", ""))}">
+        </label>
+        <label>Path finder
+          {select_html(f"exp_route_path_finder_{index}", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("route_path_finder", "lnd"))}
+        </label>
+        <label>Route message
+          <input name="exp_route_message_{index}" data-experiment-field value="{escape(row.get("route_message", ""))}">
+        </label>
+      </div>
+    </div>
+
+    <div class="command-block" data-command-block="invoice">
+      <div class="command-title"><span>Invoice campaign command</span><code>inv</code></div>
+      <div class="command-fields">
+        <label>Node events / block
+          <input name="exp_inv_node_events_per_block_{index}" data-experiment-field value="{escape(row.get("inv_node_events_per_block", ""))}">
+        </label>
+        <label>Blocks
+          <input name="exp_inv_blocks_{index}" data-experiment-field value="{escape(row.get("inv_blocks", ""))}">
+        </label>
+        <label>Min invoice amount
+          <input name="exp_inv_min_amt_{index}" data-experiment-field value="{escape(row.get("inv_min_amt", ""))}">
+        </label>
+        <label>Max invoice amount
+          <input name="exp_inv_max_amt_{index}" data-experiment-field value="{escape(row.get("inv_max_amt", ""))}">
+        </label>
+        <label>Max fees
+          <input name="exp_inv_max_fees_{index}" data-experiment-field value="{escape(row.get("inv_max_fees", ""))}">
+        </label>
+        <label>Path finder
+          {select_html(f"exp_inv_path_finder_{index}", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("inv_path_finder", "lnd"))}
+        </label>
+      </div>
+    </div>
+
+    <div class="command-block">
+      <div class="command-title"><span>Report outputs</span><code>outputs</code></div>
+      <div class="actions">
+        <label><span><input type="checkbox" name="exp_output_network_{index}" data-experiment-output{output_network}> Network stats</span></label>
+        <label><span><input type="checkbox" name="exp_output_invoice_{index}" data-experiment-output{output_invoice}> Invoice report</span></label>
+      </div>
+    </div>
+  </div>
+</div>
+"""
+        )
+    return f'<input type="hidden" name="experiment_count" value="{len(rows)}">' + "".join(row_html)
+
+
 def render_create(
     query: dict[str, str],
     message: str = "",
@@ -1025,31 +1650,25 @@ def render_create(
     if state is None:
         state = default_create_state(query, message or query.get("message", ""), error or query.get("error", ""))
     parameter_names = sorted(set(state.parameters) | set(state.selected_parameters), key=parameter_sort_key)
-    experiments_json = state.experiments_text if state.experiments_text is not None else json.dumps(state.experiments, indent=2)
+    experiment_rows = state.experiment_rows if state.experiment_rows is not None else experiment_rows_for_render(state.experiments)
     selected_count, space_size = selected_space_size(state.selected_parameters)
+    preview_json = json.dumps({"parameters": state.selected_parameters, "experiments": state.experiments}, indent=2)
 
     grouped_rows: dict[str, list[str]] = {}
     for index, name in enumerate(parameter_names):
         value = state.parameters.get(name, "")
         selected_values = state.selected_parameters.get(name)
         checked = " checked" if selected_values is not None else ""
-        mode = state.value_modes.get(name, value_mode_for_values(selected_values))
         values_text = state.value_text_overrides.get(
             name,
-            stringify_values(selected_values, quote_strings=(mode == "list")) if selected_values is not None else default_value_text(value),
+            stringify_values(selected_values, quote_strings=True) if selected_values is not None else default_value_text(value),
         )
-        single_selected = " selected" if mode == "single" else ""
-        list_selected = " selected" if mode == "list" else ""
         category = parameter_category(name) if name in state.parameters else "DSE JSON only"
         grouped_rows.setdefault(category, []).append(
             f"<tr data-dse-row>"
             f"<td><input type=\"checkbox\" name=\"include_{index}\" data-dse-include{checked}></td>"
             f"<td><code>{escape(name)}</code><input type=\"hidden\" name=\"name_{index}\" value=\"{escape(name)}\"></td>"
             f"<td>{escape(value or 'not present in loaded properties')}</td>"
-            f"<td><select name=\"mode_{index}\" data-dse-mode>"
-            f"<option value=\"single\"{single_selected}>single property value</option>"
-            f"<option value=\"list\"{list_selected}>list of DSE values</option>"
-            f"</select></td>"
             f"<td><input name=\"values_{index}\" data-dse-values value=\"{escape(values_text)}\"></td>"
             f"</tr>"
         )
@@ -1067,7 +1686,7 @@ def render_create(
     <span class="muted">{len(rows)} parameters</span>
   </div>
   <table>
-    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>Value mode</th><th>DSE values</th></tr></thead>
+    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
 </div>
@@ -1082,7 +1701,7 @@ def render_create(
     <span class="muted">{len(rows)} parameters</span>
   </div>
   <table>
-    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>Value mode</th><th>DSE values</th></tr></thead>
+    <thead><tr><th>Use</th><th>Parameter</th><th>Base value</th><th>DSE values</th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table>
 </div>
@@ -1096,27 +1715,20 @@ def render_create(
     <h2>DSE JSON files</h2>
     <div class="row3">
       {path_control("Properties file", "properties_path", state.properties_path, "properties")}
-      {path_control("Load DSE JSON", "dse_json_path", state.dse_json_path, "json")}
-      {path_control("Save DSE JSON", "save_path", state.save_path, "save_json")}
+      {path_control("Load DSE JSON", "dse_json_path", state.dse_json_path, "json", "/create/load")}
+      {path_control("Save DSE JSON", "save_path", state.save_path, "save_json", "/create/save")}
     </div>
     <div class="actions">
       <button type="submit" class="secondary" formaction="/create/refresh">Reload properties</button>
-      <button type="submit" class="secondary" formaction="/create/load">Load JSON</button>
-      <button type="submit">Save JSON</button>
     </div>
   </section>
 
   <section class="panel">
     <h2>Experiments section of the DSE JSON</h2>
-    <div class="experiment-grid">
-      <label>Experiments JSON array
-        <textarea id="experiments_json" name="experiments_json">{escape(experiments_json)}</textarea>
-      </label>
-      <div>
-        <h2>Configured experiments</h2>
-        <div id="experiments-summary">{experiment_summary_html(state.experiments)}</div>
-      </div>
-    </div>
+    <p class="muted">Select experiments, choose their command recipe, and edit the command parameters. The JSON preview below shows the generated experiment specification.</p>
+    {render_experiment_editor(experiment_rows)}
+    <h2>Configured experiments</h2>
+    <div id="experiments-summary">{experiment_summary_html(state.experiments)}</div>
   </section>
 
   <section class="panel">
@@ -1124,10 +1736,17 @@ def render_create(
     <div class="space-summary">
       <span><strong id="parameter-space-size">{space_size}</strong> configurations</span>
       <span><strong id="selected-parameter-count">{selected_count}</strong> selected parameters</span>
-      <span class="muted">Use "single property value" for comma-containing values like base_fee_set; use "list of DSE values" for Cartesian products.</span>
+      <span class="muted">Use commas to separate DSE alternatives. Quote one value when it contains commas, for example "0,100,1000".</span>
+      <button type="button" class="secondary" id="refresh-json-preview">Refresh Preview</button>
     </div>
     <input type="hidden" name="parameter_count" value="{len(parameter_names)}">
     {"".join(category_html)}
+  </section>
+
+  <section class="panel">
+    <h2>Resulting DSE JSON</h2>
+    <p id="dse-json-preview-status" class="muted">{selected_count} selected parameters, {space_size} configurations</p>
+    <pre id="dse-json-preview">{escape(preview_json)}</pre>
   </section>
 </form>
 """

@@ -33,7 +33,9 @@ The main menu has three actions:
 | `Run DSE` | A form for base properties, DSE JSON path, output directory, safe replacement controls, and optional `--limit`, then runs `uv_dse_run` as a background job with live output. |
 | `Open DSE Visualizer` | The integrated report visualizer for selecting experiment, report, metric, graph type, filters, and PDF export. |
 
-The JSON creator uses `../../uv_configs/template.properties` by default. DSE outputs are expected under `dse_runs/` inside this folder. Browse buttons open native OS file selectors: Finder dialogs on macOS, and `zenity` or `kdialog` on Ubuntu/Linux. If Ubuntu does not open a dialog, install `zenity`:
+The JSON creator starts from `../../uv_configs/template.properties` and the bundled `quickstart_dse.json`, so the first screen already contains a small editable parameter space and experiment. The default save destination is separate from `quickstart_dse.json` to avoid overwriting the bundled starting point.
+
+DSE outputs are expected under `dse_runs/` inside this folder. Browse buttons open native OS file selectors: Finder dialogs on macOS, and `zenity` or `kdialog` on Ubuntu/Linux. If Ubuntu does not open a dialog, install `zenity`:
 
 ```bash
 sudo apt install zenity
@@ -43,12 +45,16 @@ For safety, the wizard binds to `127.0.0.1` by default. Binding to a non-loopbac
 
 The Run DSE screen does not replace existing output directories unless replacement is explicitly enabled and confirmed. Long runs continue in the background; the page polls status and streams runner output.
 
-The parameter editor has two value modes:
+In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: select which experiment recipes to include, choose their balance setup and report outputs, and edit command parameters in form fields. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
 
-| Mode | Use It For |
+The parameter editor treats each field as a comma-separated list of DSE alternatives:
+
+| DSE values field | Meaning |
 | --- | --- |
-| `single property value` | One property value, including comma-containing values such as `base_fee_set=0,100,1000`. |
-| `list of DSE values` | A comma-separated list crossed into the Cartesian parameter space, such as `1, 7, 13`. |
+| `1, 7, 13` | Three generated alternatives. |
+| `"0,100,1000"` | One generated alternative whose property value contains commas. |
+
+The quotes are only DSE input syntax. The generated `.properties` file still receives the unquoted simulator value, for example `base_fee_set=0,100,1000`.
 
 ## End-To-End Quickstart
 
