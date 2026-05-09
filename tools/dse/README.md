@@ -33,7 +33,7 @@ The main menu has three actions:
 | `Run DSE` | A form for base properties, DSE JSON path, output directory, safe replacement controls, and optional `--limit`, then runs `uv_dse_run` as a background job with live output. |
 | `Open DSE Visualizer` | The integrated report visualizer for selecting experiment, report, metric, graph type, filters, and PDF export. |
 
-The JSON creator starts from `../../uv_configs/template.properties` and the bundled `quickstart_dse.json`, so the first screen already contains a small editable parameter space and experiment. The default save destination is separate from `quickstart_dse.json` to avoid overwriting the bundled starting point.
+The JSON creator starts from `../../uv_configs/template.properties` and the bundled `quickstart_dse.json`, so the first screen already contains an editable parameter space and experiment. On this startup example, single-value DSE parameters are shown with the exact value from `template.properties`, and multi-value parameters include the template value. The default save destination is separate from `quickstart_dse.json` to avoid overwriting the bundled starting point.
 
 DSE outputs are expected under `dse_runs/` inside this folder. Browse buttons open native OS file selectors: Finder dialogs on macOS, and `zenity` or `kdialog` on Ubuntu/Linux. If Ubuntu does not open a dialog, install `zenity`:
 
@@ -45,7 +45,9 @@ For safety, the wizard binds to `127.0.0.1` by default. Binding to a non-loopbac
 
 The Run DSE screen does not replace existing output directories unless replacement is explicitly enabled and confirmed. Long runs continue in the background; the page polls status and streams runner output.
 
-In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: select which experiment recipes to include, choose their balance setup and report outputs, and edit command parameters in command-specific form sections. Major sections, experiment rows, parameter categories, and command blocks start collapsed; expand only the parts you need. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
+In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: enable experiments, edit their names, choose their recipes, choose whether the network source is a fresh bootstrap or a `.dat` snapshot, choose their balance setup and report outputs, and edit recipe-specific command parameters. Major sections, experiment command configurations, parameter categories, and command blocks start collapsed; expand only the parts you need. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
+
+Changing an experiment recipe changes which command is emitted into the DSE JSON. The wizard keeps values entered in hidden recipe sections so switching back restores them, and asks for confirmation before a recipe change hides the previously active command from the saved JSON.
 
 The parameter editor treats each field as a comma-separated list of DSE alternatives:
 
@@ -346,7 +348,7 @@ Experiment commands execute in order. A command can be a plain string when no op
 
 | Command | Effect | Common options |
 | --- | --- | --- |
-| `boot` | Bootstrap the network from the generated config. | none |
+| `boot` | Bootstrap the network from the generated config, or load a saved `.dat` snapshot. | `mode`, `file` |
 | `bal` | Set initiator-side channel balances to a fixed fraction. | `level`, `min_delta` |
 | `rndbal` | Randomize initiator-side channel balances. | `min_delta` |
 | `path` | Run path finding between two nodes and store results in `run.json`. | `start`, `destination`, `amount`, `path_finder`, `topk` |
@@ -361,6 +363,20 @@ Supported `path_finder` values:
 - `bfs`
 
 For the `path` command only, `path_finder: "all"` runs all strategies and records each result in `run.json`.
+
+`boot` can stay as the plain string `"boot"` for a fresh bootstrap. To start from a saved simulator snapshot, use an object:
+
+```json
+{
+  "command": "boot",
+  "mode": "load",
+  "file": "snapshots/base-network.dat"
+}
+```
+
+Relative snapshot paths are resolved from the DSE JSON file directory before each run starts.
+
+When `boot` loads a `.dat` snapshot, UltraViolet restores the config stored in that snapshot. Fresh-bootstrap parameters such as `bootstrap_nodes` and `bootstrap_blocks` therefore do not reshape that loaded network during the run; use snapshot loading for fixed-topology experiments or vary the snapshot file deliberately by editing separate experiment definitions.
 
 ### Runner Outputs
 
@@ -717,6 +733,60 @@ Report: invoice
 Metric: Success rate (%)
 X parameter: pathfinding_max_hops
 Graph: scatter
+Aggregation: mean
+```
+
+### Fixed Snapshot Route Probes
+
+Use this when you want repeated experiments on the same saved `.dat` network instead of regenerating a topology. Keep the parameter space single-valued unless you intentionally need multiple generated config folders; the loaded snapshot restores its own saved simulator config.
+
+```json
+{
+  "parameters": {
+    "seed": [1]
+  },
+  "experiments": [
+    {
+      "name": "snapshot_route_25k",
+      "commands": [
+        { "command": "boot", "mode": "load", "file": "snapshots/base-network.dat" },
+        {
+          "command": "route",
+          "sender": "pk0",
+          "destination": "pk99",
+          "amount": 25000,
+          "max_fees": 1500,
+          "path_finder": "lnd"
+        }
+      ],
+      "outputs": ["network", "invoice"]
+    },
+    {
+      "name": "snapshot_route_100k",
+      "commands": [
+        { "command": "boot", "mode": "load", "file": "snapshots/base-network.dat" },
+        {
+          "command": "route",
+          "sender": "pk0",
+          "destination": "pk99",
+          "amount": 100000,
+          "max_fees": 3000,
+          "path_finder": "lnd"
+        }
+      ],
+      "outputs": ["network", "invoice"]
+    }
+  ]
+}
+```
+
+Suggested visualizer settings:
+
+```text
+Report: invoice
+Metric: Success rate (%)
+X parameter: experiment
+Graph: bar
 Aggregation: mean
 ```
 

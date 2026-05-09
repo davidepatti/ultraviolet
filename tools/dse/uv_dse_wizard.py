@@ -85,6 +85,11 @@ BALANCE_MODE_LABELS = {
     "bal": "Fixed local balance level",
 }
 
+BOOT_MODE_LABELS = {
+    "scratch": "Bootstrap from DSE config",
+    "load": "Load .dat snapshot",
+}
+
 PATH_FINDER_OPTIONS = ["lnd", "mini_dijkstra", "shortest_hop", "bfs", "all"]
 
 EXPERIMENT_PRESETS = [
@@ -254,6 +259,7 @@ def dialog_title(mode: str) -> str:
         "json": "Select DSE JSON file",
         "save_json": "Save DSE JSON file",
         "dir": "Select DSE output directory",
+        "dat": "Select UltraViolet .dat snapshot",
     }.get(mode, "Select file")
 
 
@@ -315,6 +321,8 @@ def select_path_zenity(mode: str, directory: Path, save_name: str) -> Path | Non
             command.append("--file-filter=Properties files | *.properties")
         elif mode == "json":
             command.append("--file-filter=JSON files | *.json")
+        elif mode == "dat":
+            command.append("--file-filter=UltraViolet snapshots | *.dat")
         command.append("--file-filter=All files | *")
     return run_dialog_command(command)
 
@@ -329,6 +337,8 @@ def select_path_kdialog(mode: str, directory: Path, save_name: str) -> Path | No
         command = ["kdialog", "--getopenfilename", start, "*.properties"]
     elif mode == "json":
         command = ["kdialog", "--getopenfilename", start, "*.json"]
+    elif mode == "dat":
+        command = ["kdialog", "--getopenfilename", start, "*.dat"]
     else:
         command = ["kdialog", "--getopenfilename", start]
     return run_dialog_command(command)
@@ -417,6 +427,67 @@ def default_value_text(value: str) -> str:
     return stringify_value(value)
 
 
+def template_property_dse_value(value: str) -> object:
+    text = value.strip()
+    if value != text or "," in value or text == "":
+        return value
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return value
+    try:
+        if dse_common.stringify_property_value("template", parsed) == text.lower():
+            return parsed
+    except ValueError:
+        pass
+    return value
+
+
+def parameter_value_matches(left: object, right: object) -> bool:
+    try:
+        return dse_common.stringify_property_value("template", left) == dse_common.stringify_property_value(
+            "template", right
+        )
+    except ValueError:
+        return left == right
+
+
+def align_default_parameter_space_with_properties(
+    selected: dict[str, list[object]],
+    properties: dict[str, str],
+) -> dict[str, list[object]]:
+    aligned: dict[str, list[object]] = {}
+    for name, values in selected.items():
+        if name not in properties:
+            aligned[name] = list(values)
+            continue
+        template_value = template_property_dse_value(properties[name])
+        if len(values) == 1:
+            aligned[name] = [template_value]
+            continue
+        if any(parameter_value_matches(template_value, value) for value in values):
+            aligned[name] = list(values)
+        else:
+            aligned[name] = [template_value, *values]
+    return aligned
+
+
+def should_align_startup_defaults(
+    params: dict[str, str],
+    properties_path: str,
+    dse_json_path: str,
+) -> bool:
+    if params.get("load_json"):
+        return False
+    try:
+        return (
+            resolve_tool_path(properties_path) == resolve_tool_path(DEFAULT_PROPERTIES)
+            and resolve_tool_path(dse_json_path) == resolve_tool_path(DEFAULT_DSE_JSON)
+        )
+    except ValueError:
+        return False
+
+
 def load_dse_json(path: Path) -> tuple[dict[str, list[object]], list[dict[str, object]]]:
     if not path.is_file():
         raise ValueError(f"DSE JSON file not found: {path}")
@@ -465,6 +536,16 @@ def experiment_row_from_spec(experiment: dict[str, object], *, enabled: bool = T
         outputs = [outputs]
     row["output_network"] = "on" if "network" in outputs or "stat" in outputs or "stats" in outputs else ""
     row["output_invoice"] = "on" if "invoice" in outputs or "invoices" in outputs or "invoice_report" in outputs else ""
+
+    boot = command_for_name(commands, "boot")
+    boot_mode = string_field(command_value(boot, "mode", command_value(boot, "source", "scratch"))).strip().lower()
+    if boot_mode in {"load", "snapshot", "dat"}:
+        row["boot_mode"] = "load"
+        row["boot_file"] = string_field(
+            command_value(boot, "file", command_value(boot, "path", command_value(boot, "snapshot", "")))
+        )
+    else:
+        row["boot_mode"] = "scratch"
 
     rndbal = command_for_name(commands, "rndbal")
     bal = command_for_name(commands, "bal")
@@ -519,6 +600,8 @@ def default_experiment_row() -> dict[str, str]:
         "enabled": "",
         "name": "experiment",
         "kind": "invoice",
+        "boot_mode": "scratch",
+        "boot_file": "",
         "balance": "rndbal",
         "output_network": "on",
         "output_invoice": "on",
@@ -598,7 +681,7 @@ def build_experiment_from_row(row: dict[str, str], index: int) -> dict[str, obje
     if kind not in EXPERIMENT_KIND_LABELS:
         raise ValueError(f"Experiment '{name}' has unsupported type '{kind}'.")
 
-    commands: list[object] = ["boot"]
+    commands: list[object] = [build_boot_command(row, name)]
     balance = row.get("balance", "none")
     if kind == "bootstrap":
         balance = "none"
@@ -673,6 +756,18 @@ def build_experiment_from_row(row: dict[str, str], index: int) -> dict[str, obje
     return {"name": name, "commands": commands, "outputs": outputs}
 
 
+def build_boot_command(row: dict[str, str], experiment_name: str) -> object:
+    mode = row.get("boot_mode", "scratch").strip().lower() or "scratch"
+    if mode == "scratch":
+        return "boot"
+    if mode == "load":
+        snapshot = row.get("boot_file", "").strip()
+        if not snapshot:
+            raise ValueError(f"Experiment '{experiment_name}' boot snapshot file is required.")
+        return {"command": "boot", "mode": "load", "file": snapshot}
+    raise ValueError(f"Experiment '{experiment_name}' has unsupported boot mode '{mode}'.")
+
+
 def required_int(row: dict[str, str], key: str, label: str) -> int:
     value = row.get(key, "").strip()
     if not value:
@@ -723,6 +818,9 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
     except Exception as exc:
         properties = {}
         error = str(exc)
+
+    if selected and properties and should_align_startup_defaults(params, properties_path, dse_json_path):
+        selected = align_default_parameter_space_with_properties(selected, properties)
 
     return WizardState(
         properties_path=properties_path,
@@ -1049,10 +1147,12 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     main {{ padding: 16px 18px 28px; }}
     .grid {{ display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 14px; }}
     .card, .panel {{ background: #ffffff; border: 1px solid #d8dde3; padding: 14px; }}
-    details.panel, details.category, details.command-block {{ display: block; }}
+    [hidden] {{ display: none !important; }}
+    details.panel, details.category, details.command-block, details.experiment-details {{ display: block; }}
     details > summary {{ cursor: pointer; }}
-    details.panel > summary {{ list-style-position: inside; }}
-    details.panel > summary h2 {{ display: inline; margin: 0; }}
+    details.panel > summary {{ list-style-position: inside; background: #e9eef4; border-bottom: 1px solid #d8dde3; margin: -14px -14px 0; padding: 10px 14px; }}
+    details.panel:not([open]) > summary {{ border-bottom: 0; margin-bottom: -14px; }}
+    details.panel > summary h2 {{ display: inline; margin: 0; font-size: 15px; }}
     .disclosure-body {{ margin-top: 12px; }}
     .card a, button, .button {{ display: inline-block; border: 1px solid #174f91; background: #1a5fa8; color: #ffffff; padding: 8px 11px; font-weight: 700; text-decoration: none; cursor: pointer; }}
     form {{ display: grid; gap: 12px; }}
@@ -1069,16 +1169,25 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     .path-field {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }}
     .space-summary {{ display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; margin: 0 0 12px; }}
     .space-summary strong {{ font-size: 18px; }}
-    .category {{ border: 1px solid #e2e6ea; margin-top: 10px; }}
-    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f8f9fa; border-bottom: 1px solid #e2e6ea; cursor: pointer; }}
+    .category {{ border: 1px solid #d8dde3; margin-top: 10px; background: #ffffff; }}
+    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f2f5f8; border-bottom: 1px solid #d8dde3; cursor: pointer; }}
     details.category:not([open]) > .category-header {{ border-bottom: 0; }}
     .category-header h3 {{ margin: 0; font-size: 14px; }}
-    .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; }}
-    .command-block {{ border-top: 1px solid #e2e6ea; padding-top: 10px; }}
-    .command-block:first-child {{ border-top: 0; padding-top: 0; }}
-    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-weight: 700; cursor: pointer; }}
-    .command-title code {{ font-size: 12px; }}
-    .command-fields {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }}
+    .experiment-card > .category-header {{ background: #e7f0f8; cursor: default; }}
+    .experiment-header {{ display: grid; grid-template-columns: auto minmax(220px, 1fr) minmax(240px, 1.3fr); gap: 10px; align-items: end; }}
+    .summary-field {{ font-size: 11px; }}
+    .summary-field input, .summary-field select {{ width: 100%; box-sizing: border-box; }}
+    .summary-check {{ align-self: center; white-space: nowrap; }}
+    .experiment-details {{ border-top: 1px solid #d8dde3; background: #ffffff; }}
+    .experiment-details > summary {{ padding: 8px 10px; background: #eef3f7; font-size: 13px; font-weight: 700; }}
+    .experiment-details:not([open]) > summary {{ border-bottom: 0; }}
+    .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; background: #f6f8fa; }}
+    .command-block {{ border: 1px solid #dce3ea; background: #ffffff; }}
+    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 10px; background: #f4f7fa; border-bottom: 1px solid #e2e6ea; font-weight: 700; font-size: 13px; cursor: pointer; }}
+    details.command-block:not([open]) > .command-title {{ border-bottom: 0; }}
+    .command-title code {{ font-size: 11px; color: #5d666f; }}
+    .command-fields {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; padding: 10px; }}
+    .command-note {{ margin: 0; padding: 10px; background: #fbfcfd; }}
     .experiment-grid {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; }}
     .experiment-list {{ margin: 0; padding-left: 18px; }}
     .experiment-list li {{ margin: 0 0 8px; }}
@@ -1088,6 +1197,10 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     .muted {{ color: #5d666f; font-size: 13px; }}
     .figure {{ height: 560px; }}
     pre {{ white-space: pre-wrap; background: #111820; color: #e6edf3; padding: 12px; overflow: auto; }}
+    @media (max-width: 760px) {{
+      .grid, .row, .row3, .experiment-header, .command-fields {{ grid-template-columns: 1fr; }}
+      .summary-check {{ align-self: start; }}
+    }}
   </style>
 </head>
 <body>
@@ -1282,7 +1395,15 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         const pathFinder = pathFinderByKind[kind] || "lnd";
         if (pathFinder === "all" && kind !== "path") throw new Error(name + " can use path_finder=all only for path experiments");
 
-        const commands = ["boot"];
+        const bootMode = experimentField(row, "exp_boot_mode_") || "scratch";
+        const commands = [];
+        if (bootMode === "load") {{
+          const bootFile = experimentField(row, "exp_boot_file_");
+          if (!bootFile) throw new Error(name + " boot snapshot file is required");
+          commands.push({{ command: "boot", mode: "load", file: bootFile }});
+        }} else {{
+          commands.push("boot");
+        }}
         const minDelta = parseOptionalInt(experimentField(row, "exp_min_delta_"), name + " min_delta");
         if (balance === "rndbal") {{
           commands.push(minDelta === null ? "rndbal" : {{ command: "rndbal", min_delta: minDelta }});
@@ -1338,11 +1459,48 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       for (const row of document.querySelectorAll("[data-experiment-row]")) {{
         const kind = experimentField(row, "exp_kind_") || "invoice";
         for (const block of row.querySelectorAll("[data-command-block]")) {{
-          block.hidden = block.dataset.commandBlock !== kind;
+          const hidden = block.dataset.commandBlock !== kind;
+          block.hidden = hidden;
+          if (hidden) block.removeAttribute("open");
         }}
         const balanceBlock = row.querySelector("[data-balance-block]");
-        if (balanceBlock) balanceBlock.hidden = kind === "bootstrap";
+        if (balanceBlock) {{
+          const hidden = kind === "bootstrap";
+          balanceBlock.hidden = hidden;
+          if (hidden) balanceBlock.removeAttribute("open");
+        }}
+        const bootFileBlock = row.querySelector("[data-boot-file-block]");
+        if (bootFileBlock) {{
+          bootFileBlock.hidden = (experimentField(row, "exp_boot_mode_") || "scratch") !== "load";
+        }}
       }}
+    }}
+
+    function commandBlockHasValues(row, kind) {{
+      const block = row.querySelector('[data-command-block="' + kind + '"]');
+      if (!block) return false;
+      return Array.from(block.querySelectorAll("input, select, textarea")).some((field) => {{
+        if (field.type === "checkbox") return field.checked;
+        return String(field.value || "").trim() !== "";
+      }});
+    }}
+
+    function confirmRecipeChange(select) {{
+      const previous = select.dataset.previousKind || select.defaultValue || select.value;
+      if (previous === select.value) return true;
+      const row = select.closest("[data-experiment-row]");
+      if (row && commandBlockHasValues(row, previous)) {{
+        const ok = window.confirm(
+          "Changing recipe hides the current command from the saved DSE JSON. " +
+          "The values stay in this form if you switch back. Continue?"
+        );
+        if (!ok) {{
+          select.value = previous;
+          return false;
+        }}
+      }}
+      select.dataset.previousKind = select.value;
+      return true;
     }}
 
     function updateExperimentSummary() {{
@@ -1399,7 +1557,15 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     }});
     document.addEventListener("change", (event) => {{
       if (event.target.matches("[data-dse-include]")) updateSpaceCount();
-      if (event.target.matches("[data-experiment-enabled], [name^='exp_kind_'], [name^='exp_balance_'], [name^='exp_path_path_finder_'], [name^='exp_route_path_finder_'], [name^='exp_inv_path_finder_'], [data-experiment-output]")) updateExperimentSummary();
+      if (event.target.matches("[name^='exp_kind_']")) {{
+        if (!confirmRecipeChange(event.target)) {{
+          updateExperimentSummary();
+          return;
+        }}
+        updateExperimentSummary();
+        return;
+      }}
+      if (event.target.matches("[data-experiment-enabled], [name^='exp_boot_mode_'], [name^='exp_balance_'], [name^='exp_path_path_finder_'], [name^='exp_route_path_finder_'], [name^='exp_inv_path_finder_'], [data-experiment-output]")) updateExperimentSummary();
     }});
     function updateRunStatus() {{
       const panel = document.querySelector("[data-run-job]");
@@ -1423,6 +1589,9 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         }});
     }}
     updateSpaceCount();
+    for (const select of document.querySelectorAll('[name^="exp_kind_"]')) {{
+      select.dataset.previousKind = select.value;
+    }}
     updateExperimentVisibility();
     updateJsonPreview();
     updateExperimentSummary();
@@ -1520,36 +1689,48 @@ def experiment_summary_html(experiments: list[dict[str, object]]) -> str:
 def render_experiment_editor(rows: list[dict[str, str]]) -> str:
     row_html = []
     for index, row in enumerate(rows):
+        kind = row.get("kind", "invoice")
+        boot_mode = row.get("boot_mode", "scratch")
+        boot_file_hidden = " hidden" if boot_mode != "load" else ""
+        boot_file_id = f"exp_boot_file_{index}"
+        balance_hidden = " hidden" if kind == "bootstrap" else ""
+        path_hidden = "" if kind == "path" else " hidden"
+        route_hidden = "" if kind == "route" else " hidden"
+        invoice_hidden = "" if kind == "invoice" else " hidden"
         enabled = " checked" if row.get("enabled") == "on" else ""
         output_network = " checked" if row.get("output_network") == "on" else ""
         output_invoice = " checked" if row.get("output_invoice") == "on" else ""
         row_html.append(
             f"""
-<details class="category" data-experiment-row>
-  <summary class="category-header">
-    <h3>{escape(row.get("name", "experiment"))}</h3>
-    <span class="muted">{escape(row.get("kind", "invoice"))}</span>
-  </summary>
-  <div class="experiment-command-grid">
-    <details class="command-block">
-      <summary class="command-title"><span>Experiment definition</span><code>experiment</code></summary>
-      <div class="command-fields">
-        <label><span><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</span></label>
-        <label>Name
-          <input name="exp_name_{index}" data-experiment-field value="{escape(row.get("name", ""))}">
-        </label>
-        <label>Recipe
-          {select_html(f"exp_kind_{index}", list(EXPERIMENT_KIND_LABELS), row.get("kind", "invoice"), EXPERIMENT_KIND_LABELS)}
-        </label>
-      </div>
-    </details>
+<section class="category experiment-card" data-experiment-row>
+  <div class="category-header experiment-header">
+    <label class="summary-check"><span><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</span></label>
+    <label class="summary-field">Name
+      <input name="exp_name_{index}" data-experiment-field value="{escape(row.get("name", ""))}">
+    </label>
+    <label class="summary-field">Recipe
+      {select_html(f"exp_kind_{index}", list(EXPERIMENT_KIND_LABELS), kind, EXPERIMENT_KIND_LABELS)}
+    </label>
+  </div>
+  <details class="experiment-details">
+    <summary>Command configuration</summary>
+    <div class="experiment-command-grid">
+      <details class="command-block">
+        <summary class="command-title"><span>Network source</span><code>boot</code></summary>
+        <div class="command-fields">
+          <label>Source
+            {select_html(f"exp_boot_mode_{index}", list(BOOT_MODE_LABELS), boot_mode, BOOT_MODE_LABELS)}
+          </label>
+          <label data-boot-file-block{boot_file_hidden}>Snapshot .dat file
+            <div class="path-field">
+              <input id="{boot_file_id}" name="exp_boot_file_{index}" data-experiment-field value="{escape(row.get("boot_file", ""))}">
+              <button type="button" class="secondary" data-browse-target="{boot_file_id}" data-browse-mode="dat">Browse</button>
+            </div>
+          </label>
+        </div>
+      </details>
 
-    <details class="command-block">
-      <summary class="command-title"><span>Bootstrap command</span><code>boot</code></summary>
-      <p class="muted">Always runs first. It loads the generated properties and bootstraps the network.</p>
-    </details>
-
-    <details class="command-block" data-balance-block>
+    <details class="command-block" data-balance-block{balance_hidden}>
       <summary class="command-title"><span>Balance command</span><code>bal / rndbal</code></summary>
       <div class="command-fields">
         <label>Balance setup
@@ -1564,7 +1745,7 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
       </div>
     </details>
 
-    <details class="command-block" data-command-block="path">
+    <details class="command-block" data-command-block="path"{path_hidden}>
       <summary class="command-title"><span>Path finding command</span><code>path</code></summary>
       <div class="command-fields">
         <label>Start node
@@ -1585,7 +1766,7 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
       </div>
     </details>
 
-    <details class="command-block" data-command-block="route">
+    <details class="command-block" data-command-block="route"{route_hidden}>
       <summary class="command-title"><span>Single payment command</span><code>route</code></summary>
       <div class="command-fields">
         <label>Sender node
@@ -1609,7 +1790,7 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
       </div>
     </details>
 
-    <details class="command-block" data-command-block="invoice">
+    <details class="command-block" data-command-block="invoice"{invoice_hidden}>
       <summary class="command-title"><span>Invoice campaign command</span><code>inv</code></summary>
       <div class="command-fields">
         <label>Node events / block
@@ -1640,8 +1821,9 @@ def render_experiment_editor(rows: list[dict[str, str]]) -> str:
         <label><span><input type="checkbox" name="exp_output_invoice_{index}" data-experiment-output{output_invoice}> Invoice report</span></label>
       </div>
     </details>
-  </div>
-</details>
+    </div>
+  </details>
+</section>
 """
         )
     return f'<input type="hidden" name="experiment_count" value="{len(rows)}">' + "".join(row_html)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import sys
 import tempfile
@@ -15,6 +17,16 @@ import uv_dse_common as common
 import uv_dse_wizard as wizard
 
 
+def load_dse_run_module():
+    loader = importlib.machinery.SourceFileLoader("uv_dse_run", str(TOOLS_DSE / "uv_dse_run"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise RuntimeError("Could not load uv_dse_run module")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
 def experiment_form_fields(
     *,
     index: int = 0,
@@ -28,6 +40,8 @@ def experiment_form_fields(
         f"exp_enabled_{index}": ["on"],
         f"exp_name_{index}": [name],
         f"exp_kind_{index}": [kind],
+        f"exp_boot_mode_{index}": ["scratch"],
+        f"exp_boot_file_{index}": [""],
         f"exp_balance_{index}": [balance],
         f"exp_bal_level_{index}": ["0.5"],
         f"exp_min_delta_{index}": ["10000"],
@@ -101,6 +115,23 @@ class DseCommonTest(unittest.TestCase):
                 }
             )
 
+    def test_experiment_validation_accepts_boot_snapshot_object(self) -> None:
+        payload = common.validate_dse_payload(
+            {
+                "parameters": {"seed": [1]},
+                "experiments": [
+                    {
+                        "name": "load_snapshot",
+                        "commands": [{"command": "boot", "mode": "load", "file": "snapshots/base.dat"}],
+                        "outputs": ["network"],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(payload["experiments"][0]["commands"][0]["command"], "boot")
+        self.assertEqual(payload["experiments"][0]["commands"][0]["mode"], "load")
+
 
 class DseWizardCreateTest(unittest.TestCase):
     def test_quoted_comma_valued_property_is_one_dse_value(self) -> None:
@@ -173,6 +204,26 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertIn("seed", state.selected_parameters)
         self.assertTrue(state.experiments)
         self.assertNotEqual(state.save_path, state.dse_json_path)
+        self.assertEqual(state.selected_parameters["bootstrap_nodes"], [100])
+        self.assertEqual(state.selected_parameters["bootstrap_blocks"], [100])
+        self.assertEqual(state.selected_parameters["blocktime_ms"], [100])
+        self.assertEqual(state.selected_parameters["node_services_tick_ms"], [10])
+        self.assertEqual(state.selected_parameters["gossip_flush_period_ms"], [10])
+        self.assertEqual(state.selected_parameters["p2p_max_age"], [10])
+        self.assertEqual(state.selected_parameters["gossip_flush_size"], [500])
+        self.assertEqual(state.selected_parameters["pathfinding_max_hops"], [3, 6])
+        self.assertEqual(state.selected_parameters["seed"], [1, 7])
+
+    def test_startup_alignment_keeps_template_values_in_parameter_space(self) -> None:
+        aligned = wizard.align_default_parameter_space_with_properties(
+            {"single": [1], "multi_missing": [1, 2], "multi_present": [3, 4], "comma": ["old"]},
+            {"single": "9", "multi_missing": "3", "multi_present": "3", "comma": "0,100,1000"},
+        )
+
+        self.assertEqual(aligned["single"], [9])
+        self.assertEqual(aligned["multi_missing"], [3, 1, 2])
+        self.assertEqual(aligned["multi_present"], [3, 4])
+        self.assertEqual(aligned["comma"], ["0,100,1000"])
 
     def test_experiment_form_builds_invoice_experiment(self) -> None:
         experiment = wizard.build_experiments_from_form(experiment_form_fields(kind="invoice", output_invoice=True))[0]
@@ -199,21 +250,26 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertIn('data-browse-action="/create/save"', html)
         self.assertIn('id="refresh-json-preview"', html)
         self.assertIn('id="dse-json-preview"', html)
+        self.assertIn("[hidden] { display: none !important; }", html)
         self.assertIn('<details class="panel">', html)
-        self.assertIn('<details class="category" data-experiment-row>', html)
+        self.assertIn('<section class="category experiment-card" data-experiment-row>', html)
+        self.assertIn('<details class="experiment-details">', html)
         self.assertIn('<details class="command-block">', html)
-        self.assertIn('<summary class="category-header">', html)
         self.assertIn('<summary class="command-title">', html)
         self.assertNotIn('<details class="panel" open>', html)
-        self.assertNotIn('<details class="category" data-experiment-row open>', html)
+        self.assertNotIn('<details class="experiment-details" open>', html)
         self.assertNotIn('<details class="command-block" open>', html)
         self.assertIn("Experiments section of the DSE JSON", html)
         self.assertIn("Use experiment", html)
         self.assertIn("Recipe", html)
-        self.assertIn("Bootstrap command", html)
+        self.assertIn("Network source", html)
+        self.assertIn("Load .dat snapshot", html)
+        self.assertIn('data-browse-mode="dat"', html)
         self.assertIn("Balance command", html)
         self.assertIn("Path finding command", html)
         self.assertIn("Invoice campaign command", html)
+        self.assertIn("Changing recipe hides the current command", html)
+        self.assertNotIn("Experiment definition", html)
         self.assertIn("&quot;0,100,1000&quot;", html)
         self.assertNotIn("Experiments JSON array", html)
         self.assertNotIn('id="experiments_json"', html)
@@ -221,6 +277,70 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertNotIn(">Load JSON</button>", html)
         self.assertNotIn(">Save JSON</button>", html)
         self.assertNotIn("Value mode", html)
+
+    def test_experiment_recipe_controls_visible_command_sections(self) -> None:
+        invoice_row = wizard.default_experiment_row()
+        invoice_row["enabled"] = "on"
+        invoice_row["name"] = "invoice_test"
+        invoice_row["kind"] = "invoice"
+
+        invoice_html = wizard.render_experiment_editor([invoice_row])
+
+        self.assertIn(">Bootstrap, balance, and invoice campaign</option>", invoice_html)
+        self.assertIn('<details class="command-block" data-command-block="path" hidden>', invoice_html)
+        self.assertIn('<details class="command-block" data-command-block="route" hidden>', invoice_html)
+        self.assertIn('<details class="command-block" data-command-block="invoice">', invoice_html)
+        self.assertNotIn('data-command-block="invoice" hidden', invoice_html)
+
+        bootstrap_row = wizard.default_experiment_row()
+        bootstrap_row["kind"] = "bootstrap"
+        bootstrap_html = wizard.render_experiment_editor([bootstrap_row])
+
+        self.assertIn("data-balance-block hidden", bootstrap_html)
+        self.assertIn('data-command-block="path" hidden', bootstrap_html)
+        self.assertIn('data-command-block="route" hidden', bootstrap_html)
+        self.assertIn('data-command-block="invoice" hidden', bootstrap_html)
+
+    def test_experiment_form_builds_boot_snapshot_command(self) -> None:
+        form = experiment_form_fields(kind="bootstrap")
+        form["exp_boot_mode_0"] = ["load"]
+        form["exp_boot_file_0"] = ["snapshots/network.dat"]
+
+        experiment = wizard.build_experiments_from_form(form)[0]
+
+        self.assertEqual(
+            experiment["commands"][0],
+            {"command": "boot", "mode": "load", "file": "snapshots/network.dat"},
+        )
+
+    def test_experiment_form_requires_boot_snapshot_file(self) -> None:
+        form = experiment_form_fields(kind="bootstrap")
+        form["exp_boot_mode_0"] = ["load"]
+        form["exp_boot_file_0"] = [""]
+
+        with self.assertRaisesRegex(ValueError, "boot snapshot file is required"):
+            wizard.build_experiments_from_form(form)
+
+    def test_inactive_recipe_fields_are_preserved_but_not_validated(self) -> None:
+        form = experiment_form_fields(kind="path", balance="none")
+        form["exp_inv_blocks_0"] = ["not-an-integer"]
+
+        experiment = wizard.build_experiments_from_form(form)[0]
+
+        self.assertEqual(experiment["commands"][-1]["command"], "path")
+        self.assertNotIn("inv", [wizard.command_name(command) for command in experiment["commands"]])
+
+    def test_experiment_row_loads_boot_snapshot_command(self) -> None:
+        row = wizard.experiment_row_from_spec(
+            {
+                "name": "load_snapshot",
+                "commands": [{"command": "boot", "mode": "load", "file": "snapshots/base.dat"}],
+                "outputs": ["network"],
+            }
+        )
+
+        self.assertEqual(row["boot_mode"], "load")
+        self.assertEqual(row["boot_file"], "snapshots/base.dat")
 
     def test_load_dse_json_rejects_invalid_parameter_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -337,6 +457,45 @@ class DseWizardRunTest(unittest.TestCase):
                 wizard.RUN_JOBS.pop(job.job_id, None)
 
         self.assertEqual(job.status, "cancelled")
+
+
+class DseRunnerTest(unittest.TestCase):
+    def test_prepare_experiment_resolves_relative_boot_snapshot_path(self) -> None:
+        runner = load_dse_run_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            dse_dir = Path(tmp) / "dse"
+            dse_dir.mkdir()
+
+            experiment = {
+                "name": "load_snapshot",
+                "commands": [
+                    {"command": "boot", "mode": "load", "file": "snapshots/base.dat"},
+                    "rndbal",
+                ],
+                "outputs": ["network"],
+            }
+            prepared = runner.prepare_experiment_for_run(experiment, dse_dir)
+
+        self.assertEqual(prepared["commands"][0]["mode"], "load")
+        self.assertEqual(prepared["commands"][0]["file"], str((dse_dir / "snapshots" / "base.dat").resolve()))
+        self.assertEqual(experiment["commands"][0]["file"], "snapshots/base.dat")
+
+    def test_prepare_experiment_accepts_snapshot_aliases_without_mutating_source(self) -> None:
+        runner = load_dse_run_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            dse_dir = Path(tmp).resolve()
+            experiment = {
+                "name": "load_snapshot",
+                "commands": [{"command": "boot", "source": "snapshot", "snapshot": "base.dat"}],
+                "outputs": ["network"],
+            }
+
+            prepared = runner.prepare_experiment_for_run(experiment, dse_dir)
+
+        self.assertEqual(prepared["commands"][0]["mode"], "load")
+        self.assertEqual(prepared["commands"][0]["file"], str(dse_dir / "base.dat"))
+        self.assertEqual(experiment["commands"][0]["source"], "snapshot")
+        self.assertNotIn("file", experiment["commands"][0])
 
 
 class DseWizardSecurityAndNativeSelectorTest(unittest.TestCase):

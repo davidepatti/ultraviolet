@@ -146,6 +146,31 @@ def write_experiment_spec(run_dir: Path, experiment: dict[str, Any]) -> Path:
     return path
 
 
+def prepare_experiment_for_run(experiment: dict[str, Any], dse_json_dir: Path) -> dict[str, Any]:
+    prepared = json.loads(json.dumps(experiment))
+    commands = prepared.get("commands", [])
+    if not isinstance(commands, list):
+        return prepared
+
+    for command in commands:
+        if not isinstance(command, dict):
+            continue
+        if dse_common.normalize_command_name(command) != "boot":
+            continue
+        mode = str(command.get("mode", command.get("source", "scratch"))).strip().lower()
+        if mode not in {"load", "snapshot", "dat"}:
+            continue
+        raw_path = command.get("file", command.get("path", command.get("snapshot")))
+        if raw_path is None or not str(raw_path).strip():
+            continue
+        snapshot_path = Path(str(raw_path)).expanduser()
+        if not snapshot_path.is_absolute():
+            snapshot_path = (dse_json_dir / snapshot_path).resolve()
+        command["mode"] = "load"
+        command["file"] = str(snapshot_path)
+    return prepared
+
+
 def run_single_experiment(
     *,
     java: str,
@@ -313,7 +338,8 @@ def main() -> int:
                 run_dir.mkdir(parents=True)
 
                 config_path = write_run_config(run_dir, generated_config)
-                experiment_path = write_experiment_spec(run_dir, experiment)
+                experiment_for_run = prepare_experiment_for_run(experiment, dse_json.parent)
+                experiment_path = write_experiment_spec(run_dir, experiment_for_run)
 
                 print(
                     f"[run {run_counter}/{total_runs}] cfg #{config_index}: "

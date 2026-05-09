@@ -113,7 +113,7 @@ public class DseExperimentRunner {
 
         try {
             switch (commandName) {
-                case "boot" -> executeBoot(network, result);
+                case "boot" -> executeBoot(network, command, result);
                 case "bal" -> executeBal(network, command, result);
                 case "rndbal" -> executeRndBal(network, command, result);
                 case "path" -> executePath(network, command, result);
@@ -134,11 +134,39 @@ public class DseExperimentRunner {
         return result;
     }
 
-    private void executeBoot(UVNetwork network, JSONObject result) {
+    private void executeBoot(UVNetwork network, JSONObject command, JSONObject result) {
+        String mode = normalizeBootMode(getString(command, "mode", getString(command, "source", "scratch")));
+        result.put("mode", mode);
+        if ("load".equals(mode)) {
+            executeBootFromSnapshot(network, command, result);
+            return;
+        }
+
         if (network.isBootstrapStarted() || network.isBootstrapCompleted()) {
             throw new IllegalStateException("Command 'boot' cannot run after the network has already been bootstrapped.");
         }
         network.bootstrapNetwork();
+        result.put("nodes", network.getUVNodeList().size());
+        result.put("channels", countUniqueChannels(network));
+        result.put("current_block", network.getTimechain().getCurrentBlockHeight());
+    }
+
+    private void executeBootFromSnapshot(UVNetwork network, JSONObject command, JSONObject result) {
+        if (network.isBootstrapStarted() || network.isBootstrapCompleted()) {
+            throw new IllegalStateException("Command 'boot' cannot load after the network has already been initialized.");
+        }
+
+        String rawFile = getString(command, "file", getString(command, "path", getString(command, "snapshot", ""))).trim();
+        if (rawFile.isBlank()) {
+            throw new IllegalArgumentException("Command 'boot' with mode=load requires a snapshot file.");
+        }
+        Path snapshot = resolveInputPath(rawFile);
+        if (!network.loadStatus(snapshot.toString())) {
+            String detail = network.getLastLoadStatusError();
+            throw new IllegalArgumentException(detail == null || detail.isBlank() ? "Could not load " + snapshot : detail);
+        }
+
+        result.put("file", snapshot.toString());
         result.put("nodes", network.getUVNodeList().size());
         result.put("channels", countUniqueChannels(network));
         result.put("current_block", network.getTimechain().getCurrentBlockHeight());
@@ -366,6 +394,26 @@ public class DseExperimentRunner {
             throw new IllegalArgumentException("Command is missing 'command'");
         }
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeBootMode(String value) {
+        String mode = value == null ? "scratch" : value.trim().toLowerCase(Locale.ROOT);
+        if (mode.isEmpty() || "scratch".equals(mode) || "bootstrap".equals(mode) || "generate".equals(mode)) {
+            return "scratch";
+        }
+        if ("load".equals(mode) || "snapshot".equals(mode) || "dat".equals(mode)) {
+            return "load";
+        }
+        throw new IllegalArgumentException("Unsupported boot mode: " + value);
+    }
+
+    private Path resolveInputPath(String value) {
+        Path path = Path.of(value);
+        if (path.isAbsolute()) {
+            return path.normalize();
+        }
+        Path base = configPath.getParent() == null ? Path.of(".").toAbsolutePath() : configPath.getParent();
+        return base.resolve(path).toAbsolutePath().normalize();
     }
 
     private static String getString(JSONObject object, String key, String defaultValue) {
