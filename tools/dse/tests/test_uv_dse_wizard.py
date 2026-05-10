@@ -36,8 +36,6 @@ def experiment_form_fields(
     output_invoice: bool = False,
 ) -> dict[str, list[str]]:
     fields = {
-        "experiment_count": ["1"],
-        f"exp_enabled_{index}": ["on"],
         f"exp_name_{index}": [name],
         f"exp_kind_{index}": [kind],
         f"exp_boot_mode_{index}": ["scratch"],
@@ -93,7 +91,7 @@ class DseCommonTest(unittest.TestCase):
             common.validate_dse_payload(
                 {
                     "parameters": {"seed": 1},
-                    "experiments": [{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+                    "experiment": {"name": "x", "commands": ["boot"], "outputs": ["network"]},
                 }
             )
 
@@ -101,17 +99,17 @@ class DseCommonTest(unittest.TestCase):
         payload = common.validate_dse_payload(
             {
                 "parameters": {"seed": [1]},
-                "experiments": [{"name": "x", "commands": ["BOOT"], "outputs": ["stat", "invoice_report"]}],
+                "experiment": {"name": "x", "commands": ["BOOT"], "outputs": ["stat", "invoice_report"]},
             }
         )
 
-        self.assertEqual(payload["experiments"][0]["outputs"], ["network", "invoice"])
+        self.assertEqual(payload["experiment"]["outputs"], ["network", "invoice"])
 
         with self.assertRaisesRegex(ValueError, "unsupported command"):
             common.validate_dse_payload(
                 {
                     "parameters": {"seed": [1]},
-                    "experiments": [{"name": "x", "commands": ["unknown"], "outputs": ["network"]}],
+                    "experiment": {"name": "x", "commands": ["unknown"], "outputs": ["network"]},
                 }
             )
 
@@ -119,18 +117,25 @@ class DseCommonTest(unittest.TestCase):
         payload = common.validate_dse_payload(
             {
                 "parameters": {"seed": [1]},
-                "experiments": [
-                    {
-                        "name": "load_snapshot",
-                        "commands": [{"command": "boot", "mode": "load", "file": "snapshots/base.dat"}],
-                        "outputs": ["network"],
-                    }
-                ],
+                "experiment": {
+                    "name": "load_snapshot",
+                    "commands": [{"command": "boot", "mode": "load", "file": "snapshots/base.dat"}],
+                    "outputs": ["network"],
+                },
             }
         )
 
-        self.assertEqual(payload["experiments"][0]["commands"][0]["command"], "boot")
-        self.assertEqual(payload["experiments"][0]["commands"][0]["mode"], "load")
+        self.assertEqual(payload["experiment"]["commands"][0]["command"], "boot")
+        self.assertEqual(payload["experiment"]["commands"][0]["mode"], "load")
+
+    def test_experiment_validation_rejects_experiments_array(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not an 'experiments' array"):
+            common.validate_dse_payload(
+                {
+                    "parameters": {"seed": [1]},
+                    "experiments": [{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+                }
+            )
 
 
 class DseWizardCreateTest(unittest.TestCase):
@@ -143,13 +148,13 @@ class DseWizardCreateTest(unittest.TestCase):
                 "name_0": ["base_fee_set"],
                 "include_0": ["on"],
                 "values_0": ['"0,100,1000"'],
-                "save_path": [str(output)],
+                "dse_json_path": [str(output)],
             }
             form.update(experiment_form_fields())
 
-            save_path, payload = wizard.save_dse_from_form(form)
+            output_path, payload = wizard.save_dse_from_form(form)
 
-        self.assertEqual(save_path.resolve(), output.resolve())
+        self.assertEqual(output_path.resolve(), output.resolve())
         self.assertEqual(payload["parameters"]["base_fee_set"], ["0,100,1000"])
 
     def test_unquoted_commas_build_cartesian_values(self) -> None:
@@ -167,8 +172,7 @@ class DseWizardCreateTest(unittest.TestCase):
     def test_failed_save_state_preserves_user_inputs(self) -> None:
         form = {
             "properties_path": [wizard.DEFAULT_PROPERTIES],
-            "dse_json_path": [wizard.DEFAULT_DSE_JSON],
-            "save_path": ["dse_runs/tutorial/bad.json"],
+            "dse_json_path": ["dse_runs/tutorial/bad.json"],
             "parameter_count": ["1"],
             "name_0": ["seed"],
             "include_0": ["on"],
@@ -179,8 +183,8 @@ class DseWizardCreateTest(unittest.TestCase):
         state = wizard.create_state_from_form(form, error="Invalid parameter values")
 
         self.assertEqual(state.value_text_overrides["seed"], "1, 7")
-        self.assertEqual(state.experiment_rows[0]["kind"], "invoice")
-        self.assertEqual(state.experiments[0]["name"], "x")
+        self.assertEqual(state.experiment_row["kind"], "invoice")
+        self.assertEqual(state.experiment["name"], "x")
 
     def test_malformed_form_count_does_not_break_error_state(self) -> None:
         form = {
@@ -194,16 +198,14 @@ class DseWizardCreateTest(unittest.TestCase):
         state = wizard.create_state_from_form(form, error="Invalid parameter count")
 
         self.assertEqual(state.selected_parameters, {})
-        self.assertEqual(state.experiments[0]["name"], "x")
+        self.assertEqual(state.experiment["name"], "x")
 
     def test_default_create_state_loads_prefilled_dse_json(self) -> None:
         state = wizard.default_create_state({})
 
         self.assertEqual(state.dse_json_path, wizard.DEFAULT_DSE_JSON)
-        self.assertEqual(state.save_path, wizard.DEFAULT_SAVE_JSON)
         self.assertIn("seed", state.selected_parameters)
-        self.assertTrue(state.experiments)
-        self.assertNotEqual(state.save_path, state.dse_json_path)
+        self.assertEqual(state.experiment["name"], "quick_invoice_hops")
         self.assertEqual(state.selected_parameters["bootstrap_nodes"], [100])
         self.assertEqual(state.selected_parameters["bootstrap_blocks"], [100])
         self.assertEqual(state.selected_parameters["blocktime_ms"], [100])
@@ -226,7 +228,7 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertEqual(aligned["comma"], ["0,100,1000"])
 
     def test_experiment_form_builds_invoice_experiment(self) -> None:
-        experiment = wizard.build_experiments_from_form(experiment_form_fields(kind="invoice", output_invoice=True))[0]
+        experiment = wizard.build_experiment_from_form(experiment_form_fields(kind="invoice", output_invoice=True))
 
         self.assertEqual(experiment["name"], "x")
         self.assertEqual(experiment["commands"][0], "boot")
@@ -237,10 +239,9 @@ class DseWizardCreateTest(unittest.TestCase):
         state = wizard.WizardState(
             properties_path=wizard.DEFAULT_PROPERTIES,
             dse_json_path=wizard.DEFAULT_DSE_JSON,
-            save_path=wizard.DEFAULT_SAVE_JSON,
             parameters={"seed": "1", "base_fee_set": "0,100,1000"},
             selected_parameters={"seed": [1, 7]},
-            experiments=[{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+            experiment={"name": "x", "commands": ["boot"], "outputs": ["network"]},
             value_text_overrides={},
         )
 
@@ -248,19 +249,31 @@ class DseWizardCreateTest(unittest.TestCase):
 
         self.assertIn('data-browse-action="/create/load"', html)
         self.assertIn('data-browse-action="/create/save"', html)
+        self.assertIn('id="dse_json_path"', html)
+        self.assertIn('name="dse_json_path"', html)
+        self.assertIn('data-browse-target="dse_json_path" data-browse-mode="json"', html)
+        self.assertIn('data-browse-target="dse_json_path" data-browse-mode="save_json"', html)
+        self.assertIn(">Load</button>", html)
+        self.assertIn(">Save</button>", html)
         self.assertIn('id="refresh-json-preview"', html)
         self.assertIn('id="dse-json-preview"', html)
         self.assertIn("[hidden] { display: none !important; }", html)
-        self.assertIn('<details class="panel">', html)
+        self.assertIn('<details class="panel panel-files">', html)
+        self.assertIn('<details class="panel panel-experiment">', html)
+        self.assertIn('<details class="panel panel-parameters">', html)
+        self.assertIn('<details class="panel panel-preview">', html)
         self.assertIn('<section class="category experiment-card" data-experiment-row>', html)
-        self.assertIn('<details class="experiment-details">', html)
-        self.assertIn('<details class="command-block">', html)
+        self.assertIn('<details class="experiment-details" open>', html)
+        self.assertIn('<details class="command-block command-network">', html)
         self.assertIn('<summary class="command-title">', html)
         self.assertNotIn('<details class="panel" open>', html)
-        self.assertNotIn('<details class="experiment-details" open>', html)
         self.assertNotIn('<details class="command-block" open>', html)
-        self.assertIn("Experiments section of the DSE JSON", html)
-        self.assertIn("Use experiment", html)
+        self.assertIn("Experiment section of the DSE JSON", html)
+        self.assertNotIn("Generated experiment", html)
+        self.assertNotIn("experiment-summary", html)
+        self.assertNotIn("Use experiment", html)
+        self.assertNotIn("experiment_count", html)
+        self.assertNotIn("exp_enabled_", html)
         self.assertIn("Recipe", html)
         self.assertIn("Network source", html)
         self.assertIn("Load .dat snapshot", html)
@@ -271,8 +284,9 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertIn("Changing recipe hides the current command", html)
         self.assertNotIn("Experiment definition", html)
         self.assertIn("&quot;0,100,1000&quot;", html)
-        self.assertNotIn("Experiments JSON array", html)
-        self.assertNotIn('id="experiments_json"', html)
+        self.assertNotIn('name="save_path"', html)
+        self.assertNotIn("Load DSE JSON", html)
+        self.assertNotIn("Save DSE JSON", html)
         self.assertNotIn('formaction="/create/load"', html)
         self.assertNotIn(">Load JSON</button>", html)
         self.assertNotIn(">Save JSON</button>", html)
@@ -284,17 +298,17 @@ class DseWizardCreateTest(unittest.TestCase):
         invoice_row["name"] = "invoice_test"
         invoice_row["kind"] = "invoice"
 
-        invoice_html = wizard.render_experiment_editor([invoice_row])
+        invoice_html = wizard.render_experiment_editor(invoice_row)
 
         self.assertIn(">Bootstrap, balance, and invoice campaign</option>", invoice_html)
-        self.assertIn('<details class="command-block" data-command-block="path" hidden>', invoice_html)
-        self.assertIn('<details class="command-block" data-command-block="route" hidden>', invoice_html)
-        self.assertIn('<details class="command-block" data-command-block="invoice">', invoice_html)
+        self.assertIn('<details class="command-block command-path" data-command-block="path" hidden>', invoice_html)
+        self.assertIn('<details class="command-block command-route" data-command-block="route" hidden>', invoice_html)
+        self.assertIn('<details class="command-block command-invoice" data-command-block="invoice">', invoice_html)
         self.assertNotIn('data-command-block="invoice" hidden', invoice_html)
 
         bootstrap_row = wizard.default_experiment_row()
         bootstrap_row["kind"] = "bootstrap"
-        bootstrap_html = wizard.render_experiment_editor([bootstrap_row])
+        bootstrap_html = wizard.render_experiment_editor(bootstrap_row)
 
         self.assertIn("data-balance-block hidden", bootstrap_html)
         self.assertIn('data-command-block="path" hidden', bootstrap_html)
@@ -306,7 +320,7 @@ class DseWizardCreateTest(unittest.TestCase):
         form["exp_boot_mode_0"] = ["load"]
         form["exp_boot_file_0"] = ["snapshots/network.dat"]
 
-        experiment = wizard.build_experiments_from_form(form)[0]
+        experiment = wizard.build_experiment_from_form(form)
 
         self.assertEqual(
             experiment["commands"][0],
@@ -319,13 +333,13 @@ class DseWizardCreateTest(unittest.TestCase):
         form["exp_boot_file_0"] = [""]
 
         with self.assertRaisesRegex(ValueError, "boot snapshot file is required"):
-            wizard.build_experiments_from_form(form)
+            wizard.build_experiment_from_form(form)
 
     def test_inactive_recipe_fields_are_preserved_but_not_validated(self) -> None:
         form = experiment_form_fields(kind="path", balance="none")
         form["exp_inv_blocks_0"] = ["not-an-integer"]
 
-        experiment = wizard.build_experiments_from_form(form)[0]
+        experiment = wizard.build_experiment_from_form(form)
 
         self.assertEqual(experiment["commands"][-1]["command"], "path")
         self.assertNotIn("inv", [wizard.command_name(command) for command in experiment["commands"]])
@@ -342,6 +356,25 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertEqual(row["boot_mode"], "load")
         self.assertEqual(row["boot_file"], "snapshots/base.dat")
 
+    def test_load_dse_json_rejects_experiments_array(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "multi.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "parameters": {"seed": [1]},
+                        "experiments": [
+                            {"name": "first", "commands": ["boot"], "outputs": ["network"]},
+                            {"name": "second", "commands": ["boot"], "outputs": ["network"]},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "not an 'experiments' array"):
+                wizard.load_dse_json(path)
+
     def test_load_dse_json_rejects_invalid_parameter_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bad.json"
@@ -349,7 +382,7 @@ class DseWizardCreateTest(unittest.TestCase):
                 json.dumps(
                     {
                         "parameters": {"seed": 1},
-                        "experiments": [{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+                        "experiment": {"name": "x", "commands": ["boot"], "outputs": ["network"]},
                     }
                 ),
                 encoding="utf-8",
@@ -371,7 +404,7 @@ class DseWizardRunTest(unittest.TestCase):
                 json.dumps(
                     {
                         "parameters": {"seed": [1]},
-                        "experiments": [{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+                        "experiment": {"name": "x", "commands": ["boot"], "outputs": ["network"]},
                     }
                 ),
                 encoding="utf-8",
@@ -403,7 +436,7 @@ class DseWizardRunTest(unittest.TestCase):
                 json.dumps(
                     {
                         "parameters": {"seed": [1]},
-                        "experiments": [{"name": "x", "commands": ["boot"], "outputs": ["network"]}],
+                        "experiment": {"name": "x", "commands": ["boot"], "outputs": ["network"]},
                     }
                 ),
                 encoding="utf-8",

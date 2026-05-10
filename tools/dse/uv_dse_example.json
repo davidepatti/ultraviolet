@@ -5,44 +5,21 @@
     "seed": [1, 7],
     "profile.hub.prob": [0.1, 0.15]
   },
-  "experiments": [
-    {
-      "name": "bootstrap_stats",
-      "commands": ["boot"],
-      "outputs": ["network"]
-    },
-    {
-      "name": "random_balance_path",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "path",
-          "start": "pk0",
-          "destination": "pk99",
-          "amount": 10000,
-          "path_finder": "all",
-          "topk": 5
-        }
-      ],
-      "outputs": ["network"]
-    },
-    {
-      "name": "invoice_campaign",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "inv",
-          "node_events_per_block": 0.05,
-          "blocks": 100,
-          "min_amt": 1000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "invoice_campaign",
+    "commands": [
+      "boot",
+      "rndbal",
+      {
+        "command": "inv",
+        "node_events_per_block": 0.05,
+        "blocks": 100,
+        "min_amt": 1000,
+        "max_amt": 100000,
+        "max_fees": 1000,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }

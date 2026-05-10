@@ -15,7 +15,7 @@ def load_json_object(path: Path) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
     if not isinstance(payload, dict):
-        raise ValueError("DSE JSON must be an object with 'parameters' and 'experiments' sections.")
+        raise ValueError("DSE JSON must be an object with 'parameters' and 'experiment' sections.")
     return payload
 
 
@@ -23,6 +23,10 @@ def load_dse_payload(path: Path) -> dict[str, Any]:
     payload = load_json_object(path)
     if "parameters" not in payload:
         raise ValueError("DSE JSON for uv_dse_run must contain a 'parameters' object.")
+    if "experiments" in payload:
+        raise ValueError("DSE JSON must contain one 'experiment' object, not an 'experiments' array.")
+    if "experiment" not in payload:
+        raise ValueError("DSE JSON for uv_dse_run must contain an 'experiment' object.")
     return payload
 
 
@@ -76,56 +80,47 @@ def stringify_property_value(parameter_name: str, value: object) -> str:
     return str(value)
 
 
-def validate_experiments(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_experiments = payload.get("experiments")
-    if not isinstance(raw_experiments, list) or not raw_experiments:
-        raise ValueError("DSE JSON must contain a non-empty 'experiments' array.")
+def validate_experiment(payload: dict[str, Any]) -> dict[str, Any]:
+    if "experiments" in payload:
+        raise ValueError("DSE JSON must contain one 'experiment' object, not an 'experiments' array.")
+    raw_experiment = payload.get("experiment")
+    if not isinstance(raw_experiment, dict):
+        raise ValueError("DSE JSON must contain a non-empty 'experiment' object.")
 
-    experiments: list[dict[str, Any]] = []
-    seen_names: set[str] = set()
-    for index, raw_experiment in enumerate(raw_experiments, start=1):
-        if not isinstance(raw_experiment, dict):
-            raise ValueError(f"Experiment #{index} must be a JSON object.")
+    experiment = dict(raw_experiment)
+    name = str(experiment.get("name") or "experiment").strip()
+    if not name:
+        raise ValueError("Experiment has an empty name.")
 
-        experiment = dict(raw_experiment)
-        name = str(experiment.get("name") or f"experiment_{index}").strip()
-        if not name:
-            raise ValueError(f"Experiment #{index} has an empty name.")
-        if name in seen_names:
-            raise ValueError(f"Duplicate experiment name: {name}")
-        seen_names.add(name)
+    commands = experiment.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise ValueError(f"Experiment '{name}' must contain a non-empty 'commands' array.")
+    for command_index, command in enumerate(commands, start=1):
+        command_name = normalize_command_name(command)
+        if command_name not in SUPPORTED_COMMANDS:
+            raise ValueError(
+                f"Experiment '{name}' command #{command_index} uses unsupported command '{command_name}'. "
+                f"Supported commands: {', '.join(sorted(SUPPORTED_COMMANDS))}."
+            )
 
-        commands = experiment.get("commands")
-        if not isinstance(commands, list) or not commands:
-            raise ValueError(f"Experiment '{name}' must contain a non-empty 'commands' array.")
-        for command_index, command in enumerate(commands, start=1):
-            command_name = normalize_command_name(command)
-            if command_name not in SUPPORTED_COMMANDS:
-                raise ValueError(
-                    f"Experiment '{name}' command #{command_index} uses unsupported command '{command_name}'. "
-                    f"Supported commands: {', '.join(sorted(SUPPORTED_COMMANDS))}."
-                )
+    outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
+    if isinstance(outputs, str):
+        outputs = [outputs]
+    if not isinstance(outputs, list) or not outputs:
+        raise ValueError(f"Experiment '{name}' outputs must be a non-empty array or string when provided.")
+    normalized_outputs = []
+    for output in outputs:
+        output_name = str(output).strip().lower()
+        if output_name not in SUPPORTED_OUTPUTS:
+            raise ValueError(
+                f"Experiment '{name}' requests unsupported output '{output_name}'. "
+                f"Supported outputs: {', '.join(sorted(SUPPORTED_OUTPUTS))}."
+            )
+        normalized_outputs.append(normalize_output_name(output_name))
 
-        outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
-        if isinstance(outputs, str):
-            outputs = [outputs]
-        if not isinstance(outputs, list) or not outputs:
-            raise ValueError(f"Experiment '{name}' outputs must be a non-empty array or string when provided.")
-        normalized_outputs = []
-        for output in outputs:
-            output_name = str(output).strip().lower()
-            if output_name not in SUPPORTED_OUTPUTS:
-                raise ValueError(
-                    f"Experiment '{name}' requests unsupported output '{output_name}'. "
-                    f"Supported outputs: {', '.join(sorted(SUPPORTED_OUTPUTS))}."
-                )
-            normalized_outputs.append(normalize_output_name(output_name))
-
-        experiment["name"] = name
-        experiment["outputs"] = normalized_outputs
-        experiments.append(experiment)
-
-    return experiments
+    experiment["name"] = name
+    experiment["outputs"] = normalized_outputs
+    return experiment
 
 
 def normalize_output_name(output_name: str) -> str:
@@ -154,8 +149,8 @@ def normalize_command_name(command: object) -> str:
 
 def validate_dse_payload(payload: dict[str, Any]) -> dict[str, Any]:
     parameters = validate_parameters(payload.get("parameters"))
-    experiments = validate_experiments(payload)
-    return {"parameters": parameters, "experiments": experiments}
+    experiment = validate_experiment(payload)
+    return {"parameters": parameters, "experiment": experiment}
 
 
 def load_properties_with_includes(path: Path) -> dict[str, str]:

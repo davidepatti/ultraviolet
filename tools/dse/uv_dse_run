@@ -31,11 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run a full UltraViolet design-space exploration: generate config variations, "
-            "execute the requested experiments, and collect structured reports."
+            "execute the requested experiment, and collect structured reports."
         )
     )
     parser.add_argument("base_properties", help="Base .properties file to include from each generated config")
-    parser.add_argument("dse_json", help="JSON file with 'parameters' and 'experiments' sections")
+    parser.add_argument("dse_json", help="JSON file with 'parameters' and 'experiment' sections")
     parser.add_argument(
         "--output-dir",
         help="Destination run directory. Defaults to dse_runs/<dse_json_stem> inside this tool directory.",
@@ -74,8 +74,8 @@ def load_dse_payload(path: Path) -> dict[str, Any]:
     return dse_common.load_dse_payload(path)
 
 
-def validate_experiments(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    return dse_common.validate_experiments(payload)
+def validate_experiment(payload: dict[str, Any]) -> dict[str, Any]:
+    return dse_common.validate_experiment(payload)
 
 
 def ensure_output_directory(path: Path, force: bool) -> None:
@@ -246,7 +246,7 @@ def write_manifest(
     base_properties: Path,
     dse_json: Path,
     generated_manifest: dict[str, Any],
-    experiments: list[dict[str, Any]],
+    experiment: dict[str, Any],
     runs: list[dict[str, Any]],
     build_dir: Path,
     kept_build_dir: bool,
@@ -259,11 +259,10 @@ def write_manifest(
         "output_dir": str(output_dir),
         "configs_manifest": "configs/manifest.json",
         "total_parameter_combinations": generated_manifest["total_combinations"],
-        "total_experiments": len(experiments),
         "total_runs": len(runs),
         "successful_runs": sum(1 for run in runs if run["status"] == "success"),
         "failed_runs": sum(1 for run in runs if run["status"] != "success"),
-        "experiments": experiments,
+        "experiment": experiment,
         "runs_index_csv": "runs_index.csv",
         "runs_index_jsonl": "runs_index.jsonl",
     }
@@ -291,7 +290,7 @@ def main() -> int:
 
     try:
         payload = load_dse_payload(dse_json)
-        experiments = validate_experiments(payload)
+        experiment = validate_experiment(payload)
         ensure_output_directory(output_dir, args.force)
 
         configs_dir = output_dir / "configs"
@@ -299,7 +298,7 @@ def main() -> int:
         runs_dir.mkdir(parents=True)
 
         print(f"[plan] Output directory: {output_dir}", flush=True)
-        print(f"[plan] Experiments: {', '.join(experiment['name'] for experiment in experiments)}", flush=True)
+        print(f"[plan] Experiment: {experiment['name']}", flush=True)
 
         uv_dse_gen = load_uv_dse_gen_module()
         generated_manifest = uv_dse_gen.generate_design_space(
@@ -321,7 +320,7 @@ def main() -> int:
         classpath = os.pathsep.join([str(build_dir), str(JSON_JAR)])
 
         runs: list[dict[str, Any]] = []
-        total_runs = len(generated_files) * len(experiments)
+        total_runs = len(generated_files)
         run_counter = 0
 
         for generated_file in generated_files:
@@ -330,53 +329,52 @@ def main() -> int:
             generated_config = configs_dir / config_file
             config_run_dir = runs_dir / generated_config_stem(config_file)
 
-            for experiment in experiments:
-                run_counter += 1
-                experiment_name = str(experiment["name"])
-                experiment_slug = sanitize_fragment(experiment_name)
-                run_dir = config_run_dir / experiment_slug
-                run_dir.mkdir(parents=True)
+            run_counter += 1
+            experiment_name = str(experiment["name"])
+            experiment_slug = sanitize_fragment(experiment_name)
+            run_dir = config_run_dir / experiment_slug
+            run_dir.mkdir(parents=True)
 
-                config_path = write_run_config(run_dir, generated_config)
-                experiment_for_run = prepare_experiment_for_run(experiment, dse_json.parent)
-                experiment_path = write_experiment_spec(run_dir, experiment_for_run)
+            config_path = write_run_config(run_dir, generated_config)
+            experiment_for_run = prepare_experiment_for_run(experiment, dse_json.parent)
+            experiment_path = write_experiment_spec(run_dir, experiment_for_run)
 
-                print(
-                    f"[run {run_counter}/{total_runs}] cfg #{config_index}: "
-                    f"{experiment_name} -> {run_dir.relative_to(output_dir)}",
-                    flush=True,
-                )
-                return_code = run_single_experiment(
-                    java=args.java,
-                    classpath=classpath,
-                    config_path=config_path,
-                    experiment_path=experiment_path,
-                    run_dir=run_dir,
-                )
+            print(
+                f"[run {run_counter}/{total_runs}] cfg #{config_index}: "
+                f"{experiment_name} -> {run_dir.relative_to(output_dir)}",
+                flush=True,
+            )
+            return_code = run_single_experiment(
+                java=args.java,
+                classpath=classpath,
+                config_path=config_path,
+                experiment_path=experiment_path,
+                run_dir=run_dir,
+            )
 
-                run_json = load_run_json(run_dir)
-                status = str(run_json.get("status", "")) if run_json else ""
-                if not status:
-                    status = "success" if return_code == 0 else "failed"
+            run_json = load_run_json(run_dir)
+            status = str(run_json.get("status", "")) if run_json else ""
+            if not status:
+                status = "success" if return_code == 0 else "failed"
 
-                run_record = {
-                    "combination_index": config_index,
-                    "config_file": config_file,
-                    "overrides": generated_file.get("overrides", {}),
-                    "experiment": experiment_name,
-                    "status": status,
-                    "return_code": return_code,
-                    "run_dir": str(run_dir.relative_to(output_dir)),
-                    "run_json": str((run_dir / "run.json").relative_to(output_dir)) if (run_dir / "run.json").exists() else "",
-                    "network_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "network"))
-                    if report_path_from_run_json(run_json, "network")
-                    else "",
-                    "invoice_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "invoice"))
-                    if report_path_from_run_json(run_json, "invoice")
-                    else "",
-                }
-                runs.append(run_record)
-                print(f"[run {run_counter}/{total_runs}] status={status} return_code={return_code}", flush=True)
+            run_record = {
+                "combination_index": config_index,
+                "config_file": config_file,
+                "overrides": generated_file.get("overrides", {}),
+                "experiment": experiment_name,
+                "status": status,
+                "return_code": return_code,
+                "run_dir": str(run_dir.relative_to(output_dir)),
+                "run_json": str((run_dir / "run.json").relative_to(output_dir)) if (run_dir / "run.json").exists() else "",
+                "network_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "network"))
+                if report_path_from_run_json(run_json, "network")
+                else "",
+                "invoice_report": str(Path(run_dir.relative_to(output_dir)) / report_path_from_run_json(run_json, "invoice"))
+                if report_path_from_run_json(run_json, "invoice")
+                else "",
+            }
+            runs.append(run_record)
+            print(f"[run {run_counter}/{total_runs}] status={status} return_code={return_code}", flush=True)
 
         write_run_indexes(output_dir, runs)
         write_manifest(
@@ -384,7 +382,7 @@ def main() -> int:
             base_properties=base_properties,
             dse_json=dse_json,
             generated_manifest=generated_manifest,
-            experiments=experiments,
+            experiment=experiment,
             runs=runs,
             build_dir=build_dir,
             kept_build_dir=args.keep_build_dir,

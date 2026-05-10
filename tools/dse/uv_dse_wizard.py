@@ -32,7 +32,6 @@ REPO_ROOT = SCRIPT_DIR.parents[1]
 DEFAULT_PROPERTIES = "../../uv_configs/template.properties"
 DEFAULT_RUN_DIR = "dse_runs/quickstart"
 DEFAULT_DSE_JSON = "quickstart_dse.json"
-DEFAULT_SAVE_JSON = "dse_runs/tutorial/first_dse.json"
 MAX_JOB_OUTPUT_CHARS = 500_000
 SESSION_TOKEN = secrets.token_urlsafe(24)
 
@@ -52,25 +51,34 @@ PARAMETER_CATEGORY_ORDER = [
     "Other",
 ]
 
-DEFAULT_EXPERIMENTS = [
-    {
-        "name": "quick_invoice_hops",
-        "commands": [
-            "boot",
-            "rndbal",
-            {
-                "command": "inv",
-                "node_events_per_block": 0.10,
-                "blocks": 4,
-                "min_amt": 50000,
-                "max_amt": 100000,
-                "max_fees": 1000,
-                "path_finder": "lnd",
-            },
-        ],
-        "outputs": ["network", "invoice"],
-    }
-]
+CATEGORY_STYLE_CLASS = {
+    "General Settings": "category-general",
+    "Lightning Network": "category-network",
+    "Path Finding": "category-path",
+    "Simulation Time": "category-time",
+    "Bootstrap": "category-bootstrap",
+    "Fee Sets": "category-fees",
+    "DSE JSON only": "category-json",
+    "Other": "category-other",
+}
+
+DEFAULT_EXPERIMENT = {
+    "name": "quick_invoice_hops",
+    "commands": [
+        "boot",
+        "rndbal",
+        {
+            "command": "inv",
+            "node_events_per_block": 0.10,
+            "blocks": 4,
+            "min_amt": 50000,
+            "max_amt": 100000,
+            "max_fees": 1000,
+            "path_finder": "lnd",
+        },
+    ],
+    "outputs": ["network", "invoice"],
+}
 
 EXPERIMENT_KIND_LABELS = {
     "bootstrap": "Bootstrap and network stats",
@@ -92,58 +100,16 @@ BOOT_MODE_LABELS = {
 
 PATH_FINDER_OPTIONS = ["lnd", "mini_dijkstra", "shortest_hop", "bfs", "all"]
 
-EXPERIMENT_PRESETS = [
-    {
-        "name": "bootstrap_stats",
-        "commands": ["boot"],
-        "outputs": ["network"],
-    },
-    {
-        "name": "random_balance_path",
-        "commands": [
-            "boot",
-            "rndbal",
-            {
-                "command": "path",
-                "start": "pk0",
-                "destination": "pk7",
-                "amount": 10000,
-                "path_finder": "all",
-                "topk": 5,
-            },
-        ],
-        "outputs": ["network"],
-    },
-    {
-        "name": "invoice_campaign",
-        "commands": [
-            "boot",
-            "rndbal",
-            {
-                "command": "inv",
-                "node_events_per_block": 0.08,
-                "blocks": 4,
-                "min_amt": 50000,
-                "max_amt": 100000,
-                "max_fees": 1000,
-                "path_finder": "lnd",
-            },
-        ],
-        "outputs": ["network", "invoice"],
-    },
-]
-
 
 @dataclass(frozen=True)
 class WizardState:
     properties_path: str
     dse_json_path: str
-    save_path: str
     parameters: dict[str, str]
     selected_parameters: dict[str, list[object]]
-    experiments: list[dict[str, object]]
+    experiment: dict[str, object]
     value_text_overrides: dict[str, str]
-    experiment_rows: list[dict[str, str]] | None = None
+    experiment_row: dict[str, str] | None = None
     message: str = ""
     error: str = ""
 
@@ -248,7 +214,7 @@ def native_select_path(query: dict[str, str]) -> dict[str, object]:
 
 def default_save_name(mode: str, path: Path) -> str:
     if mode == "save_json":
-        name = path.name if path.name and path.suffix else Path(DEFAULT_SAVE_JSON).name
+        name = path.name if path.name and path.suffix else Path(DEFAULT_DSE_JSON).name
         return name if name.endswith(".json") else f"{name}.json"
     return path.name
 
@@ -488,11 +454,11 @@ def should_align_startup_defaults(
         return False
 
 
-def load_dse_json(path: Path) -> tuple[dict[str, list[object]], list[dict[str, object]]]:
+def load_dse_json(path: Path) -> tuple[dict[str, list[object]], dict[str, object]]:
     if not path.is_file():
         raise ValueError(f"DSE JSON file not found: {path}")
     payload = dse_common.validate_dse_payload(dse_common.load_json_object(path))
-    return payload["parameters"], payload["experiments"]
+    return payload["parameters"], payload["experiment"]
 
 
 def command_name(command: object) -> str:
@@ -522,13 +488,12 @@ def string_field(value: object, default: str = "") -> str:
     return str(value)
 
 
-def experiment_row_from_spec(experiment: dict[str, object], *, enabled: bool = True) -> dict[str, str]:
+def experiment_row_from_spec(experiment: dict[str, object]) -> dict[str, str]:
     commands = experiment.get("commands", [])
     if not isinstance(commands, list):
         commands = []
 
     row = default_experiment_row()
-    row["enabled"] = "on" if enabled else ""
     row["name"] = string_field(experiment.get("name"), "experiment")
 
     outputs = experiment.get("outputs", experiment.get("reports", ["network"]))
@@ -597,7 +562,6 @@ def experiment_row_from_spec(experiment: dict[str, object], *, enabled: bool = T
 
 def default_experiment_row() -> dict[str, str]:
     return {
-        "enabled": "",
         "name": "experiment",
         "kind": "invoice",
         "boot_mode": "scratch",
@@ -627,52 +591,25 @@ def default_experiment_row() -> dict[str, str]:
     }
 
 
-def experiment_rows_for_render(experiments: list[dict[str, object]]) -> list[dict[str, str]]:
-    rows = [experiment_row_from_spec(experiment, enabled=True) for experiment in experiments]
-    existing_names = {row["name"] for row in rows}
-    for preset in EXPERIMENT_PRESETS:
-        preset_name = str(preset["name"])
-        if preset_name not in existing_names:
-            rows.append(experiment_row_from_spec(preset, enabled=False))
-    return rows
+def experiment_row_for_render(experiment: dict[str, object]) -> dict[str, str]:
+    return experiment_row_from_spec(experiment)
 
 
-def experiment_rows_from_form(form: dict[str, list[str]]) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
-    count = safe_experiment_count(form)
-    for index in range(count):
-        row = default_experiment_row()
-        row["enabled"] = "on" if form_value(form, f"exp_enabled_{index}", "") == "on" else ""
-        for key in row:
-            if key == "enabled":
-                continue
-            row[key] = form_value(form, f"exp_{key}_{index}", row[key])
-        row["output_network"] = "on" if form_value(form, f"exp_output_network_{index}", "") == "on" else ""
-        row["output_invoice"] = "on" if form_value(form, f"exp_output_invoice_{index}", "") == "on" else ""
-        rows.append(row)
-    return rows
+def experiment_row_from_form(form: dict[str, list[str]]) -> dict[str, str]:
+    row = default_experiment_row()
+    for key in row:
+        row[key] = form_value(form, f"exp_{key}_0", row[key])
+    row["output_network"] = "on" if form_value(form, "exp_output_network_0", "") == "on" else ""
+    row["output_invoice"] = "on" if form_value(form, "exp_output_invoice_0", "") == "on" else ""
+    return row
 
 
-def safe_experiment_count(form: dict[str, list[str]]) -> int:
-    try:
-        return max(0, int(form_value(form, "experiment_count", "0")))
-    except ValueError:
-        return 0
+def build_experiment_from_form(form: dict[str, list[str]]) -> dict[str, object]:
+    return build_experiment_from_row(experiment_row_from_form(form), 1)
 
 
-def build_experiments_from_form(form: dict[str, list[str]]) -> list[dict[str, object]]:
-    return build_experiments_from_rows(experiment_rows_from_form(form))
-
-
-def build_experiments_from_rows(rows: list[dict[str, str]]) -> list[dict[str, object]]:
-    experiments: list[dict[str, object]] = []
-    for index, row in enumerate(rows, start=1):
-        if row.get("enabled") != "on":
-            continue
-        experiments.append(build_experiment_from_row(row, index))
-    if not experiments:
-        raise ValueError("Select at least one experiment.")
-    return experiments
+def build_experiment_from_form_row(row: dict[str, str]) -> dict[str, object]:
+    return build_experiment_from_row(row, 1)
 
 
 def build_experiment_from_row(row: dict[str, str], index: int) -> dict[str, object]:
@@ -801,13 +738,12 @@ def required_float(row: dict[str, str], key: str, label: str) -> float:
 def default_create_state(params: dict[str, str], message: str = "", error: str = "") -> WizardState:
     properties_path = params.get("properties_path", DEFAULT_PROPERTIES)
     dse_json_path = params.get("dse_json_path", DEFAULT_DSE_JSON)
-    save_path = params.get("save_path", DEFAULT_SAVE_JSON)
 
     selected: dict[str, list[object]] = {}
-    experiments = DEFAULT_EXPERIMENTS
+    experiment = dict(DEFAULT_EXPERIMENT)
     try:
         if dse_json_path:
-            selected, experiments = load_dse_json(resolve_tool_path(dse_json_path))
+            selected, experiment = load_dse_json(resolve_tool_path(dse_json_path))
             if params.get("load_json") or dse_json_path == DEFAULT_DSE_JSON:
                 message = message or f"Loaded {dse_json_path}"
     except Exception as exc:
@@ -825,10 +761,9 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
     return WizardState(
         properties_path=properties_path,
         dse_json_path=dse_json_path,
-        save_path=save_path,
         parameters=properties,
         selected_parameters=selected,
-        experiments=experiments,
+        experiment=experiment,
         value_text_overrides={},
         message=message,
         error=error,
@@ -838,7 +773,6 @@ def default_create_state(params: dict[str, str], message: str = "", error: str =
 def create_state_from_form(form: dict[str, list[str]], error: str = "", message: str = "") -> WizardState:
     properties_path = form_value(form, "properties_path", DEFAULT_PROPERTIES)
     dse_json_path = form_value(form, "dse_json_path", DEFAULT_DSE_JSON)
-    save_path = form_value(form, "save_path", DEFAULT_SAVE_JSON)
     try:
         properties = load_properties_with_includes(resolve_tool_path(properties_path))
     except Exception as exc:
@@ -860,21 +794,20 @@ def create_state_from_form(form: dict[str, list[str]], error: str = "", message:
             except ValueError:
                 selected[name] = []
 
-    experiment_rows = experiment_rows_from_form(form)
+    experiment_row = experiment_row_from_form(form)
     try:
-        experiments = build_experiments_from_rows(experiment_rows)
+        experiment = build_experiment_from_form_row(experiment_row)
     except ValueError:
-        experiments = []
+        experiment = {}
 
     return WizardState(
         properties_path=properties_path,
         dse_json_path=dse_json_path,
-        save_path=save_path,
         parameters=properties,
         selected_parameters=selected,
-        experiments=experiments,
+        experiment=experiment,
         value_text_overrides=value_text_overrides,
-        experiment_rows=experiment_rows,
+        experiment_row=experiment_row,
         message=message,
         error=error,
     )
@@ -924,6 +857,12 @@ def parameter_category(name: str) -> str:
     return "Other"
 
 
+def category_style_class(category: str) -> str:
+    if category.startswith("Node Profile:"):
+        return "category-profile"
+    return CATEGORY_STYLE_CLASS.get(category, "category-other")
+
+
 def selected_space_size(selected_parameters: dict[str, list[object]]) -> tuple[int, int]:
     non_empty = [values for values in selected_parameters.values() if values]
     if not non_empty:
@@ -950,12 +889,12 @@ def save_dse_from_form(form: dict[str, list[str]]) -> tuple[Path, dict[str, obje
         raise ValueError("Select at least one parameter")
     dse_common.validate_parameters(parameters)
 
-    experiments = build_experiments_from_form(form)
-    payload = dse_common.validate_dse_payload({"parameters": parameters, "experiments": experiments})
-    save_path = resolve_tool_path(form_value(form, "save_path", DEFAULT_SAVE_JSON))
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return save_path, payload
+    experiment = build_experiment_from_form(form)
+    payload = dse_common.validate_dse_payload({"parameters": parameters, "experiment": experiment})
+    output_path = resolve_tool_path(form_value(form, "dse_json_path", DEFAULT_DSE_JSON))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return output_path, payload
 
 
 def form_value(form: dict[str, list[str]], key: str, default: str = "") -> str:
@@ -1139,67 +1078,106 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escape(title)}</title>
   <style>
-    body {{ margin: 0; font-family: Helvetica, Arial, sans-serif; color: #151719; background: #f3f5f7; }}
-    header {{ background: #ffffff; border-bottom: 1px solid #d8dde3; padding: 14px 18px; display: flex; align-items: center; gap: 16px; }}
-    header a {{ color: #1a5fa8; text-decoration: none; font-weight: 700; }}
-    h1 {{ margin: 0; font-size: 20px; }}
-    h2 {{ margin: 0 0 10px; font-size: 16px; }}
+    :root {{
+      --semantic-files: #2f6fae;
+      --semantic-files-bg: #e8f1fb;
+      --semantic-experiment: #a26000;
+      --semantic-experiment-bg: #fff3d7;
+      --semantic-parameters: #2c7a5a;
+      --semantic-parameters-bg: #e9f6f1;
+      --semantic-preview: #4f5d75;
+      --semantic-preview-bg: #eef2f6;
+      --semantic-run: #1f766b;
+      --semantic-run-bg: #e4f3f1;
+      --semantic-visualize: #6d5a8f;
+      --semantic-visualize-bg: #f0edf8;
+      --semantic-neutral: #6b7280;
+      --semantic-neutral-bg: #f2f5f8;
+    }}
+    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; color: #151719; background: #f3f5f7; }}
+    header {{ background: #fbfcfd; border-bottom: 1px solid #d8dde3; padding: 14px 18px; display: flex; align-items: center; gap: 16px; }}
+    header a {{ color: var(--semantic-files); text-decoration: none; font-size: 13px; font-weight: 800; }}
+    h1 {{ margin: 0; font-size: 22px; line-height: 1.2; font-weight: 800; }}
+    h2 {{ margin: 0 0 10px; font-size: 17px; line-height: 1.25; font-weight: 800; }}
     main {{ padding: 16px 18px 28px; }}
     .grid {{ display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 14px; }}
     .card, .panel {{ background: #ffffff; border: 1px solid #d8dde3; padding: 14px; }}
+    .card {{ border-top: 4px solid var(--section-accent, var(--semantic-neutral)); }}
+    .panel {{ border-left: 4px solid var(--section-accent, var(--semantic-neutral)); }}
+    .card-create, .panel-files {{ --section-accent: var(--semantic-files); --section-bg: var(--semantic-files-bg); --section-title: #173e66; --action-bg: var(--semantic-files); --action-border: #255c91; }}
+    .card-run, .panel-run {{ --section-accent: var(--semantic-run); --section-bg: var(--semantic-run-bg); --section-title: #0f5149; --action-bg: var(--semantic-run); --action-border: #185f56; }}
+    .card-visualize, .panel-visualize {{ --section-accent: var(--semantic-visualize); --section-bg: var(--semantic-visualize-bg); --section-title: #453765; --action-bg: var(--semantic-visualize); --action-border: #574873; }}
+    .panel-experiment {{ --section-accent: var(--semantic-experiment); --section-bg: var(--semantic-experiment-bg); --section-title: #6e4000; --action-bg: var(--semantic-experiment); --action-border: #804c00; }}
+    .panel-parameters {{ --section-accent: var(--semantic-parameters); --section-bg: var(--semantic-parameters-bg); --section-title: #18583f; --action-bg: var(--semantic-parameters); --action-border: #23664b; }}
+    .panel-preview {{ --section-accent: var(--semantic-preview); --section-bg: var(--semantic-preview-bg); --section-title: #2f3c4f; --action-bg: var(--semantic-preview); --action-border: #3f4b60; }}
     [hidden] {{ display: none !important; }}
     details.panel, details.category, details.command-block, details.experiment-details {{ display: block; }}
     details > summary {{ cursor: pointer; }}
-    details.panel > summary {{ list-style-position: inside; background: #e9eef4; border-bottom: 1px solid #d8dde3; margin: -14px -14px 0; padding: 10px 14px; }}
+    details.panel > summary {{ list-style-position: inside; background: var(--section-bg, #e9eef4); color: var(--section-title, #20252c); border-bottom: 1px solid #d8dde3; margin: -14px -14px 0; padding: 10px 14px; }}
     details.panel:not([open]) > summary {{ border-bottom: 0; margin-bottom: -14px; }}
-    details.panel > summary h2 {{ display: inline; margin: 0; font-size: 15px; }}
+    details.panel > summary h2 {{ display: inline; margin: 0; font-size: 17px; font-weight: 800; }}
     .disclosure-body {{ margin-top: 12px; }}
-    .card a, button, .button {{ display: inline-block; border: 1px solid #174f91; background: #1a5fa8; color: #ffffff; padding: 8px 11px; font-weight: 700; text-decoration: none; cursor: pointer; }}
+    .card a, button, .button {{ display: inline-block; border: 1px solid var(--action-border, #174f91); background: var(--action-bg, #1a5fa8); color: #ffffff; padding: 8px 11px; font-weight: 700; text-decoration: none; cursor: pointer; }}
     form {{ display: grid; gap: 12px; }}
-    label {{ display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: #33383d; }}
-    input, select, textarea {{ font: inherit; font-size: 13px; padding: 7px; border: 1px solid #b9c0c7; background: #ffffff; }}
+    label {{ display: grid; gap: 4px; font-size: 12px; font-weight: 800; color: #33383d; }}
+    input, select, textarea {{ font: inherit; font-size: 13px; font-weight: 400; padding: 7px; border: 1px solid #b9c0c7; background: #ffffff; }}
     textarea {{ min-height: 180px; font-family: Menlo, Consolas, monospace; }}
     table {{ width: 100%; border-collapse: collapse; background: #ffffff; }}
     th, td {{ border-bottom: 1px solid #e2e6ea; padding: 6px; text-align: left; vertical-align: top; }}
-    th {{ background: #f8f9fa; font-size: 12px; }}
+    th {{ background: #f8f9fa; font-size: 12px; font-weight: 800; color: #30363d; }}
+    td {{ font-size: 13px; }}
     .row {{ display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 10px; align-items: end; }}
     .row3 {{ display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; align-items: end; }}
     .actions {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
     .secondary {{ border-color: #9ba6b1; background: #ffffff; color: #26323c; }}
     .path-field {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }}
+    .path-field.multi-action {{ grid-template-columns: minmax(0, 1fr) auto auto; }}
     .space-summary {{ display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline; margin: 0 0 12px; }}
-    .space-summary strong {{ font-size: 18px; }}
-    .category {{ border: 1px solid #d8dde3; margin-top: 10px; background: #ffffff; }}
-    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: #f2f5f8; border-bottom: 1px solid #d8dde3; cursor: pointer; }}
+    .space-summary strong {{ font-size: 20px; font-weight: 800; color: var(--semantic-parameters); }}
+    .category {{ --category-accent: var(--semantic-neutral); --category-bg: var(--semantic-neutral-bg); --category-title: #424954; border: 1px solid #d8dde3; border-left: 3px solid var(--category-accent); margin-top: 10px; background: #ffffff; }}
+    .category-general {{ --category-accent: #607085; --category-bg: #eef2f6; --category-title: #3b4654; }}
+    .category-network {{ --category-accent: #2f6fae; --category-bg: #e8f1fb; --category-title: #173e66; }}
+    .category-path {{ --category-accent: #5b5fa8; --category-bg: #eef0fb; --category-title: #393d75; }}
+    .category-time {{ --category-accent: #287f89; --category-bg: #e6f4f6; --category-title: #16565d; }}
+    .category-bootstrap {{ --category-accent: #a26000; --category-bg: #fff3d7; --category-title: #6e4000; }}
+    .category-profile {{ --category-accent: #2c7a5a; --category-bg: #e9f6f1; --category-title: #18583f; }}
+    .category-fees {{ --category-accent: #8a641f; --category-bg: #fbf0dc; --category-title: #5f4313; }}
+    .category-json {{ --category-accent: #4f5d75; --category-bg: #eef2f6; --category-title: #2f3c4f; }}
+    .category-other {{ --category-accent: #6b7280; --category-bg: #f2f5f8; --category-title: #424954; }}
+    .category-header {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; background: var(--category-bg); border-bottom: 1px solid #d8dde3; cursor: pointer; }}
     details.category:not([open]) > .category-header {{ border-bottom: 0; }}
-    .category-header h3 {{ margin: 0; font-size: 14px; }}
-    .experiment-card > .category-header {{ background: #e7f0f8; cursor: default; }}
-    .experiment-header {{ display: grid; grid-template-columns: auto minmax(220px, 1fr) minmax(240px, 1.3fr); gap: 10px; align-items: end; }}
-    .summary-field {{ font-size: 11px; }}
+    .category-header h3 {{ margin: 0; font-size: 15px; line-height: 1.25; font-weight: 800; color: var(--category-title); }}
+    .category-header .muted {{ font-size: 12px; font-weight: 700; color: var(--category-title); }}
+    .experiment-card {{ --category-accent: var(--semantic-experiment); --category-bg: var(--semantic-experiment-bg); --category-title: #6e4000; }}
+    .experiment-card > .category-header {{ cursor: default; }}
+    .experiment-header {{ display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.3fr); gap: 10px; align-items: end; }}
+    .summary-field {{ font-size: 12px; font-weight: 800; }}
     .summary-field input, .summary-field select {{ width: 100%; box-sizing: border-box; }}
-    .summary-check {{ align-self: center; white-space: nowrap; }}
     .experiment-details {{ border-top: 1px solid #d8dde3; background: #ffffff; }}
-    .experiment-details > summary {{ padding: 8px 10px; background: #eef3f7; font-size: 13px; font-weight: 700; }}
+    .experiment-details > summary {{ padding: 9px 10px; background: #fff8e8; color: #6e4000; font-size: 14px; font-weight: 800; }}
     .experiment-details:not([open]) > summary {{ border-bottom: 0; }}
-    .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; background: #f6f8fa; }}
-    .command-block {{ border: 1px solid #dce3ea; background: #ffffff; }}
-    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 10px; background: #f4f7fa; border-bottom: 1px solid #e2e6ea; font-weight: 700; font-size: 13px; cursor: pointer; }}
+    .experiment-command-grid {{ display: grid; gap: 10px; padding: 10px; background: #faf7f0; }}
+    .command-block {{ --command-accent: var(--semantic-neutral); --command-bg: #f4f7fa; --command-title: #343a40; border: 1px solid #dce3ea; border-left: 3px solid var(--command-accent); background: #ffffff; }}
+    .command-network {{ --command-accent: #2f6fae; --command-bg: #e8f1fb; --command-title: #173e66; }}
+    .command-balance {{ --command-accent: #2c7a5a; --command-bg: #e9f6f1; --command-title: #18583f; }}
+    .command-path {{ --command-accent: #5b5fa8; --command-bg: #eef0fb; --command-title: #393d75; }}
+    .command-route {{ --command-accent: #6d5a8f; --command-bg: #f0edf8; --command-title: #453765; }}
+    .command-invoice {{ --command-accent: #a26000; --command-bg: #fff3d7; --command-title: #6e4000; }}
+    .command-outputs {{ --command-accent: #4f5d75; --command-bg: #eef2f6; --command-title: #2f3c4f; }}
+    .command-title {{ display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 10px; background: var(--command-bg); color: var(--command-title); border-bottom: 1px solid #e2e6ea; font-weight: 800; font-size: 13px; cursor: pointer; }}
     details.command-block:not([open]) > .command-title {{ border-bottom: 0; }}
-    .command-title code {{ font-size: 11px; color: #5d666f; }}
+    .command-title code {{ font-size: 11px; font-weight: 700; color: var(--command-accent); background: #ffffff; border: 1px solid #dce3ea; padding: 1px 4px; }}
     .command-fields {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; padding: 10px; }}
     .command-note {{ margin: 0; padding: 10px; background: #fbfcfd; }}
-    .experiment-grid {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; }}
-    .experiment-list {{ margin: 0; padding-left: 18px; }}
-    .experiment-list li {{ margin: 0 0 8px; }}
-    .experiment-list .muted {{ display: inline-block; white-space: pre-line; }}
-    .notice {{ margin: 0 0 12px; padding: 9px; background: #fff8e6; border: 1px solid #e2c56f; color: #4d3b00; }}
-    .error {{ margin: 0 0 12px; padding: 9px; background: #fdeaea; border: 1px solid #e2a0a0; color: #7b1d1d; }}
-    .muted {{ color: #5d666f; font-size: 13px; }}
+    .notice {{ margin: 0 0 12px; padding: 9px; background: #fff8e6; border: 1px solid #e2c56f; color: #4d3b00; font-weight: 700; }}
+    .error {{ margin: 0 0 12px; padding: 9px; background: #fdeaea; border: 1px solid #e2a0a0; color: #7b1d1d; font-weight: 700; }}
+    .muted {{ color: #5d666f; font-size: 13px; font-weight: 400; }}
     .figure {{ height: 560px; }}
     pre {{ white-space: pre-wrap; background: #111820; color: #e6edf3; padding: 12px; overflow: auto; }}
+    #dse-json-preview {{ background: #111b27; }}
+    pre[data-run-output] {{ background: #0f1d1a; }}
     @media (max-width: 760px) {{
-      .grid, .row, .row3, .experiment-header, .command-fields {{ grid-template-columns: 1fr; }}
-      .summary-check {{ align-self: start; }}
+      .grid, .row, .row3, .experiment-header, .command-fields, .path-field.multi-action {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -1259,12 +1237,6 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       const totalNode = document.getElementById("parameter-space-size");
       if (selectedNode) selectedNode.textContent = String(selected);
       if (totalNode) totalNode.textContent = String(total);
-    }}
-
-    function commandLabel(command) {{
-      if (typeof command === "string") return command;
-      if (command && typeof command === "object") return command.command || command.cmd || "command";
-      return "command";
     }}
 
     async function selectNativePath(button) {{
@@ -1329,15 +1301,15 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         }}
       }}
 
-      let experiments = [];
+      let experiment = {{}};
       try {{
-        experiments = buildExperimentsFromForm();
+        experiment = buildExperimentFromForm();
       }} catch (error) {{
-        experiments = [];
-        errors.push("experiments: " + error.message);
+        experiment = {{}};
+        errors.push("experiment: " + error.message);
       }}
 
-      preview.textContent = JSON.stringify({{ parameters, experiments }}, null, 2);
+      preview.textContent = JSON.stringify({{ parameters, experiment }}, null, 2);
       if (status) {{
         const selected = Object.keys(parameters).length;
         const sizeNode = document.getElementById("parameter-space-size");
@@ -1379,80 +1351,76 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       return parsed;
     }}
 
-    function buildExperimentsFromForm() {{
-      const experiments = [];
-      for (const row of document.querySelectorAll("[data-experiment-row]")) {{
-        if (!experimentChecked(row, "exp_enabled_")) continue;
-        const name = experimentField(row, "exp_name_") || "experiment";
-        const kind = experimentField(row, "exp_kind_") || "invoice";
-        const balance = kind === "bootstrap" ? "none" : (experimentField(row, "exp_balance_") || "none");
-        const pathFinderByKind = {{
-          path: experimentField(row, "exp_path_path_finder_") || "lnd",
-          route: experimentField(row, "exp_route_path_finder_") || "lnd",
-          invoice: experimentField(row, "exp_inv_path_finder_") || "lnd",
-          bootstrap: "lnd"
-        }};
-        const pathFinder = pathFinderByKind[kind] || "lnd";
-        if (pathFinder === "all" && kind !== "path") throw new Error(name + " can use path_finder=all only for path experiments");
+    function buildExperimentFromForm() {{
+      const row = document.querySelector("[data-experiment-row]");
+      if (!row) throw new Error("experiment form is missing");
+      const name = experimentField(row, "exp_name_") || "experiment";
+      const kind = experimentField(row, "exp_kind_") || "invoice";
+      const balance = kind === "bootstrap" ? "none" : (experimentField(row, "exp_balance_") || "none");
+      const pathFinderByKind = {{
+        path: experimentField(row, "exp_path_path_finder_") || "lnd",
+        route: experimentField(row, "exp_route_path_finder_") || "lnd",
+        invoice: experimentField(row, "exp_inv_path_finder_") || "lnd",
+        bootstrap: "lnd"
+      }};
+      const pathFinder = pathFinderByKind[kind] || "lnd";
+      if (pathFinder === "all" && kind !== "path") throw new Error(name + " can use path_finder=all only for path experiments");
 
-        const bootMode = experimentField(row, "exp_boot_mode_") || "scratch";
-        const commands = [];
-        if (bootMode === "load") {{
-          const bootFile = experimentField(row, "exp_boot_file_");
-          if (!bootFile) throw new Error(name + " boot snapshot file is required");
-          commands.push({{ command: "boot", mode: "load", file: bootFile }});
-        }} else {{
-          commands.push("boot");
-        }}
-        const minDelta = parseOptionalInt(experimentField(row, "exp_min_delta_"), name + " min_delta");
-        if (balance === "rndbal") {{
-          commands.push(minDelta === null ? "rndbal" : {{ command: "rndbal", min_delta: minDelta }});
-        }} else if (balance === "bal") {{
-          const command = {{ command: "bal", level: parseRequiredFloat(experimentField(row, "exp_bal_level_"), name + " balance level") }};
-          if (minDelta !== null) command.min_delta = minDelta;
-          commands.push(command);
-        }}
-
-        if (kind === "path") {{
-          commands.push({{
-            command: "path",
-            start: experimentField(row, "exp_path_start_") || "pk0",
-            destination: experimentField(row, "exp_path_destination_") || "pk7",
-            amount: parseRequiredInt(experimentField(row, "exp_path_amount_"), name + " path amount"),
-            path_finder: pathFinder,
-            topk: parseRequiredInt(experimentField(row, "exp_path_topk_"), name + " topk")
-          }});
-        }} else if (kind === "route") {{
-          const routeCommand = {{
-            command: "route",
-            sender: experimentField(row, "exp_route_sender_") || "pk0",
-            destination: experimentField(row, "exp_route_destination_") || "pk7",
-            amount: parseRequiredInt(experimentField(row, "exp_route_amount_"), name + " route amount"),
-            max_fees: parseRequiredInt(experimentField(row, "exp_route_max_fees_"), name + " route max_fees"),
-            path_finder: pathFinder
-          }};
-          const message = experimentField(row, "exp_route_message_");
-          if (message) routeCommand.message = message;
-          commands.push(routeCommand);
-        }} else if (kind === "invoice") {{
-          commands.push({{
-            command: "inv",
-            node_events_per_block: parseRequiredFloat(experimentField(row, "exp_inv_node_events_per_block_"), name + " node_events_per_block"),
-            blocks: parseRequiredInt(experimentField(row, "exp_inv_blocks_"), name + " blocks"),
-            min_amt: parseRequiredInt(experimentField(row, "exp_inv_min_amt_"), name + " min_amt"),
-            max_amt: parseRequiredInt(experimentField(row, "exp_inv_max_amt_"), name + " max_amt"),
-            max_fees: parseRequiredInt(experimentField(row, "exp_inv_max_fees_"), name + " max_fees"),
-            path_finder: pathFinder
-          }});
-        }}
-
-        const outputs = [];
-        if (experimentChecked(row, "exp_output_network_")) outputs.push("network");
-        if (experimentChecked(row, "exp_output_invoice_")) outputs.push("invoice");
-        experiments.push({{ name, commands, outputs: outputs.length ? outputs : ["network"] }});
+      const bootMode = experimentField(row, "exp_boot_mode_") || "scratch";
+      const commands = [];
+      if (bootMode === "load") {{
+        const bootFile = experimentField(row, "exp_boot_file_");
+        if (!bootFile) throw new Error(name + " boot snapshot file is required");
+        commands.push({{ command: "boot", mode: "load", file: bootFile }});
+      }} else {{
+        commands.push("boot");
       }}
-      if (experiments.length === 0) throw new Error("select at least one experiment");
-      return experiments;
+      const minDelta = parseOptionalInt(experimentField(row, "exp_min_delta_"), name + " min_delta");
+      if (balance === "rndbal") {{
+        commands.push(minDelta === null ? "rndbal" : {{ command: "rndbal", min_delta: minDelta }});
+      }} else if (balance === "bal") {{
+        const command = {{ command: "bal", level: parseRequiredFloat(experimentField(row, "exp_bal_level_"), name + " balance level") }};
+        if (minDelta !== null) command.min_delta = minDelta;
+        commands.push(command);
+      }}
+
+      if (kind === "path") {{
+        commands.push({{
+          command: "path",
+          start: experimentField(row, "exp_path_start_") || "pk0",
+          destination: experimentField(row, "exp_path_destination_") || "pk7",
+          amount: parseRequiredInt(experimentField(row, "exp_path_amount_"), name + " path amount"),
+          path_finder: pathFinder,
+          topk: parseRequiredInt(experimentField(row, "exp_path_topk_"), name + " topk")
+        }});
+      }} else if (kind === "route") {{
+        const routeCommand = {{
+          command: "route",
+          sender: experimentField(row, "exp_route_sender_") || "pk0",
+          destination: experimentField(row, "exp_route_destination_") || "pk7",
+          amount: parseRequiredInt(experimentField(row, "exp_route_amount_"), name + " route amount"),
+          max_fees: parseRequiredInt(experimentField(row, "exp_route_max_fees_"), name + " route max_fees"),
+          path_finder: pathFinder
+        }};
+        const message = experimentField(row, "exp_route_message_");
+        if (message) routeCommand.message = message;
+        commands.push(routeCommand);
+      }} else if (kind === "invoice") {{
+        commands.push({{
+          command: "inv",
+          node_events_per_block: parseRequiredFloat(experimentField(row, "exp_inv_node_events_per_block_"), name + " node_events_per_block"),
+          blocks: parseRequiredInt(experimentField(row, "exp_inv_blocks_"), name + " blocks"),
+          min_amt: parseRequiredInt(experimentField(row, "exp_inv_min_amt_"), name + " min_amt"),
+          max_amt: parseRequiredInt(experimentField(row, "exp_inv_max_amt_"), name + " max_amt"),
+          max_fees: parseRequiredInt(experimentField(row, "exp_inv_max_fees_"), name + " max_fees"),
+          path_finder: pathFinder
+        }});
+      }}
+
+      const outputs = [];
+      if (experimentChecked(row, "exp_output_network_")) outputs.push("network");
+      if (experimentChecked(row, "exp_output_invoice_")) outputs.push("invoice");
+      return {{ name, commands, outputs: outputs.length ? outputs : ["network"] }};
     }}
 
     function updateExperimentVisibility() {{
@@ -1503,39 +1471,6 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
       return true;
     }}
 
-    function updateExperimentSummary() {{
-      updateExperimentVisibility();
-      const summary = document.getElementById("experiments-summary");
-      if (!summary) return;
-      summary.textContent = "";
-      try {{
-        const experiments = buildExperimentsFromForm();
-        if (!Array.isArray(experiments) || experiments.length === 0) {{
-          summary.textContent = "No experiments configured.";
-          return;
-        }}
-        const list = document.createElement("ul");
-        list.className = "experiment-list";
-        for (const experiment of experiments) {{
-          const item = document.createElement("li");
-          const name = document.createElement("strong");
-          name.textContent = experiment.name || "experiment";
-          const details = document.createElement("span");
-          details.className = "muted";
-          const commands = Array.isArray(experiment.commands) ? experiment.commands.map(commandLabel).join(" -> ") : "";
-          const outputs = Array.isArray(experiment.outputs) ? experiment.outputs.join(", ") : (experiment.outputs || experiment.reports || "network");
-          details.textContent = "\\ncommands: " + (commands || "none") + "\\noutputs: " + outputs;
-          item.appendChild(name);
-          item.appendChild(document.createElement("br"));
-          item.appendChild(details);
-          list.appendChild(item);
-        }}
-        summary.appendChild(list);
-      }} catch (_error) {{
-        summary.textContent = "Invalid experiments JSON.";
-      }}
-    }}
-
     document.addEventListener("click", (event) => {{
       const button = event.target.closest("[data-browse-target]");
       if (button) {{
@@ -1553,19 +1488,18 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
 
     document.addEventListener("input", (event) => {{
       if (event.target.matches("[data-dse-values]")) updateSpaceCount();
-      if (event.target.matches("[data-experiment-field]")) updateExperimentSummary();
     }});
     document.addEventListener("change", (event) => {{
       if (event.target.matches("[data-dse-include]")) updateSpaceCount();
       if (event.target.matches("[name^='exp_kind_']")) {{
         if (!confirmRecipeChange(event.target)) {{
-          updateExperimentSummary();
+          updateExperimentVisibility();
           return;
         }}
-        updateExperimentSummary();
+        updateExperimentVisibility();
         return;
       }}
-      if (event.target.matches("[data-experiment-enabled], [name^='exp_boot_mode_'], [name^='exp_balance_'], [name^='exp_path_path_finder_'], [name^='exp_route_path_finder_'], [name^='exp_inv_path_finder_'], [data-experiment-output]")) updateExperimentSummary();
+      if (event.target.matches("[name^='exp_boot_mode_'], [name^='exp_balance_']")) updateExperimentVisibility();
     }});
     function updateRunStatus() {{
       const panel = document.querySelector("[data-run-job]");
@@ -1594,7 +1528,6 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
     }}
     updateExperimentVisibility();
     updateJsonPreview();
-    updateExperimentSummary();
     updateRunStatus();
   }})();
   </script>
@@ -1621,17 +1554,17 @@ def token_query() -> str:
 def render_home() -> bytes:
     body = """
 <section class="grid">
-  <div class="card">
+  <div class="card card-create">
     <h2>Create DSE JSON</h2>
-    <p class="muted">Build or load a DSE JSON by selecting parameters from a properties file and defining experiments.</p>
+    <p class="muted">Build or load a DSE JSON by selecting parameters from a properties file and defining one experiment.</p>
     <a href="/create">Open</a>
   </div>
-  <div class="card">
+  <div class="card card-run">
     <h2>Run DSE</h2>
     <p class="muted">Configure and launch the existing DSE runner from the GUI.</p>
     <a href="/run">Open</a>
   </div>
-  <div class="card">
+  <div class="card card-visualize">
     <h2>Open DSE Visualizer</h2>
     <p class="muted">Preview DSE reports and export bar, line, scatter, or pie PDFs.</p>
     <a href="/visualize">Open</a>
@@ -1654,179 +1587,151 @@ def path_control(label: str, name: str, value: str, mode: str, browse_action: st
 """
 
 
-def experiment_command_label(command: object) -> str:
-    if isinstance(command, str):
-        return command
-    if isinstance(command, dict):
-        return str(command.get("command", command.get("cmd", "command")))
-    return "command"
+def dse_json_file_control(value: str) -> str:
+    return f"""
+<label>Current DSE JSON
+  <div class="path-field multi-action">
+    <input id="dse_json_path" class="path-input" name="dse_json_path" value="{escape(value)}">
+    <button type="button" class="secondary" data-browse-target="dse_json_path" data-browse-mode="json" data-browse-action="/create/load">Load</button>
+    <button type="button" class="secondary" data-browse-target="dse_json_path" data-browse-mode="save_json" data-browse-action="/create/save">Save</button>
+  </div>
+</label>
+"""
 
 
-def experiment_summary_html(experiments: list[dict[str, object]]) -> str:
-    if not experiments:
-        return '<p class="muted">No experiments configured.</p>'
-    items = []
-    for experiment in experiments:
-        name = str(experiment.get("name", "experiment"))
-        commands = experiment.get("commands", [])
-        outputs = experiment.get("outputs", experiment.get("reports", []))
-        if isinstance(commands, list):
-            command_text = " -> ".join(experiment_command_label(command) for command in commands)
-        else:
-            command_text = str(commands)
-        if isinstance(outputs, list):
-            output_text = ", ".join(str(output) for output in outputs)
-        else:
-            output_text = str(outputs)
-        items.append(
-            f"<li><strong>{escape(name)}</strong><br>"
-            f"<span class=\"muted\">commands: {escape(command_text or 'none')}<br>"
-            f"outputs: {escape(output_text or 'network')}</span></li>"
-        )
-    return '<ul class="experiment-list">' + "".join(items) + "</ul>"
-
-
-def render_experiment_editor(rows: list[dict[str, str]]) -> str:
-    row_html = []
-    for index, row in enumerate(rows):
-        kind = row.get("kind", "invoice")
-        boot_mode = row.get("boot_mode", "scratch")
-        boot_file_hidden = " hidden" if boot_mode != "load" else ""
-        boot_file_id = f"exp_boot_file_{index}"
-        balance_hidden = " hidden" if kind == "bootstrap" else ""
-        path_hidden = "" if kind == "path" else " hidden"
-        route_hidden = "" if kind == "route" else " hidden"
-        invoice_hidden = "" if kind == "invoice" else " hidden"
-        enabled = " checked" if row.get("enabled") == "on" else ""
-        output_network = " checked" if row.get("output_network") == "on" else ""
-        output_invoice = " checked" if row.get("output_invoice") == "on" else ""
-        row_html.append(
-            f"""
+def render_experiment_editor(row: dict[str, str]) -> str:
+    kind = row.get("kind", "invoice")
+    boot_mode = row.get("boot_mode", "scratch")
+    boot_file_hidden = " hidden" if boot_mode != "load" else ""
+    balance_hidden = " hidden" if kind == "bootstrap" else ""
+    path_hidden = "" if kind == "path" else " hidden"
+    route_hidden = "" if kind == "route" else " hidden"
+    invoice_hidden = "" if kind == "invoice" else " hidden"
+    output_network = " checked" if row.get("output_network") == "on" else ""
+    output_invoice = " checked" if row.get("output_invoice") == "on" else ""
+    return f"""
 <section class="category experiment-card" data-experiment-row>
   <div class="category-header experiment-header">
-    <label class="summary-check"><span><input type="checkbox" name="exp_enabled_{index}" data-experiment-enabled{enabled}> Use experiment</span></label>
     <label class="summary-field">Name
-      <input name="exp_name_{index}" data-experiment-field value="{escape(row.get("name", ""))}">
+      <input name="exp_name_0" data-experiment-field value="{escape(row.get("name", ""))}">
     </label>
     <label class="summary-field">Recipe
-      {select_html(f"exp_kind_{index}", list(EXPERIMENT_KIND_LABELS), kind, EXPERIMENT_KIND_LABELS)}
+      {select_html("exp_kind_0", list(EXPERIMENT_KIND_LABELS), kind, EXPERIMENT_KIND_LABELS)}
     </label>
   </div>
-  <details class="experiment-details">
+  <details class="experiment-details" open>
     <summary>Command configuration</summary>
     <div class="experiment-command-grid">
-      <details class="command-block">
+      <details class="command-block command-network">
         <summary class="command-title"><span>Network source</span><code>boot</code></summary>
         <div class="command-fields">
           <label>Source
-            {select_html(f"exp_boot_mode_{index}", list(BOOT_MODE_LABELS), boot_mode, BOOT_MODE_LABELS)}
+            {select_html("exp_boot_mode_0", list(BOOT_MODE_LABELS), boot_mode, BOOT_MODE_LABELS)}
           </label>
           <label data-boot-file-block{boot_file_hidden}>Snapshot .dat file
             <div class="path-field">
-              <input id="{boot_file_id}" name="exp_boot_file_{index}" data-experiment-field value="{escape(row.get("boot_file", ""))}">
-              <button type="button" class="secondary" data-browse-target="{boot_file_id}" data-browse-mode="dat">Browse</button>
+              <input id="exp_boot_file_0" name="exp_boot_file_0" data-experiment-field value="{escape(row.get("boot_file", ""))}">
+              <button type="button" class="secondary" data-browse-target="exp_boot_file_0" data-browse-mode="dat">Browse</button>
             </div>
           </label>
         </div>
       </details>
 
-    <details class="command-block" data-balance-block{balance_hidden}>
+    <details class="command-block command-balance" data-balance-block{balance_hidden}>
       <summary class="command-title"><span>Balance command</span><code>bal / rndbal</code></summary>
       <div class="command-fields">
         <label>Balance setup
-          {select_html(f"exp_balance_{index}", list(BALANCE_MODE_LABELS), row.get("balance", "none"), BALANCE_MODE_LABELS)}
+          {select_html("exp_balance_0", list(BALANCE_MODE_LABELS), row.get("balance", "none"), BALANCE_MODE_LABELS)}
         </label>
         <label>Balance level for bal
-          <input name="exp_bal_level_{index}" data-experiment-field value="{escape(row.get("bal_level", ""))}">
+          <input name="exp_bal_level_0" data-experiment-field value="{escape(row.get("bal_level", ""))}">
         </label>
         <label>Min balance delta
-          <input name="exp_min_delta_{index}" data-experiment-field value="{escape(row.get("min_delta", ""))}">
+          <input name="exp_min_delta_0" data-experiment-field value="{escape(row.get("min_delta", ""))}">
         </label>
       </div>
     </details>
 
-    <details class="command-block" data-command-block="path"{path_hidden}>
+    <details class="command-block command-path" data-command-block="path"{path_hidden}>
       <summary class="command-title"><span>Path finding command</span><code>path</code></summary>
       <div class="command-fields">
         <label>Start node
-          <input name="exp_path_start_{index}" data-experiment-field value="{escape(row.get("path_start", ""))}">
+          <input name="exp_path_start_0" data-experiment-field value="{escape(row.get("path_start", ""))}">
         </label>
         <label>Destination node
-          <input name="exp_path_destination_{index}" data-experiment-field value="{escape(row.get("path_destination", ""))}">
+          <input name="exp_path_destination_0" data-experiment-field value="{escape(row.get("path_destination", ""))}">
         </label>
         <label>Amount
-          <input name="exp_path_amount_{index}" data-experiment-field value="{escape(row.get("path_amount", ""))}">
+          <input name="exp_path_amount_0" data-experiment-field value="{escape(row.get("path_amount", ""))}">
         </label>
         <label>Path finder
-          {select_html(f"exp_path_path_finder_{index}", PATH_FINDER_OPTIONS, row.get("path_path_finder", "lnd"))}
+          {select_html("exp_path_path_finder_0", PATH_FINDER_OPTIONS, row.get("path_path_finder", "lnd"))}
         </label>
         <label>Top K paths
-          <input name="exp_path_topk_{index}" data-experiment-field value="{escape(row.get("path_topk", ""))}">
+          <input name="exp_path_topk_0" data-experiment-field value="{escape(row.get("path_topk", ""))}">
         </label>
       </div>
     </details>
 
-    <details class="command-block" data-command-block="route"{route_hidden}>
+    <details class="command-block command-route" data-command-block="route"{route_hidden}>
       <summary class="command-title"><span>Single payment command</span><code>route</code></summary>
       <div class="command-fields">
         <label>Sender node
-          <input name="exp_route_sender_{index}" data-experiment-field value="{escape(row.get("route_sender", ""))}">
+          <input name="exp_route_sender_0" data-experiment-field value="{escape(row.get("route_sender", ""))}">
         </label>
         <label>Destination node
-          <input name="exp_route_destination_{index}" data-experiment-field value="{escape(row.get("route_destination", ""))}">
+          <input name="exp_route_destination_0" data-experiment-field value="{escape(row.get("route_destination", ""))}">
         </label>
         <label>Amount
-          <input name="exp_route_amount_{index}" data-experiment-field value="{escape(row.get("route_amount", ""))}">
+          <input name="exp_route_amount_0" data-experiment-field value="{escape(row.get("route_amount", ""))}">
         </label>
         <label>Max fees
-          <input name="exp_route_max_fees_{index}" data-experiment-field value="{escape(row.get("route_max_fees", ""))}">
+          <input name="exp_route_max_fees_0" data-experiment-field value="{escape(row.get("route_max_fees", ""))}">
         </label>
         <label>Path finder
-          {select_html(f"exp_route_path_finder_{index}", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("route_path_finder", "lnd"))}
+          {select_html("exp_route_path_finder_0", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("route_path_finder", "lnd"))}
         </label>
         <label>Route message
-          <input name="exp_route_message_{index}" data-experiment-field value="{escape(row.get("route_message", ""))}">
+          <input name="exp_route_message_0" data-experiment-field value="{escape(row.get("route_message", ""))}">
         </label>
       </div>
     </details>
 
-    <details class="command-block" data-command-block="invoice"{invoice_hidden}>
+    <details class="command-block command-invoice" data-command-block="invoice"{invoice_hidden}>
       <summary class="command-title"><span>Invoice campaign command</span><code>inv</code></summary>
       <div class="command-fields">
         <label>Node events / block
-          <input name="exp_inv_node_events_per_block_{index}" data-experiment-field value="{escape(row.get("inv_node_events_per_block", ""))}">
+          <input name="exp_inv_node_events_per_block_0" data-experiment-field value="{escape(row.get("inv_node_events_per_block", ""))}">
         </label>
         <label>Blocks
-          <input name="exp_inv_blocks_{index}" data-experiment-field value="{escape(row.get("inv_blocks", ""))}">
+          <input name="exp_inv_blocks_0" data-experiment-field value="{escape(row.get("inv_blocks", ""))}">
         </label>
         <label>Min invoice amount
-          <input name="exp_inv_min_amt_{index}" data-experiment-field value="{escape(row.get("inv_min_amt", ""))}">
+          <input name="exp_inv_min_amt_0" data-experiment-field value="{escape(row.get("inv_min_amt", ""))}">
         </label>
         <label>Max invoice amount
-          <input name="exp_inv_max_amt_{index}" data-experiment-field value="{escape(row.get("inv_max_amt", ""))}">
+          <input name="exp_inv_max_amt_0" data-experiment-field value="{escape(row.get("inv_max_amt", ""))}">
         </label>
         <label>Max fees
-          <input name="exp_inv_max_fees_{index}" data-experiment-field value="{escape(row.get("inv_max_fees", ""))}">
+          <input name="exp_inv_max_fees_0" data-experiment-field value="{escape(row.get("inv_max_fees", ""))}">
         </label>
         <label>Path finder
-          {select_html(f"exp_inv_path_finder_{index}", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("inv_path_finder", "lnd"))}
+          {select_html("exp_inv_path_finder_0", [option for option in PATH_FINDER_OPTIONS if option != "all"], row.get("inv_path_finder", "lnd"))}
         </label>
       </div>
     </details>
 
-    <details class="command-block">
+    <details class="command-block command-outputs">
       <summary class="command-title"><span>Report outputs</span><code>outputs</code></summary>
       <div class="actions">
-        <label><span><input type="checkbox" name="exp_output_network_{index}" data-experiment-output{output_network}> Network stats</span></label>
-        <label><span><input type="checkbox" name="exp_output_invoice_{index}" data-experiment-output{output_invoice}> Invoice report</span></label>
+        <label><span><input type="checkbox" name="exp_output_network_0" data-experiment-output{output_network}> Network stats</span></label>
+        <label><span><input type="checkbox" name="exp_output_invoice_0" data-experiment-output{output_invoice}> Invoice report</span></label>
       </div>
     </details>
     </div>
   </details>
 </section>
 """
-        )
-    return f'<input type="hidden" name="experiment_count" value="{len(rows)}">' + "".join(row_html)
 
 
 def render_create(
@@ -1839,9 +1744,10 @@ def render_create(
     if state is None:
         state = default_create_state(query, message or query.get("message", ""), error or query.get("error", ""))
     parameter_names = sorted(set(state.parameters) | set(state.selected_parameters), key=parameter_sort_key)
-    experiment_rows = state.experiment_rows if state.experiment_rows is not None else experiment_rows_for_render(state.experiments)
+    experiment = state.experiment
+    experiment_row = state.experiment_row if state.experiment_row is not None else experiment_row_for_render(experiment)
     selected_count, space_size = selected_space_size(state.selected_parameters)
-    preview_json = json.dumps({"parameters": state.selected_parameters, "experiments": state.experiments}, indent=2)
+    preview_json = json.dumps({"parameters": state.selected_parameters, "experiment": experiment}, indent=2)
 
     grouped_rows: dict[str, list[str]] = {}
     for index, name in enumerate(parameter_names):
@@ -1867,9 +1773,10 @@ def render_create(
         rows = grouped_rows.pop(category, [])
         if not rows:
             continue
+        category_class = category_style_class(category)
         category_html.append(
             f"""
-<details class="category">
+<details class="category {category_class}">
   <summary class="category-header">
     <h3>{escape(category)}</h3>
     <span class="muted">{len(rows)} parameters</span>
@@ -1882,9 +1789,10 @@ def render_create(
 """
         )
     for category, rows in sorted(grouped_rows.items()):
+        category_class = category_style_class(category)
         category_html.append(
             f"""
-<details class="category">
+<details class="category {category_class}">
   <summary class="category-header">
     <h3>{escape(category)}</h3>
     <span class="muted">{len(rows)} parameters</span>
@@ -1900,13 +1808,12 @@ def render_create(
     body = f"""
 <form id="create-save-form" method="post" action="/create/save">
   {token_input()}
-  <details class="panel">
+  <details class="panel panel-files">
     <summary><h2>DSE JSON files</h2></summary>
     <div class="disclosure-body">
     <div class="row3">
       {path_control("Properties file", "properties_path", state.properties_path, "properties")}
-      {path_control("Load DSE JSON", "dse_json_path", state.dse_json_path, "json", "/create/load")}
-      {path_control("Save DSE JSON", "save_path", state.save_path, "save_json", "/create/save")}
+      {dse_json_file_control(state.dse_json_path)}
     </div>
     <div class="actions">
       <button type="submit" class="secondary" formaction="/create/refresh">Reload properties</button>
@@ -1914,17 +1821,15 @@ def render_create(
     </div>
   </details>
 
-  <details class="panel">
-    <summary><h2>Experiments section of the DSE JSON</h2></summary>
+  <details class="panel panel-experiment">
+    <summary><h2>Experiment section of the DSE JSON</h2></summary>
     <div class="disclosure-body">
-    <p class="muted">Select experiments, choose their command recipe, and edit the command parameters. The JSON preview below shows the generated experiment specification.</p>
-    {render_experiment_editor(experiment_rows)}
-    <h2>Configured experiments</h2>
-    <div id="experiments-summary">{experiment_summary_html(state.experiments)}</div>
+    <p class="muted">Define the one experiment that will run for each generated parameter-space configuration. Choose the command recipe, network source, command parameters, and report outputs.</p>
+    {render_experiment_editor(experiment_row)}
     </div>
   </details>
 
-  <details class="panel">
+  <details class="panel panel-parameters">
     <summary><h2>Parameter space section of the DSE JSON</h2></summary>
     <div class="disclosure-body">
     <div class="space-summary">
@@ -1938,7 +1843,7 @@ def render_create(
     </div>
   </details>
 
-  <details class="panel">
+  <details class="panel panel-preview">
     <summary><h2>Resulting DSE JSON</h2></summary>
     <div class="disclosure-body">
     <p id="dse-json-preview-status" class="muted">{selected_count} selected parameters, {space_size} configurations</p>
@@ -1959,7 +1864,7 @@ def render_run(query: dict[str, str], message: str = "", error: str = "") -> byt
         initial_status = job.status if job else "unknown"
         initial_output = job.output if job else ""
         job_panel = f"""
-<section class="panel" data-run-job="{escape(job_id)}">
+<section class="panel panel-run" data-run-job="{escape(job_id)}">
   <h2>DSE run</h2>
   <p class="muted" data-run-status>Status: {escape(initial_status)}</p>
   <form method="post" action="/run/cancel" class="actions">
@@ -1971,7 +1876,7 @@ def render_run(query: dict[str, str], message: str = "", error: str = "") -> byt
 </section>
 """
     body = f"""
-<form method="post" action="/run/start" class="panel">
+<form method="post" action="/run/start" class="panel panel-run">
   {token_input()}
   <div class="row">
     {path_control("Base properties", "base_properties", query.get("base_properties", DEFAULT_PROPERTIES), "properties")}
@@ -2039,7 +1944,7 @@ def render_visualize(query: dict[str, str], error: str = "") -> bytes:
     )
 
     body = f"""
-<form method="get" action="/visualize" class="panel">
+<form method="get" action="/visualize" class="panel panel-visualize">
   <div class="row">
     {path_control("DSE output", "input_dir", input_dir, "dir")}
     <label>Report
@@ -2078,8 +1983,8 @@ def render_visualize(query: dict[str, str], error: str = "") -> bytes:
   <a class="button" href="/visualize/pdf?{escape(pdf_query)}">Create PDF</a>
 </form>
 <section class="row3">
-  <div class="panel figure">{figure}</div>
-  <div class="panel">
+  <div class="panel panel-visualize figure">{figure}</div>
+  <div class="panel panel-preview">
     <h2>Parameter context</h2>
     {context}
     {warnings}
@@ -2155,13 +2060,12 @@ class WizardHandler(BaseHTTPRequestHandler):
         if self.path == "/create/save":
             try:
                 require_token(form)
-                save_path, _payload = save_dse_from_form(form)
+                output_path, _payload = save_dse_from_form(form)
                 params = {
                     "properties_path": form_value(form, "properties_path", DEFAULT_PROPERTIES),
-                    "dse_json_path": display_path(save_path),
-                    "save_path": display_path(save_path),
+                    "dse_json_path": display_path(output_path),
                     "load_json": "1",
-                    "message": f"Saved {display_path(save_path)}",
+                    "message": f"Saved {display_path(output_path)}",
                 }
                 self.respond(*redirect("/create?" + urlencode(params)))
             except Exception as exc:
@@ -2256,7 +2160,6 @@ def create_redirect_params(form: dict[str, list[str]], *, load_json: bool) -> di
     params = {
         "properties_path": form_value(form, "properties_path", DEFAULT_PROPERTIES),
         "dse_json_path": form_value(form, "dse_json_path", DEFAULT_DSE_JSON),
-        "save_path": form_value(form, "save_path", DEFAULT_SAVE_JSON),
     }
     if load_json:
         params["load_json"] = "1"

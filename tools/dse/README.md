@@ -5,7 +5,7 @@ This folder contains the UltraViolet design-space exploration workflow:
 | Tool | Purpose |
 | --- | --- |
 | `uv_dse_gen` | Generate `.properties` files from a JSON parameter space. |
-| `uv_dse_run` | Generate configs, run UltraViolet experiments, and collect structured outputs. |
+| `uv_dse_run` | Generate configs, run the selected UltraViolet experiment, and collect structured outputs. |
 | `uv_dse_visualizer.py` | Open a GUI or export PDFs from DSE runner outputs. |
 | `uv_dse_wizard.py` | Open a single browser wizard for creating JSON, running DSE, and visualizing results. |
 
@@ -29,7 +29,7 @@ The main menu has three actions:
 
 | Action | What It Opens |
 | --- | --- |
-| `Create DSE JSON` | A form that loads a properties file, lists parameters and current values, lets you select DSE value ranges, edit experiments, and load/save DSE JSON files. |
+| `Create DSE JSON` | A form that loads a properties file, lists parameters and current values, lets you select DSE value ranges, edit the experiment, and load/save DSE JSON files. |
 | `Run DSE` | A form for base properties, DSE JSON path, output directory, safe replacement controls, and optional `--limit`, then runs `uv_dse_run` as a background job with live output. |
 | `Open DSE Visualizer` | The integrated report visualizer for selecting experiment, report, metric, graph type, filters, and PDF export. |
 
@@ -45,9 +45,9 @@ For safety, the wizard binds to `127.0.0.1` by default. Binding to a non-loopbac
 
 The Run DSE screen does not replace existing output directories unless replacement is explicitly enabled and confirmed. Long runs continue in the background; the page polls status and streams runner output.
 
-In the JSON creator, choosing a file from `Load DSE JSON` loads that JSON immediately. Choosing a destination from `Save DSE JSON` saves the current editor contents immediately. The experiments section is graphical: enable experiments, edit their names, choose their recipes, choose whether the network source is a fresh bootstrap or a `.dat` snapshot, choose their balance setup and report outputs, and edit recipe-specific command parameters. Major sections, experiment command configurations, parameter categories, and command blocks start collapsed; expand only the parts you need. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
+In the JSON creator, `Current DSE JSON` is the single active JSON file. `Load` opens a native selector and then loads the chosen JSON immediately. `Save` opens a native save dialog starting from the current JSON path and then saves the current editor contents to the chosen path. The experiment section is graphical: edit the single experiment name, choose its command recipe, choose whether the network source is a fresh bootstrap or a `.dat` snapshot, choose its balance setup and report outputs, and edit recipe-specific command parameters. Major sections, parameter categories, and command blocks start collapsed; the single experiment command configuration starts expanded when you open the experiment section. Use `Refresh Preview` to update the resulting JSON preview and configuration count after changing parameter or experiment selections.
 
-Changing an experiment recipe changes which command is emitted into the DSE JSON. The wizard keeps values entered in hidden recipe sections so switching back restores them, and asks for confirmation before a recipe change hides the previously active command from the saved JSON.
+Changing the experiment recipe changes which command is emitted into the DSE JSON. The wizard keeps values entered in hidden recipe sections so switching back restores them, and asks for confirmation before a recipe change hides the previously active command from the saved JSON.
 
 The parameter editor treats each field as a comma-separated list of DSE alternatives:
 
@@ -88,25 +88,23 @@ cat > dse_runs/tutorial/first_dse.json <<'JSON'
     "pathfinding_max_hops": [3, 6],
     "seed": [1, 7]
   },
-  "experiments": [
-    {
-      "name": "quick_invoice_hops",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "inv",
-          "node_events_per_block": 0.10,
-          "blocks": 4,
-          "min_amt": 50000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "quick_invoice_hops",
+    "commands": [
+      "boot",
+      "rndbal",
+      {
+        "command": "inv",
+        "node_events_per_block": 0.10,
+        "blocks": 4,
+        "min_amt": 50000,
+        "max_amt": 100000,
+        "max_fees": 1000,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 JSON
 ```
@@ -305,7 +303,7 @@ Invoice-count pie chart:
 `uv_dse_run` expects a JSON object with:
 
 - `parameters`: UltraViolet `.properties` keys and arrays of values.
-- `experiments`: experiment definitions to run for every parameter combination.
+- `experiment`: the single experiment definition to run for every parameter combination.
 
 Basic shape:
 
@@ -315,13 +313,11 @@ Basic shape:
     "bootstrap_nodes": [100],
     "seed": [1, 7]
   },
-  "experiments": [
-    {
-      "name": "bootstrap_stats",
-      "commands": ["boot"],
-      "outputs": ["network"]
-    }
-  ]
+  "experiment": {
+    "name": "bootstrap_stats",
+    "commands": ["boot"],
+    "outputs": ["network"]
+  }
 }
 ```
 
@@ -376,7 +372,7 @@ For the `path` command only, `path_finder: "all"` runs all strategies and record
 
 Relative snapshot paths are resolved from the DSE JSON file directory before each run starts.
 
-When `boot` loads a `.dat` snapshot, UltraViolet restores the config stored in that snapshot. Fresh-bootstrap parameters such as `bootstrap_nodes` and `bootstrap_blocks` therefore do not reshape that loaded network during the run; use snapshot loading for fixed-topology experiments or vary the snapshot file deliberately by editing separate experiment definitions.
+When `boot` loads a `.dat` snapshot, UltraViolet restores the config stored in that snapshot. Fresh-bootstrap parameters such as `bootstrap_nodes` and `bootstrap_blocks` therefore do not reshape that loaded network during the run; use snapshot loading for a fixed-topology run or prepare separate DSE JSON files when you need to compare different snapshots.
 
 ### Runner Outputs
 
@@ -440,7 +436,7 @@ The visualizer reads `runs_index.jsonl` first, then falls back to `runs_index.cs
 
 ### Config Generator Only
 
-Use `uv_dse_gen` when you only want generated `.properties` files and do not want to run experiments:
+Use `uv_dse_gen` when you only want generated `.properties` files and do not want to run the experiment:
 
 ```bash
 ./uv_dse_gen ../../uv_configs/template.properties uv_dse_example.json \
@@ -448,7 +444,7 @@ Use `uv_dse_gen` when you only want generated `.properties` files and do not wan
   --force
 ```
 
-`uv_dse_gen` reads only the `parameters` section. It ignores `experiments`.
+`uv_dse_gen` reads only the `parameters` section. It ignores `experiment`.
 
 ### Visualizer GUI
 
@@ -525,13 +521,11 @@ Use this to compare topology metrics as network size changes.
     "bootstrap_blocks": [100],
     "seed": [1, 7, 13]
   },
-  "experiments": [
-    {
-      "name": "bootstrap_stats",
-      "commands": ["boot"],
-      "outputs": ["network"]
-    }
-  ]
+  "experiment": {
+    "name": "bootstrap_stats",
+    "commands": ["boot"],
+    "outputs": ["network"]
+  }
 }
 ```
 
@@ -557,25 +551,23 @@ Use this to compare pathfinding search work and success rate.
     "pathfinding_max_hops": [3, 4, 5, 6],
     "seed": [1, 7, 13]
   },
-  "experiments": [
-    {
-      "name": "invoice_hop_sweep",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "inv",
-          "node_events_per_block": 0.05,
-          "blocks": 100,
-          "min_amt": 1000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "invoice_hop_sweep",
+    "commands": [
+      "boot",
+      "rndbal",
+      {
+        "command": "inv",
+        "node_events_per_block": 0.05,
+        "blocks": 100,
+        "min_amt": 1000,
+        "max_amt": 100000,
+        "max_fees": 1000,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 ```
 
@@ -589,9 +581,9 @@ Graph: bar
 Aggregation: mean
 ```
 
-### Liquidity Mode Comparison
+### Fixed Liquidity Invoice Campaign
 
-Use separate experiments to compare fixed and randomized channel balances on the same topology parameter space.
+Use this to evaluate invoice outcomes after setting a fixed initiator-side channel balance level. To compare this against randomized balances, create a second DSE JSON with the same parameter space and replace the `bal` command with `rndbal`.
 
 ```json
 {
@@ -600,42 +592,23 @@ Use separate experiments to compare fixed and randomized channel balances on the
     "bootstrap_blocks": [100],
     "seed": [1, 7, 13]
   },
-  "experiments": [
-    {
-      "name": "fixed_balance_invoice",
-      "commands": [
-        "boot",
-        { "command": "bal", "level": 0.5 },
-        {
-          "command": "inv",
-          "node_events_per_block": 0.05,
-          "blocks": 100,
-          "min_amt": 1000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    },
-    {
-      "name": "random_balance_invoice",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "inv",
-          "node_events_per_block": 0.05,
-          "blocks": 100,
-          "min_amt": 1000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "fixed_balance_invoice",
+    "commands": [
+      "boot",
+      { "command": "bal", "level": 0.5 },
+      {
+        "command": "inv",
+        "node_events_per_block": 0.05,
+        "blocks": 100,
+        "min_amt": 1000,
+        "max_amt": 100000,
+        "max_fees": 1000,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 ```
 
@@ -644,7 +617,7 @@ Suggested visualizer settings:
 ```text
 Report: invoice
 Metric: Success rate (%)
-X parameter: experiment
+X parameter: seed
 Graph: bar
 Aggregation: mean
 ```
@@ -661,25 +634,23 @@ Use this to compare invoice outcomes under different hub fee policies.
     "profile.hub.mean_ppm_fee": [300, 700, 1200],
     "seed": [1, 7, 13]
   },
-  "experiments": [
-    {
-      "name": "invoice_fee_sweep",
-      "commands": [
-        "boot",
-        "rndbal",
-        {
-          "command": "inv",
-          "node_events_per_block": 0.05,
-          "blocks": 100,
-          "min_amt": 1000,
-          "max_amt": 100000,
-          "max_fees": 1000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "invoice_fee_sweep",
+    "commands": [
+      "boot",
+      "rndbal",
+      {
+        "command": "inv",
+        "node_events_per_block": 0.05,
+        "blocks": 100,
+        "min_amt": 1000,
+        "max_amt": 100000,
+        "max_fees": 1000,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 ```
 
@@ -705,24 +676,22 @@ Use this for controlled route attempts between selected nodes.
     "pathfinding_max_hops": [4, 6, 8],
     "seed": [1, 7, 13]
   },
-  "experiments": [
-    {
-      "name": "single_route_probe",
-      "commands": [
-        "boot",
-        { "command": "bal", "level": 0.5 },
-        {
-          "command": "route",
-          "sender": "pk0",
-          "destination": "pk99",
-          "amount": 25000,
-          "max_fees": 1500,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "single_route_probe",
+    "commands": [
+      "boot",
+      { "command": "bal", "level": 0.5 },
+      {
+        "command": "route",
+        "sender": "pk0",
+        "destination": "pk99",
+        "amount": 25000,
+        "max_fees": 1500,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 ```
 
@@ -736,47 +705,30 @@ Graph: scatter
 Aggregation: mean
 ```
 
-### Fixed Snapshot Route Probes
+### Fixed Snapshot Route Probe
 
-Use this when you want repeated experiments on the same saved `.dat` network instead of regenerating a topology. Keep the parameter space single-valued unless you intentionally need multiple generated config folders; the loaded snapshot restores its own saved simulator config.
+Use this when you want to run a command sequence on the same saved `.dat` network instead of regenerating a topology. Keep the parameter space single-valued unless you intentionally need multiple generated config folders; the loaded snapshot restores its own saved simulator config.
 
 ```json
 {
   "parameters": {
     "seed": [1]
   },
-  "experiments": [
-    {
-      "name": "snapshot_route_25k",
-      "commands": [
-        { "command": "boot", "mode": "load", "file": "snapshots/base-network.dat" },
-        {
-          "command": "route",
-          "sender": "pk0",
-          "destination": "pk99",
-          "amount": 25000,
-          "max_fees": 1500,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    },
-    {
-      "name": "snapshot_route_100k",
-      "commands": [
-        { "command": "boot", "mode": "load", "file": "snapshots/base-network.dat" },
-        {
-          "command": "route",
-          "sender": "pk0",
-          "destination": "pk99",
-          "amount": 100000,
-          "max_fees": 3000,
-          "path_finder": "lnd"
-        }
-      ],
-      "outputs": ["network", "invoice"]
-    }
-  ]
+  "experiment": {
+    "name": "snapshot_route_probe",
+    "commands": [
+      { "command": "boot", "mode": "load", "file": "snapshots/base-network.dat" },
+      {
+        "command": "route",
+        "sender": "pk0",
+        "destination": "pk99",
+        "amount": 25000,
+        "max_fees": 1500,
+        "path_finder": "lnd"
+      }
+    ],
+    "outputs": ["network", "invoice"]
+  }
 }
 ```
 
@@ -785,7 +737,7 @@ Suggested visualizer settings:
 ```text
 Report: invoice
 Metric: Success rate (%)
-X parameter: experiment
+X parameter: seed
 Graph: bar
 Aggregation: mean
 ```
