@@ -338,6 +338,39 @@ creates:
 2 * 3 = 6 generated configs
 ```
 
+### Parameter-To-Command Dependencies
+
+The DSE runner currently uses a full-factorial execution model. Every value array in `parameters` is crossed with every other value array, and the complete experiment command sequence runs once for each generated configuration. The runner does not currently optimize by reusing earlier command results when only a later command depends on a changed parameter.
+
+Use this table to decide which parameters make sense to vary for a given experiment. The "earliest affected command" column describes the semantic dependency in a fresh-bootstrap run. The "current behavior" column describes what `uv_dse_run` does today.
+
+| Parameter group | Examples | Earliest affected command | Later commands affected | Current behavior and notes |
+| --- | --- | --- | --- | --- |
+| Run/log settings | `debug`, `logfile` | Network construction before `boot` | Usually none scientifically | Full experiment reruns for each value. These are usually not useful DSE dimensions unless you are debugging or measuring logging impact. |
+| Random seed | `seed` | `boot` for fresh topology; `rndbal`; `inv` event generation | All later commands that consume topology, liquidity, or invoice events | Full rerun is conservative and appropriate for fresh bootstrap. Seed does not guarantee byte-for-byte deterministic replay because bootstrap and invoice processing use threads. |
+| Thread/concurrency limit | `max_threads` | Network construction; `boot`; `inv` executor sizing | Timing-sensitive behavior in live threaded commands | Full rerun is conservative. Treat as a performance/concurrency dimension, not as a clean model parameter. |
+| Fresh bootstrap size and timing | `bootstrap_nodes`, `bootstrap_blocks`, `bootstrap_time_median`, `bootstrap_time_mean` | `boot` from scratch | `bal`, `rndbal`, `path`, `route`, `inv`, network and invoice reports | Correct for fresh bootstrap. Changing these values requires a new topology. |
+| Node profile selection | `profile.*.prob`, `profile.*.hubness` | `boot` from scratch | All topology, balance, path, route, invoice, and report behavior | Correct for fresh bootstrap. These control profile assignment and peer-selection tendencies during topology creation. |
+| Node funding and channel structure | `profile.*.min_funding`, `profile.*.max_funding`, `profile.*.min_channels`, `profile.*.max_channels`, `profile.*.min_channel_size`, `profile.*.max_channel_size`, `profile.*.median_channel_size`, `profile.*.mean_channel_size` | `boot` from scratch | Balance, path, route, invoice, and reports | Correct for fresh bootstrap. These reshape the generated network, so later command results cannot be reused safely across values. |
+| Channel fee policy at creation | `base_fee_set`, `profile.*.min_ppm_fee`, `profile.*.max_ppm_fee`, `profile.*.median_ppm_fee`, `profile.*.mean_ppm_fee` | `boot` from scratch | `path`, `route`, `inv`, invoice reports | Correct for fresh bootstrap. `base_fee_set` is itself a simulator multivalue property: quote it in DSE when it should be one value, for example `"0,100,1000"`. |
+| Channel opening protocol | `to_self_delay`, `minimum_depth` | `boot` from scratch | Later topology visibility and payment behavior indirectly | Full rerun is conservative. These affect abstract channel-opening and confirmation behavior. |
+| Gossip propagation | `p2p_max_hops`, `p2p_max_age`, `gossip_flush_size` | `boot` from scratch and live P2P processing | `path`, `route`, `inv`, reports through each node's graph visibility | Full rerun is appropriate when studying graph visibility or payment outcomes. |
+| Simulation timing | `blocktime_ms`, `node_services_tick_ms`, `gossip_flush_period_ms` | `boot` and live command execution | `route`, `inv`, reports | Full rerun is conservative. Change these together; changing only one can change how often services run per block. |
+| Path search bounds | `pathfinding_max_hops` | `path`, `route`, `inv` when using `lnd` or `mini_dijkstra` | Path metadata, invoice search statistics, payment outcomes | Current runner reruns the full experiment, including `boot`. This is safe but can be wasteful when topology is otherwise fixed. |
+| LND path cost model | `pathfinding_lnd_risk_factor`, `pathfinding_lnd_base_attempt_cost_msat`, `pathfinding_lnd_attempt_cost_ppm`, `pathfinding_lnd_default_path_probability` | `path`, `route`, `inv` when `path_finder` is `lnd`; `path` when `path_finder` is `all` | Path costs, selected paths, invoice outcomes, invoice reports | Current runner reruns the full experiment. If the selected pathfinder is `bfs` or `shortest_hop`, these parameters usually produce redundant runs. |
+| Default pathfinding payment amount | `pathfinding_lnd_default_payment_amount_sat` | `path` or `route` only when the command omits `amount` | Path costs and outcomes | Often irrelevant in wizard-generated experiments because `path`, `route`, and `inv` command parameters usually set explicit amounts. |
+| Balance command options | `bal.level`, `bal.min_delta`, `rndbal.min_delta` | `bal` or `rndbal` | `path`, `route`, `inv`, invoice reports | These are experiment command fields, not `.properties` DSE parameters. To sweep them today, create separate DSE JSON files or edit the experiment between runs. |
+| Invoice and route workload options | `inv.blocks`, `inv.node_events_per_block`, `inv.min_amt`, `inv.max_amt`, `inv.max_fees`, `inv.path_finder`, `route.amount`, `route.max_fees`, `route.path_finder`, `path.amount`, `path.topk`, `path.path_finder` | `path`, `route`, or `inv` | Command metadata and reports for that command | These are experiment command fields, not `.properties` DSE parameters. They are not crossed by the current `parameters` object. |
+| Report selection | `experiment.outputs` | Report writing after all commands | None | Report selection is not a DSE parameter. In principle, changing only outputs should not require rerunning the simulator, but the current runner writes reports as part of each run. |
+
+Important implications:
+
+- Add DSE values only for parameters that can affect the selected command sequence. Otherwise the runner will still create extra configurations and rerun the experiment, but the results may be duplicates.
+- For fresh-bootstrap experiments, topology parameters should be varied at the DSE parameter level because `boot` must be rerun.
+- For pathfinding-only sensitivity on a fixed topology, the current tool is conservative but inefficient: it reruns `boot` unless you split workflows manually.
+- When `boot` loads a `.dat` snapshot, UltraViolet restores the config serialized inside that snapshot. Generated DSE `.properties` overrides such as `bootstrap_nodes`, `seed`, and `pathfinding_*` do not reliably reshape or retune the loaded network after the snapshot is applied. Keep snapshot-mode parameter spaces single-valued unless you intentionally need separate output folders.
+- The visualizer can hide or aggregate background variation, but it does not change what was executed. Always check the parameter context before interpreting a figure.
+
 ### Runner Commands
 
 Experiment commands execute in order. A command can be a plain string when no options are needed, or an object when options are needed.

@@ -1483,6 +1483,16 @@ def page(title: str, body: str, message: str = "", error: str = "") -> bytes:
         event.preventDefault();
         updateSpaceCount();
         updateJsonPreview();
+        return;
+      }}
+      const deselectParameters = event.target.closest("#deselect-all-parameters");
+      if (deselectParameters) {{
+        event.preventDefault();
+        for (const checkbox of document.querySelectorAll("[data-dse-include]")) {{
+          checkbox.checked = false;
+        }}
+        updateSpaceCount();
+        updateJsonPreview();
       }}
     }});
 
@@ -1836,6 +1846,7 @@ def render_create(
       <span><strong id="parameter-space-size">{space_size}</strong> configurations</span>
       <span><strong id="selected-parameter-count">{selected_count}</strong> selected parameters</span>
       <span class="muted">Use commas to separate DSE alternatives. Quote one value when it contains commas, for example "0,100,1000".</span>
+      <button type="button" class="secondary" id="deselect-all-parameters">Deselect All</button>
       <button type="button" class="secondary" id="refresh-json-preview">Refresh Preview</button>
     </div>
     <input type="hidden" name="parameter_count" value="{len(parameter_names)}">

@@ -256,6 +256,8 @@ class DseWizardCreateTest(unittest.TestCase):
         self.assertIn(">Load</button>", html)
         self.assertIn(">Save</button>", html)
         self.assertIn('id="refresh-json-preview"', html)
+        self.assertIn('id="deselect-all-parameters"', html)
+        self.assertIn(">Deselect All</button>", html)
         self.assertIn('id="dse-json-preview"', html)
         self.assertIn("[hidden] { display: none !important; }", html)
         self.assertIn('<details class="panel panel-files">', html)
