@@ -5,9 +5,9 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 
-BUILD_DIR="$SCRIPT_DIR/out/production/ultraviolet"
 DEFAULT_CONFIG="$SCRIPT_DIR/uv_configs/template.properties"
 JSON_JAR="$SCRIPT_DIR/src/json-simple-1.1.jar"
+JAVA_RELEASE="${JAVA_RELEASE:-24}"
 
 if [ ! -f "$JSON_JAR" ]; then
   echo "json-simple jar not found: $JSON_JAR" >&2
@@ -24,13 +24,18 @@ if [ ! -f "$CONFIG_PATH" ]; then
   exit 1
 fi
 
-mkdir -p "$BUILD_DIR"
-find "$BUILD_DIR" -name '*.class' -delete
-
+BUILD_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ultraviolet-run.XXXXXX")
+BUILD_DIR="$BUILD_ROOT/classes"
 TMP_SOURCES=$(mktemp)
-trap 'rm -f "$TMP_SOURCES"' EXIT INT TERM
+cleanup() {
+  rm -rf "$BUILD_ROOT"
+  rm -f "$TMP_SOURCES"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$BUILD_DIR"
 find "$SCRIPT_DIR/src" -name '*.java' | sort > "$TMP_SOURCES"
 
-javac -cp "$JSON_JAR" -d "$BUILD_DIR" @"$TMP_SOURCES"
+javac --release "$JAVA_RELEASE" -cp "$JSON_JAR" -d "$BUILD_DIR" @"$TMP_SOURCES"
 
-exec java -cp "$BUILD_DIR:$JSON_JAR" UltraViolet "$CONFIG_PATH"
+java -cp "$BUILD_DIR:$JSON_JAR" UltraViolet "$CONFIG_PATH"
