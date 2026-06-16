@@ -2,9 +2,9 @@ package network;
 
 import message.P2PMessage;
 import misc.UVConfig;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
+import misc.json.Json;
+import misc.json.JsonArray;
+import misc.json.JsonObject;
 import stats.*;
 import protocol.*;
 
@@ -431,17 +431,16 @@ public class UVNetwork implements LNetwork {
 
 
     public void importTopology(String json_file, String root_node) {
-        final JSONParser parser = new JSONParser();
         print_log("Beginning importing file " + json_file);
 
         try {
-            Object parsed = parser.parse(new FileReader(json_file));
-            if (!(parsed instanceof JSONObject jsonObject)) {
+            Object parsed = Json.parse(new FileReader(json_file));
+            if (!(parsed instanceof JsonObject jsonObject)) {
                 print_log("Import failed: root JSON is not an object");
                 return;
             }
 
-            JSONArray nodes = (JSONArray) jsonObject.get("nodes");
+            JsonArray nodes = (JsonArray) jsonObject.get("nodes");
             if (nodes == null) {
                 print_log("Import failed: missing 'nodes' array");
                 return;
@@ -456,7 +455,7 @@ public class UVNetwork implements LNetwork {
             // Build imported state in isolation; commit only when fully valid.
             Map<String, UVNode> importedNodes = new LinkedHashMap<>();
             for (Object node : nodes) {
-                if (!(node instanceof JSONObject nodeObject)) {
+                if (!(node instanceof JsonObject nodeObject)) {
                     print_log("Import failed: invalid node entry " + node);
                     return;
                 }
@@ -470,20 +469,19 @@ public class UVNetwork implements LNetwork {
                 importedNodes.put(pub_key, new UVNode(this, pub_key, alias, 12345678, defaultProfile));
             }
 
-            UVNode root = importedNodes.get(root_node);
+            UVNode root = resolveImportedRootNode(importedNodes, root_node);
             if (root == null) {
-                print_log("Import failed: root node " + root_node + " not found in topology file");
                 return;
             }
 
-            JSONArray edges = (JSONArray) jsonObject.get("edges");
+            JsonArray edges = (JsonArray) jsonObject.get("edges");
             if (edges == null) {
                 print_log("Import failed: missing 'edges' array");
                 return;
             }
 
             for (Object edge : edges) {
-                if (!(edge instanceof JSONObject edgeObject)) {
+                if (!(edge instanceof JsonObject edgeObject)) {
                     print_log("Import failed: invalid edge entry " + edge);
                     return;
                 }
@@ -541,14 +539,65 @@ public class UVNetwork implements LNetwork {
                 uvnodes.clear();
                 uvnodes.putAll(importedNodes);
                 refreshPubkeyList();
-                imported_rootnode_graph = root_node;
+                imported_rootnode_graph = root.getPubKey();
+                bootstrap_started = true;
+                bootstrap_completed = true;
+                bootstrap_latch = null;
+                bootstraps_running = uvnodes.size();
+                bootstraps_ended = uvnodes.size();
             }
 
             print_log("Import completed");
 
-        } catch (IOException | org.json.simple.parser.ParseException | NumberFormatException e) {
+        } catch (IOException | NumberFormatException | ClassCastException e) {
             print_log("Import failed: " + e.getMessage());
         }
+    }
+
+    private UVNode resolveImportedRootNode(Map<String, UVNode> importedNodes, String rootIdentifier) {
+        String identifier = rootIdentifier == null ? "" : rootIdentifier.trim();
+        if (identifier.isBlank()) {
+            print_log("Import failed: missing root node pubkey or alias");
+            return null;
+        }
+
+        UVNode byPubkey = importedNodes.get(identifier);
+        if (byPubkey != null) {
+            return byPubkey;
+        }
+
+        ArrayList<UVNode> aliasMatches = new ArrayList<>();
+        for (UVNode node : importedNodes.values()) {
+            if (identifier.equals(node.getAlias())) {
+                aliasMatches.add(node);
+            }
+        }
+
+        if (aliasMatches.size() == 1) {
+            return aliasMatches.get(0);
+        }
+        if (aliasMatches.size() > 1) {
+            print_log("Import failed: root alias " + identifier + " matches multiple nodes; use the pubkey instead");
+            return null;
+        }
+
+        ArrayList<UVNode> caseInsensitiveAliasMatches = new ArrayList<>();
+        for (UVNode node : importedNodes.values()) {
+            if (node.getAlias() != null && identifier.equalsIgnoreCase(node.getAlias())) {
+                caseInsensitiveAliasMatches.add(node);
+            }
+        }
+
+        if (caseInsensitiveAliasMatches.size() == 1) {
+            return caseInsensitiveAliasMatches.get(0);
+        }
+        if (caseInsensitiveAliasMatches.size() > 1) {
+            print_log("Import failed: root alias " + identifier + " matches multiple nodes; use the pubkey instead");
+            return null;
+        }
+
+        print_log("Import failed: root node " + identifier + " not found in topology file");
+        return null;
     }
     /***************************************************************************************
      * Getters/Setters/Helpers

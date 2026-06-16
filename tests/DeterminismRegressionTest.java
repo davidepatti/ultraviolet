@@ -44,6 +44,34 @@ public class DeterminismRegressionTest {
             }
             """;
 
+    private static final String LARGE_TOTAL_TOPOLOGY_JSON = """
+            {
+              "nodes": [
+                {"pub_key": "R", "alias": "root"},
+                {"pub_key": "A", "alias": "alice"},
+                {"pub_key": "B", "alias": "bob"}
+              ],
+              "edges": [
+                {"channel_id": "ra", "node1_pub": "R", "node2_pub": "A", "capacity": 1500000000},
+                {"channel_id": "rb", "node1_pub": "R", "node2_pub": "B", "capacity": 1500000000}
+              ]
+            }
+            """;
+
+    private static final String JSON_EDGE_CASE_TOPOLOGY = """
+            {
+              "nodes": [
+                {"pub_key": "R", "alias": "root \\"quoted\\""},
+                {"pub_key": "A", "alias": "alice"},
+                {"pub_key": "B", "alias": "bob"}
+              ],
+              "edges": [
+                {"channel_id": "ra", "node1_pub": "R", "node2_pub": "A", "capacity": "123"},
+                {"channel_id": "rb", "node1_pub": "R", "node2_pub": "B", "capacity": 456}
+              ]
+            }
+            """;
+
     public static void main(String[] args) throws Exception {
         UVNetwork.Log = ignored -> { };
 
@@ -139,6 +167,8 @@ public class DeterminismRegressionTest {
         String first = runImportSnapshot(workDir, topologyPath, 7, "same-seed-a");
         String second = runImportSnapshot(workDir, topologyPath, 7, "same-seed-b");
         assertEquals(first, second, "same seed must reproduce the imported topology snapshot");
+        String byAlias = runImportSnapshot(workDir, topologyPath, 7, "same-seed-root-alias", "root");
+        assertEquals(first, byAlias, "root alias must resolve to the same imported topology root as its pubkey");
 
         boolean foundDifferentSeed = false;
         for (int seed = 0; seed < 64; seed++) {
@@ -153,6 +183,44 @@ public class DeterminismRegressionTest {
         }
         if (!foundDifferentSeed) {
             throw new AssertionError("expected at least one alternate seed to alter seeded import choices");
+        }
+
+        assertImportedLargeTopologyStatsDoNotOverflow(workDir);
+        assertJsonEdgeCaseTopologyImportsAsExpected(workDir);
+    }
+
+    private static void assertImportedLargeTopologyStatsDoNotOverflow(Path workDir) throws IOException {
+        Path topologyPath = workDir.resolve("large-total-topology.json");
+        Files.writeString(topologyPath, LARGE_TOTAL_TOPOLOGY_JSON);
+
+        UVNetwork network = importNetwork(workDir, topologyPath, 7, "large-total");
+        try {
+            UVNode root = network.getUVNode("R");
+            assertEquals("3000000000", Long.toString(root.getNodeCapacity()), "imported node capacity totals must not overflow int");
+            assertEquals("3000000000", Long.toString(root.getLocalBalance() + root.getRemoteBalance()), "imported node balance totals must not overflow int");
+            double outbound = root.getOverallOutboundFraction();
+            if (!Double.isFinite(outbound) || outbound < 0.0 || outbound > 1.0) {
+                throw new AssertionError("imported root outbound fraction must stay in [0,1], got " + outbound);
+            }
+            String report = network.getStats().generateNetworkReport();
+            assertContains(report, "3000000000", "network report must preserve imported node capacities above Integer.MAX_VALUE");
+        } finally {
+            network.shutdown();
+        }
+    }
+
+    private static void assertJsonEdgeCaseTopologyImportsAsExpected(Path workDir) throws IOException {
+        Path topologyPath = workDir.resolve("json-edge-case-topology.json");
+        Files.writeString(topologyPath, JSON_EDGE_CASE_TOPOLOGY);
+
+        UVNetwork network = importNetwork(workDir, topologyPath, 7, "json-edge-case", "root \"quoted\"");
+        try {
+            UVNode root = network.getUVNode("R");
+            assertEquals("root \"quoted\"", root.getAlias(), "JSON string escapes must be decoded in imported aliases");
+            assertEquals("579", Long.toString(root.getNodeCapacity()), "string and numeric JSON capacities must import to the same channel total");
+            assertEquals("2", Integer.toString(root.getChannels().size()), "edge-case topology must import both channels");
+        } finally {
+            network.shutdown();
         }
     }
 
@@ -200,7 +268,11 @@ public class DeterminismRegressionTest {
     }
 
     private static String runImportSnapshot(Path workDir, Path topologyPath, int seed, String runName) throws IOException {
-        UVNetwork network = importNetwork(workDir, topologyPath, seed, runName);
+        return runImportSnapshot(workDir, topologyPath, seed, runName, "R");
+    }
+
+    private static String runImportSnapshot(Path workDir, Path topologyPath, int seed, String runName, String rootIdentifier) throws IOException {
+        UVNetwork network = importNetwork(workDir, topologyPath, seed, runName, rootIdentifier);
         try {
             return canonicalSnapshot(network);
         } finally {
@@ -252,9 +324,17 @@ public class DeterminismRegressionTest {
     }
 
     private static UVNetwork importNetwork(Path workDir, Path topologyPath, int seed, String runName) throws IOException {
+        return importNetwork(workDir, topologyPath, seed, runName, "R");
+    }
+
+    private static UVNetwork importNetwork(Path workDir, Path topologyPath, int seed, String runName, String rootIdentifier) throws IOException {
         Path configPath = writeConfig(workDir, seed, runName);
         UVNetwork network = new UVNetwork(new UVConfig(configPath.toString()));
-        network.importTopology(topologyPath.toString(), "R");
+        network.importTopology(topologyPath.toString(), rootIdentifier);
+        if (!network.isBootstrapStarted() || !network.isBootstrapCompleted()) {
+            network.shutdown();
+            throw new AssertionError("imported topology must be marked ready for bootstrap-gated commands");
+        }
         return network;
     }
 

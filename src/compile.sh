@@ -1,6 +1,5 @@
 #!/bin/bash
-      CLASSPATH=.:json-simple-1.1.jar
-      javac -cp "$CLASSPATH" *.java
+      javac *.java
       if [ $? -ne 0 ]; then
           echo "Compilation failed."
           exit 1
@@ -15,4 +14,3 @@
       find . -name "*.class" -delete
       mv UltraViolet.jar ..
       echo "**** Please return to the main directory and execute the jar file ***"
-
