@@ -139,6 +139,8 @@ public class DeterminismRegressionTest {
         String first = runImportSnapshot(workDir, topologyPath, 7, "same-seed-a");
         String second = runImportSnapshot(workDir, topologyPath, 7, "same-seed-b");
         assertEquals(first, second, "same seed must reproduce the imported topology snapshot");
+        String byAlias = runImportSnapshot(workDir, topologyPath, 7, "same-seed-root-alias", "root");
+        assertEquals(first, byAlias, "root alias must resolve to the same imported topology root as its pubkey");
 
         boolean foundDifferentSeed = false;
         for (int seed = 0; seed < 64; seed++) {
@@ -200,7 +202,11 @@ public class DeterminismRegressionTest {
     }
 
     private static String runImportSnapshot(Path workDir, Path topologyPath, int seed, String runName) throws IOException {
-        UVNetwork network = importNetwork(workDir, topologyPath, seed, runName);
+        return runImportSnapshot(workDir, topologyPath, seed, runName, "R");
+    }
+
+    private static String runImportSnapshot(Path workDir, Path topologyPath, int seed, String runName, String rootIdentifier) throws IOException {
+        UVNetwork network = importNetwork(workDir, topologyPath, seed, runName, rootIdentifier);
         try {
             return canonicalSnapshot(network);
         } finally {
@@ -252,9 +258,13 @@ public class DeterminismRegressionTest {
     }
 
     private static UVNetwork importNetwork(Path workDir, Path topologyPath, int seed, String runName) throws IOException {
+        return importNetwork(workDir, topologyPath, seed, runName, "R");
+    }
+
+    private static UVNetwork importNetwork(Path workDir, Path topologyPath, int seed, String runName, String rootIdentifier) throws IOException {
         Path configPath = writeConfig(workDir, seed, runName);
         UVNetwork network = new UVNetwork(new UVConfig(configPath.toString()));
-        network.importTopology(topologyPath.toString(), "R");
+        network.importTopology(topologyPath.toString(), rootIdentifier);
         if (!network.isBootstrapStarted() || !network.isBootstrapCompleted()) {
             network.shutdown();
             throw new AssertionError("imported topology must be marked ready for bootstrap-gated commands");

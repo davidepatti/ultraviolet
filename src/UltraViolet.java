@@ -407,7 +407,7 @@ public class UltraViolet {
         showAvailableFiles(".json");
         System.out.print("Enter a JSON file: ");
         String json = menuInputScanner.nextLine();
-        System.out.print("Enter root node pubkey:");
+        System.out.print("Enter root node pubkey or alias:");
         String root = menuInputScanner.nextLine();
         imported_graph_root = root;
         new Thread(()-> networkManager.importTopology(json,root)).start();

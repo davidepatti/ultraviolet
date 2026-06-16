@@ -470,9 +470,8 @@ public class UVNetwork implements LNetwork {
                 importedNodes.put(pub_key, new UVNode(this, pub_key, alias, 12345678, defaultProfile));
             }
 
-            UVNode root = importedNodes.get(root_node);
+            UVNode root = resolveImportedRootNode(importedNodes, root_node);
             if (root == null) {
-                print_log("Import failed: root node " + root_node + " not found in topology file");
                 return;
             }
 
@@ -541,7 +540,7 @@ public class UVNetwork implements LNetwork {
                 uvnodes.clear();
                 uvnodes.putAll(importedNodes);
                 refreshPubkeyList();
-                imported_rootnode_graph = root_node;
+                imported_rootnode_graph = root.getPubKey();
                 bootstrap_started = true;
                 bootstrap_completed = true;
                 bootstrap_latch = null;
@@ -554,6 +553,52 @@ public class UVNetwork implements LNetwork {
         } catch (IOException | org.json.simple.parser.ParseException | NumberFormatException e) {
             print_log("Import failed: " + e.getMessage());
         }
+    }
+
+    private UVNode resolveImportedRootNode(Map<String, UVNode> importedNodes, String rootIdentifier) {
+        String identifier = rootIdentifier == null ? "" : rootIdentifier.trim();
+        if (identifier.isBlank()) {
+            print_log("Import failed: missing root node pubkey or alias");
+            return null;
+        }
+
+        UVNode byPubkey = importedNodes.get(identifier);
+        if (byPubkey != null) {
+            return byPubkey;
+        }
+
+        ArrayList<UVNode> aliasMatches = new ArrayList<>();
+        for (UVNode node : importedNodes.values()) {
+            if (identifier.equals(node.getAlias())) {
+                aliasMatches.add(node);
+            }
+        }
+
+        if (aliasMatches.size() == 1) {
+            return aliasMatches.get(0);
+        }
+        if (aliasMatches.size() > 1) {
+            print_log("Import failed: root alias " + identifier + " matches multiple nodes; use the pubkey instead");
+            return null;
+        }
+
+        ArrayList<UVNode> caseInsensitiveAliasMatches = new ArrayList<>();
+        for (UVNode node : importedNodes.values()) {
+            if (node.getAlias() != null && identifier.equalsIgnoreCase(node.getAlias())) {
+                caseInsensitiveAliasMatches.add(node);
+            }
+        }
+
+        if (caseInsensitiveAliasMatches.size() == 1) {
+            return caseInsensitiveAliasMatches.get(0);
+        }
+        if (caseInsensitiveAliasMatches.size() > 1) {
+            print_log("Import failed: root alias " + identifier + " matches multiple nodes; use the pubkey instead");
+            return null;
+        }
+
+        print_log("Import failed: root node " + identifier + " not found in topology file");
+        return null;
     }
     /***************************************************************************************
      * Getters/Setters/Helpers
