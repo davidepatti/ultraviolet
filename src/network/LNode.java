@@ -11,5 +11,5 @@ public interface LNode {
     String getAlias();
     LNInvoice generateInvoice(int amount, String msg, boolean deterministic );
     ArrayList<LNChannel> getLNChannelList();
-    int getNodeCapacity();
+    long getNodeCapacity();
 }

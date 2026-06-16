@@ -223,16 +223,16 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     /**
      * @return the sum of all balances on node side
      */
-    public int getLocalBalance() {
-        int balance = 0;
+    public long getLocalBalance() {
+        long balance = 0;
 
         for (UVChannel c : channels.values()) {
             balance += c.getBalance(this.getPubKey());
         }
         return balance;
     }
-    public int getRemoteBalance() {
-        int balance = 0;
+    public long getRemoteBalance() {
+        long balance = 0;
 
         for (UVChannel c : channels.values()) {
             var peer_id = getChannelPeer(c.getChannelId()).getPubKey();
@@ -242,8 +242,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     @Override
-    public int getNodeCapacity() {
-        int capacity  =0;
+    public long getNodeCapacity() {
+        long capacity = 0;
         for (var ch: this.channels.values()) capacity+=ch.getCapacity();
         return capacity;
     }
@@ -1441,7 +1441,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     public double getOverallOutboundFraction() {
-        return (double)getLocalBalance()/getNodeCapacity();
+        long capacity = getNodeCapacity();
+        if (capacity == 0) {
+            return 0.0;
+        }
+        return (double)getLocalBalance()/capacity;
     }
 
 

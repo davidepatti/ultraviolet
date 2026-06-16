@@ -44,6 +44,20 @@ public class DeterminismRegressionTest {
             }
             """;
 
+    private static final String LARGE_TOTAL_TOPOLOGY_JSON = """
+            {
+              "nodes": [
+                {"pub_key": "R", "alias": "root"},
+                {"pub_key": "A", "alias": "alice"},
+                {"pub_key": "B", "alias": "bob"}
+              ],
+              "edges": [
+                {"channel_id": "ra", "node1_pub": "R", "node2_pub": "A", "capacity": 1500000000},
+                {"channel_id": "rb", "node1_pub": "R", "node2_pub": "B", "capacity": 1500000000}
+              ]
+            }
+            """;
+
     public static void main(String[] args) throws Exception {
         UVNetwork.Log = ignored -> { };
 
@@ -155,6 +169,28 @@ public class DeterminismRegressionTest {
         }
         if (!foundDifferentSeed) {
             throw new AssertionError("expected at least one alternate seed to alter seeded import choices");
+        }
+
+        assertImportedLargeTopologyStatsDoNotOverflow(workDir);
+    }
+
+    private static void assertImportedLargeTopologyStatsDoNotOverflow(Path workDir) throws IOException {
+        Path topologyPath = workDir.resolve("large-total-topology.json");
+        Files.writeString(topologyPath, LARGE_TOTAL_TOPOLOGY_JSON);
+
+        UVNetwork network = importNetwork(workDir, topologyPath, 7, "large-total");
+        try {
+            UVNode root = network.getUVNode("R");
+            assertEquals("3000000000", Long.toString(root.getNodeCapacity()), "imported node capacity totals must not overflow int");
+            assertEquals("3000000000", Long.toString(root.getLocalBalance() + root.getRemoteBalance()), "imported node balance totals must not overflow int");
+            double outbound = root.getOverallOutboundFraction();
+            if (!Double.isFinite(outbound) || outbound < 0.0 || outbound > 1.0) {
+                throw new AssertionError("imported root outbound fraction must stay in [0,1], got " + outbound);
+            }
+            String report = network.getStats().generateNetworkReport();
+            assertContains(report, "3000000000", "network report must preserve imported node capacities above Integer.MAX_VALUE");
+        } finally {
+            network.shutdown();
         }
     }
 

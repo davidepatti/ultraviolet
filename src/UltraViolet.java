@@ -1429,7 +1429,7 @@ public class UltraViolet {
         return width;
     }
 
-    private String formatAmountWithUnit(int amount, int width) {
+    private String formatAmountWithUnit(long amount, int width) {
         return padLeft(formatAmountNumber(amount), width) + " sats";
     }
 
@@ -1471,7 +1471,7 @@ public class UltraViolet {
     }
 
     private double safeOverallOutboundFraction(UVNode node) {
-        int capacity = node.getNodeCapacity();
+        long capacity = node.getNodeCapacity();
         if (capacity == 0) {
             return 0.0;
         }
