@@ -255,6 +255,10 @@ public class DeterminismRegressionTest {
         Path configPath = writeConfig(workDir, seed, runName);
         UVNetwork network = new UVNetwork(new UVConfig(configPath.toString()));
         network.importTopology(topologyPath.toString(), "R");
+        if (!network.isBootstrapStarted() || !network.isBootstrapCompleted()) {
+            network.shutdown();
+            throw new AssertionError("imported topology must be marked ready for bootstrap-gated commands");
+        }
         return network;
     }
 

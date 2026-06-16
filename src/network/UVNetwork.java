@@ -542,6 +542,11 @@ public class UVNetwork implements LNetwork {
                 uvnodes.putAll(importedNodes);
                 refreshPubkeyList();
                 imported_rootnode_graph = root_node;
+                bootstrap_started = true;
+                bootstrap_completed = true;
+                bootstrap_latch = null;
+                bootstraps_running = uvnodes.size();
+                bootstraps_ended = uvnodes.size();
             }
 
             print_log("Import completed");
