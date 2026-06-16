@@ -58,6 +58,20 @@ public class DeterminismRegressionTest {
             }
             """;
 
+    private static final String JSON_EDGE_CASE_TOPOLOGY = """
+            {
+              "nodes": [
+                {"pub_key": "R", "alias": "root \\"quoted\\""},
+                {"pub_key": "A", "alias": "alice"},
+                {"pub_key": "B", "alias": "bob"}
+              ],
+              "edges": [
+                {"channel_id": "ra", "node1_pub": "R", "node2_pub": "A", "capacity": "123"},
+                {"channel_id": "rb", "node1_pub": "R", "node2_pub": "B", "capacity": 456}
+              ]
+            }
+            """;
+
     public static void main(String[] args) throws Exception {
         UVNetwork.Log = ignored -> { };
 
@@ -172,6 +186,7 @@ public class DeterminismRegressionTest {
         }
 
         assertImportedLargeTopologyStatsDoNotOverflow(workDir);
+        assertJsonEdgeCaseTopologyImportsAsExpected(workDir);
     }
 
     private static void assertImportedLargeTopologyStatsDoNotOverflow(Path workDir) throws IOException {
@@ -189,6 +204,21 @@ public class DeterminismRegressionTest {
             }
             String report = network.getStats().generateNetworkReport();
             assertContains(report, "3000000000", "network report must preserve imported node capacities above Integer.MAX_VALUE");
+        } finally {
+            network.shutdown();
+        }
+    }
+
+    private static void assertJsonEdgeCaseTopologyImportsAsExpected(Path workDir) throws IOException {
+        Path topologyPath = workDir.resolve("json-edge-case-topology.json");
+        Files.writeString(topologyPath, JSON_EDGE_CASE_TOPOLOGY);
+
+        UVNetwork network = importNetwork(workDir, topologyPath, 7, "json-edge-case", "root \"quoted\"");
+        try {
+            UVNode root = network.getUVNode("R");
+            assertEquals("root \"quoted\"", root.getAlias(), "JSON string escapes must be decoded in imported aliases");
+            assertEquals("579", Long.toString(root.getNodeCapacity()), "string and numeric JSON capacities must import to the same channel total");
+            assertEquals("2", Integer.toString(root.getChannels().size()), "edge-case topology must import both channels");
         } finally {
             network.shutdown();
         }

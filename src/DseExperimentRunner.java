@@ -1,9 +1,9 @@
 import misc.UVConfig;
+import misc.json.Json;
+import misc.json.JsonArray;
+import misc.json.JsonObject;
 import network.UVNetwork;
 import network.UVNode;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import protocol.LNInvoice;
 import stats.ReportExporter;
 import topology.PathFinder;
@@ -21,7 +21,7 @@ public class DseExperimentRunner {
     private final Path configPath;
     private final Path experimentPath;
     private final Path outputDir;
-    private JSONObject runReport;
+    private JsonObject runReport;
 
     public DseExperimentRunner(Path configPath, Path experimentPath, Path outputDir) {
         this.configPath = configPath;
@@ -51,9 +51,9 @@ public class DseExperimentRunner {
     private int run() throws Exception {
         Files.createDirectories(outputDir);
 
-        JSONObject experiment = readJsonObject(experimentPath);
+        JsonObject experiment = readJsonObject(experimentPath);
         String experimentName = getString(experiment, "name", "experiment");
-        JSONArray commands = getArray(experiment, "commands");
+        JsonArray commands = getArray(experiment, "commands");
         if (commands == null || commands.isEmpty()) {
             throw new IllegalArgumentException("Experiment '" + experimentName + "' has no commands");
         }
@@ -62,28 +62,28 @@ public class DseExperimentRunner {
         UVNetwork network = null;
         Instant start = Instant.now();
 
-        runReport = new JSONObject();
+        runReport = new JsonObject();
         runReport.put("status", "running");
         runReport.put("experiment_name", experimentName);
         runReport.put("config", configPath.toString());
         runReport.put("experiment_spec", experimentPath.toString());
         runReport.put("output_dir", outputDir.toString());
         runReport.put("started_at", start.toString());
-        runReport.put("commands", new JSONArray());
-        runReport.put("reports", new JSONArray());
+        runReport.put("commands", new JsonArray());
+        runReport.put("reports", new JsonArray());
 
         try {
             network = new UVNetwork(new UVConfig(configPath.toString()));
-            JSONArray commandResults = new JSONArray();
+            JsonArray commandResults = new JsonArray();
             runReport.put("commands", commandResults);
 
             for (Object rawCommand : commands) {
-                JSONObject command = normalizeCommand(rawCommand);
+                JsonObject command = normalizeCommand(rawCommand);
                 commandResults.add(executeCommand(network, command));
                 writeRunReport();
             }
 
-            JSONArray reportResults = writeSelectedReports(network, experiment);
+            JsonArray reportResults = writeSelectedReports(network, experiment);
             runReport.put("reports", reportResults);
             runReport.put("status", "success");
             runReport.put("ended_at", Instant.now().toString());
@@ -104,10 +104,10 @@ public class DseExperimentRunner {
         }
     }
 
-    private JSONObject executeCommand(UVNetwork network, JSONObject command) {
+    private JsonObject executeCommand(UVNetwork network, JsonObject command) {
         String commandName = getCommandName(command);
         Instant start = Instant.now();
-        JSONObject result = new JSONObject();
+        JsonObject result = new JsonObject();
         result.put("command", commandName);
         result.put("started_at", start.toString());
 
@@ -134,7 +134,7 @@ public class DseExperimentRunner {
         return result;
     }
 
-    private void executeBoot(UVNetwork network, JSONObject result) {
+    private void executeBoot(UVNetwork network, JsonObject result) {
         if (network.isBootstrapStarted() || network.isBootstrapCompleted()) {
             throw new IllegalStateException("Command 'boot' cannot run after the network has already been bootstrapped.");
         }
@@ -144,7 +144,7 @@ public class DseExperimentRunner {
         result.put("current_block", network.getTimechain().getCurrentBlockHeight());
     }
 
-    private void executeBal(UVNetwork network, JSONObject command, JSONObject result) {
+    private void executeBal(UVNetwork network, JsonObject command, JsonObject result) {
         requireBootstrapped(network, "bal");
         double level = getRequiredDouble(command, "level");
         int minDelta = getInt(command, "min_delta", 10_000);
@@ -153,14 +153,14 @@ public class DseExperimentRunner {
         result.put("min_delta", minDelta);
     }
 
-    private void executeRndBal(UVNetwork network, JSONObject command, JSONObject result) {
+    private void executeRndBal(UVNetwork network, JsonObject command, JsonObject result) {
         requireBootstrapped(network, "rndbal");
         int minDelta = getInt(command, "min_delta", 10_000);
         network.setRandomLiquidity(minDelta);
         result.put("min_delta", minDelta);
     }
 
-    private void executePath(UVNetwork network, JSONObject command, JSONObject result) {
+    private void executePath(UVNetwork network, JsonObject command, JsonObject result) {
         requireBootstrapped(network, "path");
         String start = getString(command, "start", getString(command, "sender", "pk0"));
         String destination = getString(command, "destination", getString(command, "dest", defaultDestination(network)));
@@ -174,7 +174,7 @@ public class DseExperimentRunner {
         result.put("amount", amount);
         result.put("topk", topk);
 
-        JSONArray strategies = new JSONArray();
+        JsonArray strategies = new JsonArray();
         if ("all".equalsIgnoreCase(strategyChoice)) {
             for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
                 strategies.add(runPathFinder(network, startNode, start, destination, amount, topk, strategy));
@@ -185,7 +185,7 @@ public class DseExperimentRunner {
         result.put("path_finding", strategies);
     }
 
-    private void executeRoute(UVNetwork network, JSONObject command, JSONObject result) {
+    private void executeRoute(UVNetwork network, JsonObject command, JsonObject result) {
         requireBootstrapped(network, "route");
         requireTimechainRunning(network, "route");
 
@@ -212,7 +212,7 @@ public class DseExperimentRunner {
         result.put("success", sender.getPayedInvoices().containsKey(invoice.getHash()));
     }
 
-    private void executeInv(UVNetwork network, JSONObject command, JSONObject result) {
+    private void executeInv(UVNetwork network, JsonObject command, JsonObject result) {
         requireBootstrapped(network, "inv");
         requireTimechainRunning(network, "inv");
 
@@ -235,7 +235,7 @@ public class DseExperimentRunner {
         result.put("invoice_report_rows", countInvoiceReports(network));
     }
 
-    private JSONObject runPathFinder(
+    private JsonObject runPathFinder(
             UVNetwork network,
             UVNode startNode,
             String start,
@@ -248,18 +248,18 @@ public class DseExperimentRunner {
         pathFinder.setPaymentAmount(amount);
         PathFinder.SearchResult searchResult = pathFinder.findPaths(startNode.getChannelGraph(), start, destination, topk);
 
-        JSONObject strategyResult = new JSONObject();
+        JsonObject strategyResult = new JsonObject();
         strategyResult.put("strategy", strategy.name().toLowerCase(Locale.ROOT));
         strategyResult.put("stats", searchStatsToJson(searchResult.stats()));
 
-        JSONArray paths = new JSONArray();
+        JsonArray paths = new JsonArray();
         for (PathFinder.PathDetails pathDetails : searchResult.paths()) {
-            JSONObject pathJson = new JSONObject();
+            JsonObject pathJson = new JsonObject();
             pathJson.put("path", pathDetails.path().toString());
             pathJson.put("total_cost", pathDetails.totalCost());
-            JSONArray components = new JSONArray();
+            JsonArray components = new JsonArray();
             for (PathFinder.CostComponent component : pathDetails.components()) {
-                JSONObject componentJson = new JSONObject();
+                JsonObject componentJson = new JsonObject();
                 componentJson.put("label", component.label());
                 componentJson.put("value", component.value());
                 components.add(componentJson);
@@ -271,12 +271,12 @@ public class DseExperimentRunner {
         return strategyResult;
     }
 
-    private JSONArray writeSelectedReports(UVNetwork network, JSONObject experiment) throws IOException {
+    private JsonArray writeSelectedReports(UVNetwork network, JsonObject experiment) throws IOException {
         EnumSet<ReportExporter.ReportType> reportTypes = parseOutputs(experiment);
         Path reportsDir = outputDir.resolve("reports");
-        JSONArray reports = new JSONArray();
+        JsonArray reports = new JsonArray();
         for (ReportExporter.WrittenReport report : ReportExporter.writeReports(network, reportsDir, "", "", reportTypes)) {
-            JSONObject reportJson = new JSONObject();
+            JsonObject reportJson = new JsonObject();
             reportJson.put("type", report.type().name().toLowerCase(Locale.ROOT));
             reportJson.put("path", outputDir.relativize(report.path()).toString());
             reports.add(reportJson);
@@ -284,8 +284,8 @@ public class DseExperimentRunner {
         return reports;
     }
 
-    private EnumSet<ReportExporter.ReportType> parseOutputs(JSONObject experiment) {
-        JSONArray outputs = getArray(experiment, "outputs");
+    private EnumSet<ReportExporter.ReportType> parseOutputs(JsonObject experiment) {
+        JsonArray outputs = getArray(experiment, "outputs");
         if (outputs == null) {
             outputs = getArray(experiment, "reports");
         }
@@ -305,8 +305,8 @@ public class DseExperimentRunner {
         return reportTypes;
     }
 
-    private JSONObject searchStatsToJson(PathFinder.SearchStats stats) {
-        JSONObject json = new JSONObject();
+    private JsonObject searchStatsToJson(PathFinder.SearchStats stats) {
+        JsonObject json = new JsonObject();
         json.put("investigated_states", stats.investigatedStates());
         json.put("expanded_edges", stats.expandedEdges());
         json.put("excluded_capacity", stats.excludedByCapacity());
@@ -319,45 +319,45 @@ public class DseExperimentRunner {
     }
 
     private void writeRunReport() throws IOException {
-        Files.writeString(outputDir.resolve("run.json"), runReport.toJSONString() + System.lineSeparator());
+        Files.writeString(outputDir.resolve("run.json"), runReport.toJsonString() + System.lineSeparator());
     }
 
-    private static JSONObject readJsonObject(Path path) throws Exception {
-        Object parsed = new JSONParser().parse(Files.newBufferedReader(path));
+    private static JsonObject readJsonObject(Path path) throws Exception {
+        Object parsed = Json.parse(Files.newBufferedReader(path));
         return requireObject(parsed, path.toString());
     }
 
-    private static JSONObject normalizeCommand(Object value) {
-        if (value instanceof JSONObject object) {
+    private static JsonObject normalizeCommand(Object value) {
+        if (value instanceof JsonObject object) {
             return object;
         }
         if (value instanceof String commandName && !commandName.isBlank()) {
-            JSONObject command = new JSONObject();
+            JsonObject command = new JsonObject();
             command.put("command", commandName);
             return command;
         }
         throw new IllegalArgumentException("Expected command object or command string");
     }
 
-    private static JSONObject requireObject(Object value, String context) {
-        if (value instanceof JSONObject object) {
+    private static JsonObject requireObject(Object value, String context) {
+        if (value instanceof JsonObject object) {
             return object;
         }
         throw new IllegalArgumentException("Expected JSON object for " + context);
     }
 
-    private static JSONArray getArray(JSONObject object, String key) {
+    private static JsonArray getArray(JsonObject object, String key) {
         Object value = object.get(key);
         if (value == null) {
             return null;
         }
-        if (value instanceof JSONArray array) {
+        if (value instanceof JsonArray array) {
             return array;
         }
         throw new IllegalArgumentException("Expected array for key '" + key + "'");
     }
 
-    private String getCommandName(JSONObject command) {
+    private String getCommandName(JsonObject command) {
         String value = getString(command, "command", null);
         if (value == null) {
             value = getString(command, "cmd", null);
@@ -368,12 +368,12 @@ public class DseExperimentRunner {
         return value.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static String getString(JSONObject object, String key, String defaultValue) {
+    private static String getString(JsonObject object, String key, String defaultValue) {
         Object value = object.get(key);
         return value == null ? defaultValue : String.valueOf(value);
     }
 
-    private static int getInt(JSONObject object, String key, int defaultValue) {
+    private static int getInt(JsonObject object, String key, int defaultValue) {
         Object value = object.get(key);
         if (value == null) {
             return defaultValue;
@@ -384,7 +384,7 @@ public class DseExperimentRunner {
         return Integer.parseInt(String.valueOf(value));
     }
 
-    private static double getDouble(JSONObject object, String key, double defaultValue) {
+    private static double getDouble(JsonObject object, String key, double defaultValue) {
         Object value = object.get(key);
         if (value == null) {
             return defaultValue;
@@ -395,7 +395,7 @@ public class DseExperimentRunner {
         return Double.parseDouble(String.valueOf(value));
     }
 
-    private static double getRequiredDouble(JSONObject object, String key) {
+    private static double getRequiredDouble(JsonObject object, String key) {
         if (!object.containsKey(key)) {
             throw new IllegalArgumentException("Missing required numeric key: " + key);
         }

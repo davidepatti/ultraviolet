@@ -22,7 +22,6 @@ sys.dont_write_bytecode = True
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-JSON_JAR = REPO_ROOT / "src" / "json-simple-1.1.jar"
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,8 +140,6 @@ def compile_java_sources(javac: str, build_dir: Path) -> None:
     sources = sorted((REPO_ROOT / "src").rglob("*.java"))
     if not sources:
         raise ValueError("No Java sources found under src/")
-    if not JSON_JAR.is_file():
-        raise ValueError(f"Missing json-simple dependency: {JSON_JAR}")
 
     source_list = build_dir / "sources.txt"
     source_list.write_text("\n".join(str(source) for source in sources) + "\n", encoding="utf-8")
@@ -150,8 +147,6 @@ def compile_java_sources(javac: str, build_dir: Path) -> None:
         javac,
         "-d",
         str(build_dir),
-        "-cp",
-        str(JSON_JAR),
         f"@{source_list}",
     ]
     print(f"[compile] Compiling {len(sources)} Java source files into {build_dir}", flush=True)
@@ -342,7 +337,7 @@ def main() -> int:
         build_dir = Path(build_parent) / "classes"
         build_dir.mkdir(parents=True)
         compile_java_sources(args.javac, build_dir)
-        classpath = os.pathsep.join([str(build_dir), str(JSON_JAR)])
+        classpath = str(build_dir)
 
         runs: list[dict[str, Any]] = []
         total_runs = len(generated_files) * len(experiments)

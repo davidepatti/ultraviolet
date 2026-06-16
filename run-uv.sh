@@ -6,13 +6,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$SCRIPT_DIR"
 
 DEFAULT_CONFIG="$SCRIPT_DIR/uv_configs/template.properties"
-JSON_JAR="$SCRIPT_DIR/src/json-simple-1.1.jar"
 JAVA_RELEASE="${JAVA_RELEASE:-24}"
-
-if [ ! -f "$JSON_JAR" ]; then
-  echo "json-simple jar not found: $JSON_JAR" >&2
-  exit 1
-fi
 
 CONFIG_PATH="${1:-$DEFAULT_CONFIG}"
 if [ $# -gt 0 ]; then
@@ -36,6 +30,6 @@ trap cleanup EXIT INT TERM
 mkdir -p "$BUILD_DIR"
 find "$SCRIPT_DIR/src" -name '*.java' | sort > "$TMP_SOURCES"
 
-javac --release "$JAVA_RELEASE" -cp "$JSON_JAR" -d "$BUILD_DIR" @"$TMP_SOURCES"
+javac --release "$JAVA_RELEASE" -d "$BUILD_DIR" @"$TMP_SOURCES"
 
-java -cp "$BUILD_DIR:$JSON_JAR" UltraViolet "$CONFIG_PATH"
+java -cp "$BUILD_DIR" UltraViolet "$CONFIG_PATH"
