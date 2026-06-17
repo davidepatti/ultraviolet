@@ -25,7 +25,13 @@ Imported topologies do not automatically have live P2P convergence history, and 
 A graph-learning export workflow is:
 
 ```text
-cfg -> boot/import/load -> gexp -> tools/uv-graph-to-pyg/uv_graph_to_pyg
+cfg -> boot/import/load -> gexp/gexpall -> tools/uv-graph-to-pyg/uv_graph_to_pyg
+```
+
+A network-wide research snapshot workflow is:
+
+```text
+cfg -> boot/import/load -> gexpall
 ```
 
 ## Menu Commands
@@ -246,6 +252,26 @@ Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg uv_graph_pk0.202606171530.js
 Interpretation: the export is a UV graph snapshot, not a raw `lncli describegraph` clone. It preserves UV-visible
 topology, policies, capacities, balances, observer identity, and block height. Fields UV does not model are left to the
 converter as missing values or masks.
+
+### `gexpall`: Export Omniscient Graph JSON
+
+Writes a global research snapshot from the simulator's actual nodes and channels instead of one observer's gossip graph.
+The export uses schema `uv-omniscient-graph-v1` and includes nodes, unique channels, two directed policy edges per
+channel, capacities, per-side balances, reserve-adjusted spendable balances, and fee policies when present.
+
+Example:
+
+```text
+Output JSON file [uv_omnigraph.202606171530.json]:
+Written uv_omnigraph.202606171530.json
+Nodes: 100, channels: 781, directed edges: 1562, missing policies: 0
+Schema: uv-omniscient-graph-v1
+Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg uv_omnigraph.202606171530.json <output-dir>
+```
+
+Interpretation: this command is intended for topology and liquidity-distribution studies where the simulator is allowed
+to reveal information unavailable to routing nodes. It intentionally omits short-lived runtime state such as queues,
+pending HTLC maps, gossip messages, pending invoices, and other protocol-management objects.
 
 ### `qs`: Show Queues Status
 

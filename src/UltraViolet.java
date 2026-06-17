@@ -328,6 +328,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("node", "Show Node ", this::showNode));
         menuItems.add(new MenuItem("graph", "Show Node Graph", this::showNodeGraph));
         menuItems.add(new MenuItem("gexp", "Export Node Graph JSON", this::exportNodeGraphJson));
+        menuItems.add(new MenuItem("gexpall", "Export Omniscient Graph JSON", this::exportOmniscientGraphJson));
         menuItems.add(new MenuItem("qs", "Show Queues Status", this::showQueuesStatus));
         menuItems.add(new MenuItem("rep", "Show Invoice Reports", this::invoiceReportsMethod));
         menuItems.add(new MenuItem("stat", "Show Network Stats", this::showNetworkStatsMethod));
@@ -522,6 +523,32 @@ public class UltraViolet {
                             + ", directed edges: " + written.directedEdges()
                             + ", missing policies: " + written.missingPolicies()
             );
+            System.out.println("Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg " + written.path() + " <output-dir>");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void exportOmniscientGraphJson(Object x) {
+        if (!networkManager.isBootstrapCompleted()) {
+            System.out.println("Bootstrap not completed!");
+            return;
+        }
+
+        String defaultOutput = "uv_omnigraph." + ReportExporter.timestampNow() + ".json";
+        String output = readLineOrDefault("Output JSON file", defaultOutput);
+
+        try {
+            GraphJsonExporter.WrittenGraph written = GraphJsonExporter.writeOmniscientGraph(networkManager, Path.of(output));
+            System.out.println("Written " + written.path());
+            System.out.println(
+                    "Nodes: " + written.nodes()
+                            + ", channels: " + written.channels()
+                            + ", directed edges: " + written.directedEdges()
+                            + ", missing policies: " + written.missingPolicies()
+            );
+            System.out.println("Schema: uv-omniscient-graph-v1");
             System.out.println("Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg " + written.path() + " <output-dir>");
         } catch (IOException e) {
             throw new RuntimeException(e);
