@@ -22,6 +22,12 @@ cfg -> import -> path -> save
 
 Imported topologies do not automatically have live P2P convergence history, and imported channel policies can be incomplete depending on the source JSON and current import behavior.
 
+A graph-learning export workflow is:
+
+```text
+cfg -> boot/import/load -> gexp -> tools/uv-graph-to-pyg/uv_graph_to_pyg
+```
+
 ## Menu Commands
 
 ### `cfg`: Select Config
@@ -221,6 +227,25 @@ Insert node public key:pk0
 ```
 
 Interpretation: each node has its own graph, built through local channels and gossip. Null policies indicate graph entries that are not ready for policy-aware pathfinding.
+
+### `gexp`: Export Node Graph JSON
+
+Writes one selected node's current channel graph to a UV-specific JSON snapshot. This is the intermediate file used by
+`tools/uv-graph-to-pyg/uv_graph_to_pyg` to create PyTorch Geometric sidecars and `graph.pt`.
+
+Example:
+
+```text
+Node public key [pk0]:
+Output JSON file [uv_graph_pk0.202606171530.json]:
+Written uv_graph_pk0.202606171530.json
+Nodes: 99, channels: 695, directed edges: 1390, missing policies: 0
+Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg uv_graph_pk0.202606171530.json <output-dir>
+```
+
+Interpretation: the export is a UV graph snapshot, not a raw `lncli describegraph` clone. It preserves UV-visible
+topology, policies, capacities, balances, observer identity, and block height. Fields UV does not model are left to the
+converter as missing values or masks.
 
 ### `qs`: Show Queues Status
 

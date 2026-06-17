@@ -327,6 +327,7 @@ public class UltraViolet {
         menuItems.add(new MenuItem("net", "Show All Nodes ", this::showAllNodes));
         menuItems.add(new MenuItem("node", "Show Node ", this::showNode));
         menuItems.add(new MenuItem("graph", "Show Node Graph", this::showNodeGraph));
+        menuItems.add(new MenuItem("gexp", "Export Node Graph JSON", this::exportNodeGraphJson));
         menuItems.add(new MenuItem("qs", "Show Queues Status", this::showQueuesStatus));
         menuItems.add(new MenuItem("rep", "Show Invoice Reports", this::invoiceReportsMethod));
         menuItems.add(new MenuItem("stat", "Show Network Stats", this::showNetworkStatsMethod));
@@ -494,6 +495,34 @@ public class UltraViolet {
             for (ReportExporter.WrittenReport report : ReportExporter.writeTimestampedReports(networkManager, Path.of("."), prefix)) {
                 System.out.println("Written " + report.path().getFileName());
             }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void exportNodeGraphJson(Object x) {
+        if (!networkManager.isBootstrapCompleted()) {
+            System.out.println("Bootstrap not completed!");
+            return;
+        }
+
+        String defaultNode = imported_graph_root != null ? imported_graph_root : "pk0";
+        String pubkey = readLineOrDefault("Node public key", defaultNode);
+        UVNode node = networkManager.searchNode(pubkey);
+        String defaultOutput = "uv_graph_" + sanitizeFileStem(node.getPubKey()) + "." + ReportExporter.timestampNow() + ".json";
+        String output = readLineOrDefault("Output JSON file", defaultOutput);
+
+        try {
+            GraphJsonExporter.WrittenGraph written = GraphJsonExporter.writeNodeGraph(networkManager, node, Path.of(output));
+            System.out.println("Written " + written.path());
+            System.out.println(
+                    "Nodes: " + written.nodes()
+                            + ", channels: " + written.channels()
+                            + ", directed edges: " + written.directedEdges()
+                            + ", missing policies: " + written.missingPolicies()
+            );
+            System.out.println("Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg " + written.path() + " <output-dir>");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -1485,6 +1514,17 @@ public class UltraViolet {
         int prefix = (maxWidth - 3) / 2;
         int suffix = maxWidth - 3 - prefix;
         return value.substring(0, prefix) + "..." + value.substring(value.length() - suffix);
+    }
+
+    private String sanitizeFileStem(String value) {
+        String sanitized = value == null ? "" : value.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (sanitized.isBlank()) {
+            return "node";
+        }
+        if (sanitized.length() > 72) {
+            return sanitized.substring(0, 72);
+        }
+        return sanitized;
     }
 
     private String formatBootstrapProgressLine(int totalNodes) {
