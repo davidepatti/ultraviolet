@@ -26,7 +26,6 @@ public class UltraViolet {
 
     private UVNetwork networkManager;
     boolean quit = false;
-    private String imported_graph_root;
     private static final int LOOP_SLEEP_TIME = 500;
     private final Scanner menuInputScanner;
     private final TerminalStyle ui;
@@ -359,6 +358,7 @@ public class UltraViolet {
                 } else {
                     System.out.println(" " + ui.running("Running..."));
                 }
+                System.out.println(ui.label("Topology: ") + networkManager.describeTopologyMode());
 
                 System.out.print("\n" + ui.label(" -> "));
                 var ch = menuInputScanner.nextLine();
@@ -411,7 +411,6 @@ public class UltraViolet {
         String json = menuInputScanner.nextLine();
         System.out.print("Enter root node pubkey or alias:");
         String root = menuInputScanner.nextLine();
-        imported_graph_root = root;
         new Thread(()-> networkManager.importTopology(json,root)).start();
     }
 
@@ -508,7 +507,9 @@ public class UltraViolet {
             return;
         }
 
-        String defaultNode = imported_graph_root != null ? imported_graph_root : "pk0";
+        String defaultNode = networkManager.isImportedObserverView()
+                ? networkManager.getImportedRootNodeGraph()
+                : "pk0";
         String pubkey = readLineOrDefault("Node public key", defaultNode);
         UVNode node = networkManager.searchNode(pubkey);
         String defaultOutput = "uv_graph_" + sanitizeFileStem(node.getPubKey()) + "." + ReportExporter.timestampNow() + ".json";
@@ -572,6 +573,34 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
+
+        if (networkManager.isImportedObserverView()) {
+            String rootPubkey = networkManager.getImportedRootNodeGraph();
+            UVNode root = networkManager.getUVNode(rootPubkey);
+            if (root == null) {
+                System.out.println("Imported observer root not found: " + rootPubkey);
+                return;
+            }
+
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: invoices will be generated only from root node " + rootPubkey + "."
+            ));
+            System.out.println(ui.hint("Press ENTER to accept defaults."));
+            double events_per_block = readDoubleOrDefault(
+                    "Root invoice generation rate (events/block)",
+                    1.0
+            );
+            int n_blocks = readIntOrDefault("Timechain duration (blocks)", DEFAULT_N_BLOCKS);
+            int amt_min = readIntOrDefault("Min amount", DEFAULT_AMT_MIN);
+            int amt_max = readIntOrDefault("Max amount", DEFAULT_AMT_MAX);
+            int fees = readIntOrDefault("Max fees", DEFAULT_FEES);
+
+            applyPathFinderStrategy(root, readPathFinderStrategyOrDefault(), Math.max(amt_min, 0));
+
+            networkManager.generateRootInvoiceEvents(events_per_block, n_blocks, amt_min, amt_max, fees);
+            return;
+        }
+
         System.out.println(ui.hint("Press ENTER to accept defaults."));
         double node_events_per_block = readDoubleOrDefault(
                 "Invoice generation rate (events/node/block)",
@@ -736,8 +765,22 @@ public class UltraViolet {
             return;
         }
 
-        String start_id = readLineOrDefault("Starting node public key", "pk0");
-        var sender = networkManager.searchNode(start_id);
+        String start_id;
+        UVNode sender;
+        if (networkManager.isImportedObserverView()) {
+            start_id = networkManager.getImportedRootNodeGraph();
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: sender is locked to root node " + start_id + "."
+            ));
+            sender = networkManager.getUVNode(start_id);
+            if (sender == null) {
+                System.out.println("Imported observer root not found: " + start_id);
+                return;
+            }
+        } else {
+            start_id = readLineOrDefault("Starting node public key", "pk0");
+            sender = networkManager.searchNode(start_id);
+        }
         String end_id = readLineOrDefault("Destination node public key", "pk99");
         var dest = networkManager.searchNode(end_id);
         int amount = readIntOrDefault("Invoice amount", 10000);
@@ -758,9 +801,9 @@ public class UltraViolet {
      */
     private void findPathsCmd() {
         String start;
-        if (imported_graph_root != null) {
-            System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
-            start = imported_graph_root;
+        if (networkManager.isImportedObserverView()) {
+            start = networkManager.getImportedRootNodeGraph();
+            System.out.println("Using imported observer root node " + start + " as starting point");
         } else {
             if (networkManager.isBootstrapCompleted()) {
                 start = readLineOrDefault("Starting node public key", "pk0");
@@ -850,6 +893,13 @@ public class UltraViolet {
 
         if (!networkManager.isBootstrapCompleted()) return;
         var n = networkManager.searchNode(node_id);
+        if (networkManager.isImportedObserverView() && !n.getPubKey().equals(networkManager.getImportedRootNodeGraph())) {
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: only root node "
+                            + networkManager.getImportedRootNodeGraph()
+                            + " has the imported routing graph."
+            ));
+        }
         printGraphTable(n);
     }
 
@@ -917,7 +967,6 @@ public class UltraViolet {
         }
         networkManager.shutdown();
         networkManager = new UVNetwork(newConfig);
-        imported_graph_root = null;
         updateSelectedConfigPath(newConfig, chosenConfigPath);
         System.out.println("Selected " + formatConfigSelection(getSelectedConfigPath()));
     }
@@ -1118,6 +1167,10 @@ public class UltraViolet {
         UVNode maxGraphNode = stats.getMaxGraphSizeNode();
         UVNode minGraphNode = stats.getMinGraphSizeNode();
 
+        System.out.println(
+                "  "
+                        + ui.hint("Topology: ") + ui.detail(networkManager.describeTopologyMode())
+        );
         System.out.println(
                 "  "
                         + ui.hint("Nodes: ") + ui.value(padLeft(Integer.toString(nodes.size()), 4))
