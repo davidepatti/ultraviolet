@@ -1,0 +1,18 @@
+{
+  "artifact": "B2C 2026 GNN Lightning topology study",
+  "network_sizes": [100, 500, 1000],
+  "scenario_configs": [
+    "configs/uv-exp-100.properties",
+    "configs/uv-exp-500.properties",
+    "configs/uv-exp-1000.properties"
+  ],
+  "uv_graph_export": {
+    "scope": "omniscient research snapshot",
+    "schema": "uv-omniscient-graph-v1",
+    "repository_command": "gexpall"
+  },
+  "conversion_tool": "tools/uv-graph-to-pyg/uv_graph_to_pyg",
+  "downstream_framework": "PyTorch Geometric",
+  "label_thresholds_sat": [1000, 10000, 100000],
+  "notes": "The folder records simulator-side inputs and the reusable export/conversion tools needed to regenerate the graph-learning artifacts."
+}
