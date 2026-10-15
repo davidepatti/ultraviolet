@@ -1,0 +1,812 @@
+[
+  {
+    "run_id": "n100_a1000_s0",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s1",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s2",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s3",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s4",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s5",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s6",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s7",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s8",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a1000_s9",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s0",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s1",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s2",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s3",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s4",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s5",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s6",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s7",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s8",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a10000_s9",
+    "train_channels": 620,
+    "test_channels": 265,
+    "channel_overlap": 0,
+    "train_usable_share": 0.42983871698379517,
+    "test_usable_share": 0.43018868565559387,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s0",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s1",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s2",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s3",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s4",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s5",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s6",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s7",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s8",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n100_a100000_s9",
+    "train_channels": 619,
+    "test_channels": 266,
+    "channel_overlap": 0,
+    "train_usable_share": 0.40791597962379456,
+    "test_usable_share": 0.40789473056793213,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s0",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s1",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s2",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s3",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s4",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s5",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s6",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s7",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s8",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a1000_s9",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s0",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s1",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s2",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s3",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s4",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s5",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s6",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s7",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s8",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a10000_s9",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4367942810058594,
+    "test_usable_share": 0.4366966485977173,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s0",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s1",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s2",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s3",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s4",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s5",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s6",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s7",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s8",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n500_a100000_s9",
+    "train_channels": 3631,
+    "test_channels": 1556,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41737812757492065,
+    "test_usable_share": 0.41741645336151123,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s0",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s1",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s2",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s3",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s4",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s5",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s6",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s7",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s8",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a1000_s9",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.5,
+    "test_usable_share": 0.5,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s0",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s1",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s2",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s3",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s4",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s5",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s6",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s7",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s8",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a10000_s9",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.4337787628173828,
+    "test_usable_share": 0.4337758421897888,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s0",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s1",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s2",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s3",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s4",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s5",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s6",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s7",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s8",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  },
+  {
+    "run_id": "n1000_a100000_s9",
+    "train_channels": 7558,
+    "test_channels": 3239,
+    "channel_overlap": 0,
+    "train_usable_share": 0.41406455636024475,
+    "test_usable_share": 0.4140166640281677,
+    "all_models_share_split": true
+  }
+]

@@ -1,0 +1,189 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    ".gitattributes": {
+      "sha256": "6054e63c8eb2b5b53e05e066559f24377ae8eac9fd3851212ec28b25237bd641",
+      "bytes": 86
+    },
+    ".gitignore": {
+      "sha256": "c0985b53139df8bf39e9005fe65ef0d8510b7da4c240147e802a97fb5e33df97",
+      "bytes": 51
+    },
+    "PROVENANCE.md": {
+      "sha256": "995e09ae6161dc9cf421dc8b184c601575d6ecf8176bab017ef0007ab7c88d11",
+      "bytes": 4503
+    },
+    "PUBLICATION-CHECKS.json": {
+      "sha256": "4175d360dc4330d56e07d72a6374f07cd02b425b35459b6d6ff3bb4f4fbbd20a",
+      "bytes": 2000
+    },
+    "README.md": {
+      "sha256": "89c3633d88989bb8d9b0537db743190da79e09ed8f37244f3d0f15b637d81a23",
+      "bytes": 9407
+    },
+    "artifact-manifest.json": {
+      "sha256": "13c72a8af6594cc54adce77deb0450d746501c83c8133ced53a40d950535e058",
+      "bytes": 2358
+    },
+    "configs/uv-exp-100.properties": {
+      "sha256": "1288514098bf24f5548821ab670e68a6a447188be8592bb0c707f07472d608ff",
+      "bytes": 292
+    },
+    "configs/uv-exp-1000.properties": {
+      "sha256": "f2f898df5ae90cbe96d7619ef40aa89144211e96a5728cef1a61c1aab729049e",
+      "bytes": 296
+    },
+    "configs/uv-exp-500.properties": {
+      "sha256": "53b781ae42b8952a581d21cd0d44f64398e553ea7de7eba60ea7c2d23b397f8e",
+      "bytes": 292
+    },
+    "data/exports/uv_omnigraph_exp1000_b2c2026.json": {
+      "sha256": "0f963fc04c8b23ffe8b160641e144431fd484c57f7bdd18ab06fd680294454cd",
+      "bytes": 14233653
+    },
+    "data/exports/uv_omnigraph_exp100_b2c2026.json": {
+      "sha256": "f644c20bcfb99e56143d31227a7b095785fdeee42f09e12381f3f19d92a917fe",
+      "bytes": 1154433
+    },
+    "data/exports/uv_omnigraph_exp500_b2c2026.json": {
+      "sha256": "de51f8b36791bc9bcd9bfff8f209ade333d88fd5301aeb95951b3584ca3b5f12",
+      "bytes": 6826252
+    },
+    "data/processed/uv-omnigraph-exp100-b2c2026-pyg/channels.jsonl": {
+      "sha256": "63f0ed63784cbcf4a6ab834fcdcf289f8aec75b1aa9bad06a639b38ac22d2126",
+      "bytes": 294343
+    },
+    "data/processed/uv-omnigraph-exp100-b2c2026-pyg/directed_edges.jsonl": {
+      "sha256": "0480715a8aac63c042caf3c68aaa8421cd390de1f5795d4bfeff8675bbfc7031",
+      "bytes": 826575
+    },
+    "data/processed/uv-omnigraph-exp100-b2c2026-pyg/graph.pt": {
+      "sha256": "9b6f4bb1458c6991fba5257f75025d946e470034ef41eaca5dc6d08954d82279",
+      "bytes": 143037
+    },
+    "data/processed/uv-omnigraph-exp100-b2c2026-pyg/metadata.json": {
+      "sha256": "18fb9cbe3fd67d45ace4df2cd614d317d258a6389ae67c9518545bac886ea683",
+      "bytes": 1790
+    },
+    "data/processed/uv-omnigraph-exp100-b2c2026-pyg/nodes.jsonl": {
+      "sha256": "910ab00edc333b326e48d782b4aafb2e6e50be98ba991cbbde0fa6d7899e9d87",
+      "bytes": 32966
+    },
+    "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/channels.jsonl": {
+      "sha256": "ebba1ecf1b9ba583517a118e3a07a96e9e1386396964bd046c9e589c39a711d7",
+      "bytes": 3645684
+    },
+    "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/directed_edges.jsonl": {
+      "sha256": "c7490dc194e1442b275b6d2ee19f94190e6cfd61d692eafa0744cc44422583cd",
+      "bytes": 10256754
+    },
+    "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/graph.pt": {
+      "sha256": "e3a5348a14929280ffc59d19f51a04489905ade9f3f9e549895d894e6a82e2fa",
+      "bytes": 1702781
+    },
+    "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/metadata.json": {
+      "sha256": "56c7f605580c4ec2cfca9f8f88686f0d45038f6acc2eda67e7fcdf59591a3e3b",
+      "bytes": 1798
+    },
+    "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/nodes.jsonl": {
+      "sha256": "10640f79e3065e37ee5bada3008416024ea4662e52615eb2f86858134b5f5801",
+      "bytes": 330732
+    },
+    "data/processed/uv-omnigraph-exp500-b2c2026-pyg/channels.jsonl": {
+      "sha256": "83c6ebb3cabd21145d687825cc98157ebd2668cf0826ad7395b1ac6f05e636d0",
+      "bytes": 1747657
+    },
+    "data/processed/uv-omnigraph-exp500-b2c2026-pyg/directed_edges.jsonl": {
+      "sha256": "74ba812305ca4f156695b2642a188cfa639adcf4a1cee8e7232d1237e7d91982",
+      "bytes": 4912587
+    },
+    "data/processed/uv-omnigraph-exp500-b2c2026-pyg/graph.pt": {
+      "sha256": "3a83a1ee5ae3ed4233d266a3a8beb6275a5884c0ad60ef6a017797a6db886a4e",
+      "bytes": 820285
+    },
+    "data/processed/uv-omnigraph-exp500-b2c2026-pyg/metadata.json": {
+      "sha256": "e47422473501f23c723da92ff114e946b1fb155e80ce73adf732762cc0548f0c",
+      "bytes": 1794
+    },
+    "data/processed/uv-omnigraph-exp500-b2c2026-pyg/nodes.jsonl": {
+      "sha256": "0f5f7e79efb9cb2f6c9cac35583dfb725d057cc6498006864f4048586c7d78db",
+      "bytes": 165492
+    },
+    "experiments/b2c-2026-extended-abstract/results/directed-liquidity-metrics.csv": {
+      "sha256": "28e4311fd4d6faf0f7ca538eaf7bb23b68515b4fa5cc5197ba0220447e76a313",
+      "bytes": 19469
+    },
+    "experiments/b2c-2026-extended-abstract/results/directed-liquidity-summary.json": {
+      "sha256": "338f1d8f3458802e4843ea80ba7bd99e058e7341b33d5e19e92c540624f7ec00",
+      "bytes": 5876
+    },
+    "experiments/b2c-2026-extended-abstract/results/directed-liquidity-summary.tex": {
+      "sha256": "dfff00d6b566fdc9abc299e2b8e597c8b343aa6dff878a1f9838ae7736ec5021",
+      "bytes": 1356
+    },
+    "experiments/b2c-2026-extended-abstract/scripts/run_directed_liquidity_classification.py": {
+      "sha256": "d44e17593c3e90f9bfa31b9aa455a23cfee241579d9278d1856413f7cc7ced1a",
+      "bytes": 26451
+    },
+    "experiments/b2c-2026-revision/results/directed-liquidity-metrics.csv": {
+      "sha256": "0371e44d351fb2055e1b6bb7594540f7eb853bf83aaa3339f060d2f70950ffdf",
+      "bytes": 18861
+    },
+    "experiments/b2c-2026-revision/results/directed-liquidity-summary.json": {
+      "sha256": "67cc931ed5c7661ac52f89e49cb02a1a0d54340508eac919f5700257dc27fe4c",
+      "bytes": 16518
+    },
+    "experiments/b2c-2026-revision/results/directed-liquidity-summary.tex": {
+      "sha256": "994b27124d83e7df934573b84c48258477b084af88a810d72662e60cb0e9025a",
+      "bytes": 1631
+    },
+    "experiments/b2c-2026-revision/results/split-audit.json": {
+      "sha256": "6a93551648cd69e0935234a518826b166a875a2cc3170bce62ebea9867c2579f",
+      "bytes": 21463
+    },
+    "experiments/b2c-2026-revision/results/split-indices.npz": {
+      "sha256": "8e18b9d9dc0c8682f26ea76359a895cdd86ab2d3051fa4c4dc601a24e0888030",
+      "bytes": 2711572
+    },
+    "experiments/b2c-2026-revision/results/test-predictions.npz": {
+      "sha256": "9d777568d1251ba4d1a889cf74a26e029f064153955009eb2b5d439b693c40ef",
+      "bytes": 3429366
+    },
+    "experiments/b2c-2026-revision/results/verification.json": {
+      "sha256": "de948c201bb71951a8354f546f1d0b3046d0682fb75551c65b2d28f4d096c918",
+      "bytes": 640
+    },
+    "experiments/b2c-2026-revision/scripts/run_directed_liquidity_classification.py": {
+      "sha256": "ee79d4cbc7a79fe3be7b96be989332ca6fe343646b5c996e14da5ef4e5b6f15e",
+      "bytes": 17717
+    },
+    "experiments/b2c-2026-revision/tests/test_experiment.py": {
+      "sha256": "3f3bb0f80d2a797e6fba687d6de3f195be35daed5bcc59326a07840b392165be",
+      "bytes": 2753
+    },
+    "requirements.txt": {
+      "sha256": "7ba0f06659d0470404b79420fecaa65fccf9fe6b5da019efeceb1c85a2572621",
+      "bytes": 185
+    },
+    "scripts/check_integrity.py": {
+      "sha256": "ab5625d89ff9d3c8d18307915fd7da66db776f81f3a0f7eb61610b26458b1dad",
+      "bytes": 1182
+    },
+    "scripts/compare_results.py": {
+      "sha256": "e899c1517c9228fdaef5b34ece9372003829f1f95c84dd8811781d21ffb00f4d",
+      "bytes": 2450
+    },
+    "scripts/reproduce.py": {
+      "sha256": "d3efea877664244f5f1004cd3f07c15b73922a66e066b1377c4ce473122278b6",
+      "bytes": 2745
+    },
+    "scripts/verify.py": {
+      "sha256": "d1305d03a17d3dd30340148ce8842f87c66cf1549054514a4025ff84d5a09681",
+      "bytes": 5938
+    },
+    "tests/test_public_entrypoints.py": {
+      "sha256": "5476e0b1ca979836ceca3617e819b8949669adc0b3232f91f364381f2be9f487",
+      "bytes": 3631
+    }
+  }
+}

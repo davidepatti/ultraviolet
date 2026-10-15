@@ -1,5 +1,12 @@
 {
   "artifact": "B2C 2026 GNN Lightning topology study",
+  "paper_title": "Hidden Edge-State Inference in Bitcoin Lightning Network Topologies",
+  "publication_date": "2026-10-15",
+  "primary_experiment": "experiments/b2c-2026-revision",
+  "historical_experiment": "experiments/b2c-2026-extended-abstract",
+  "rights": "author-owned synthetic data and experiment code; repository MIT license",
+  "simulator_source_commit": "b7fa705e0fb9d7085bcc078a5e16ebe1fc5fa83b",
+  "original_artifact_notes_commit": "5f15bc222b8909918bab9593fafab623d5eb77c0",
   "network_sizes": [100, 500, 1000],
   "scenario_configs": [
     "configs/uv-exp-100.properties",
@@ -12,7 +19,33 @@
     "repository_command": "gexpall"
   },
   "conversion_tool": "tools/uv-graph-to-pyg/uv_graph_to_pyg",
+  "conversion_tool_git_blob": "7d634b119a94ce1b53c31e4e2551f619a0176899",
+  "bootstrap_profile_source": "uv_configs/template.properties at simulator_source_commit",
   "downstream_framework": "PyTorch Geometric",
   "label_thresholds_sat": [1000, 10000, 100000],
-  "notes": "The folder records simulator-side inputs and the reusable export/conversion tools needed to regenerate the graph-learning artifacts."
+  "revised_evaluation": {
+    "snapshots_per_size": 1,
+    "physical_channels": [885, 5187, 10797],
+    "bootstrap_seed": 0,
+    "payment_traffic": false,
+    "initial_balances": "one-sided opening balances; one percent reserve",
+    "split_unit": "physical channel; both directions together",
+    "split_seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "test_fraction": 0.3,
+    "models": ["GraphSAGE", "Endpoint MLP", "Edge MLP"],
+    "epochs": 100,
+    "device": "cpu",
+    "paired_partitions": 90,
+    "model_fits": 270,
+    "per_run_metrics": 810
+  },
+  "entrypoints": {
+    "integrity": "python scripts/check_integrity.py",
+    "audit_saved_results": "python scripts/verify.py",
+    "retrain_revised": "python scripts/reproduce.py",
+    "compare_revised": "python scripts/compare_results.py runs/revised/results",
+    "retrain_submitted": "python scripts/reproduce.py --experiment submitted"
+  },
+  "file_inventory": "checksums.json",
+  "notes": "Includes exact saved snapshots and PyG inputs, both training scripts, revised partitions/predictions, reference results and self-contained reproduction instructions. No paper or presentation files are included."
 }

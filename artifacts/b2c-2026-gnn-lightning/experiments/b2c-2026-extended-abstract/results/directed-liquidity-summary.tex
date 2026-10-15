@@ -1,0 +1,26 @@
+\newcommand{\NumSplits}{10}
+\newcommand{\NumEpochs}{100}
+\newcommand{\AmountThresholds}{1k, 10k, and 100k sats}
+\newcommand{\DatasetTableRows}{%
+100 & 100 & 885 & 1770 \\
+500 & 500 & 5187 & 10374 \\
+1000 & 1000 & 10797 & 21594 \\
+}
+\newcommand{\MetricTableRows}{%
+100 & 1k & 50.0\% & 0.914 $\pm$ 0.009 & 0.732 $\pm$ 0.018 & 0.831 $\pm$ 0.009 \\
+100 & 10k & 43.0\% & 0.900 $\pm$ 0.013 & 0.796 $\pm$ 0.015 & 0.821 $\pm$ 0.016 \\
+100 & 100k & 40.8\% & 0.908 $\pm$ 0.010 & 0.805 $\pm$ 0.012 & 0.826 $\pm$ 0.013 \\
+500 & 1k & 50.0\% & 0.949 $\pm$ 0.004 & 0.693 $\pm$ 0.012 & 0.881 $\pm$ 0.007 \\
+500 & 10k & 43.7\% & 0.938 $\pm$ 0.005 & 0.754 $\pm$ 0.005 & 0.869 $\pm$ 0.007 \\
+500 & 100k & 41.7\% & 0.945 $\pm$ 0.003 & 0.776 $\pm$ 0.004 & 0.873 $\pm$ 0.006 \\
+1000 & 1k & 50.0\% & 0.978 $\pm$ 0.002 & 0.832 $\pm$ 0.006 & 0.932 $\pm$ 0.002 \\
+1000 & 10k & 43.4\% & 0.971 $\pm$ 0.005 & 0.867 $\pm$ 0.003 & 0.921 $\pm$ 0.007 \\
+1000 & 100k & 41.4\% & 0.976 $\pm$ 0.003 & 0.876 $\pm$ 0.005 & 0.929 $\pm$ 0.007 \\
+}
+\newcommand{\ScalabilityTableRows}{%
+100 & 100 & 1770 & 22.8 & 6.6 \\
+500 & 500 & 10374 & 57.9 & 18.4 \\
+1000 & 1000 & 21594 & 118.7 & 27.8 \\
+}
+\newcommand{\NodeInputFeatureList}{degree, incident capacity, local channel count, node capacity}
+\newcommand{\EdgeInputFeatureList}{capacity, base fee, fee rate, timelock delta, policy flags, direction}
