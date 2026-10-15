@@ -2,8 +2,8 @@
   "algorithm": "sha256",
   "files": {
     ".gitattributes": {
-      "sha256": "6054e63c8eb2b5b53e05e066559f24377ae8eac9fd3851212ec28b25237bd641",
-      "bytes": 86
+      "sha256": "4fdab7402332eeef3eb835a498fb7c446e07bf8551ee076d9f4a8f45d8468c96",
+      "bytes": 113
     },
     ".gitignore": {
       "sha256": "c0985b53139df8bf39e9005fe65ef0d8510b7da4c240147e802a97fb5e33df97",
