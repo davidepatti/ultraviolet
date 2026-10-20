@@ -11,6 +11,7 @@ This directory contains helper tools. Each tool lives in its own subdirectory wi
 | Latest invoice report plots | Find the latest root-level invoice report and plot it. | `tools/invoice-report-plots/plot_latest_invoice_report.sh` |
 | DSE tools | Generate DSE configs, run automated experiments, and visualize/export reports. | `tools/dse/uv_dse_wizard.py`, `tools/dse/uv_dse_gen`, `tools/dse/uv_dse_run`, `tools/dse/uv_dse_visualizer.py` |
 | Find missing pubkeys | Print `pk<n>` ids that do not appear on matching log/report lines. | `tools/find-missing/find_missing.sh` |
+| UV graph to PyG | Convert UV node or omniscient graph JSON exports into PyTorch Geometric sidecars and `graph.pt`. | `tools/uv-graph-to-pyg/uv_graph_to_pyg` |
 
 ## Layout Rule
 

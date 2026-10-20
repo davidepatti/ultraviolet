@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Convert UV graph JSON exports into PyTorch Geometric files."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+from pathlib import Path
+from typing import Any
+
+
+SOURCE_SCHEMAS = {"uv-node-graph-v1", "uv-omniscient-graph-v1"}
+TARGET_SCHEMA = "uv-graph-pyg-v1"
+
+NODE_FEATURE_NAMES = [
+    "graph_in_degree",
+    "graph_out_degree",
+    "graph_incident_capacity_sat_log1p",
+    "local_channel_count",
+    "node_capacity_sat_log1p",
+    "local_balance_sat_log1p",
+    "remote_balance_sat_log1p",
+    "is_observer",
+    "node_missing_announcement",
+]
+
+EDGE_FEATURE_NAMES = [
+    "capacity_sat_log1p",
+    "fee_base_msat_log1p",
+    "fee_rate_milli_msat",
+    "time_lock_delta",
+    "policy_missing",
+    "disabled",
+    "disabled_missing",
+    "direction_is_node2_to_node1",
+    "source_balance_sat_log1p",
+    "destination_balance_sat_log1p",
+    "source_spendable_balance_sat_log1p",
+    "destination_spendable_balance_sat_log1p",
+    "balance_missing",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Convert UV node or omniscient graph JSON exports into graph.pt plus JSONL sidecars."
+    )
+    parser.add_argument("input_json", type=Path, help="JSON file produced by UV's gexp or gexpall command")
+    parser.add_argument("output_dir", type=Path, help="Directory to receive graph.pt and sidecars")
+    parser.add_argument(
+        "--sidecars-only",
+        action="store_true",
+        help="write metadata and JSONL sidecars without importing torch or torch_geometric",
+    )
+    return parser.parse_args()
+
+
+def load_uv_graph(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError("input root must be a JSON object")
+    if data.get("schema") not in SOURCE_SCHEMAS:
+        expected = ", ".join(sorted(SOURCE_SCHEMAS))
+        raise ValueError(f"expected schema one of {expected}, got {data.get('schema')!r}")
+    for key in ("nodes", "channels", "directed_edges"):
+        if not isinstance(data.get(key), list):
+            raise ValueError(f"missing or invalid {key!r} list")
+    return data
+
+
+def as_int(value: Any, field: str) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{field} must be integer-like, got {value!r}")
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be integer-like, got {value!r}") from exc
+    raise ValueError(f"{field} must be integer-like, got {type(value).__name__}")
+
+
+def as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return False
+
+
+def log1p_nonnegative(value: Any, field: str) -> float:
+    numeric = max(0, as_int(value, field))
+    return math.log1p(numeric)
+
+
+def log1p_nonnegative_with_fallback(row: dict[str, Any], primary: str, fallback: str) -> float:
+    return log1p_nonnegative(row.get(primary, row.get(fallback)), primary)
+
+
+def bool_float(value: Any) -> float:
+    return 1.0 if as_bool(value) else 0.0
+
+
+def sorted_rows(rows: list[dict[str, Any]], id_field: str) -> list[dict[str, Any]]:
+    result = sorted(rows, key=lambda row: as_int(row.get(id_field), id_field))
+    for expected, row in enumerate(result):
+        actual = as_int(row.get(id_field), id_field)
+        if actual != expected:
+            raise ValueError(f"{id_field} values must be contiguous from zero; expected {expected}, got {actual}")
+    return result
+
+
+def build_features(data: dict[str, Any]) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[list[float]],
+    list[list[int]],
+    list[list[float]],
+    list[bool],
+    list[int],
+    list[bool],
+    list[str],
+]:
+    nodes = sorted_rows(data["nodes"], "node_id")
+    channels = sorted_rows(data["channels"], "channel_idx")
+    directed_edges = sorted_rows(data["directed_edges"], "edge_id")
+
+    node_count = len(nodes)
+    channel_count = len(channels)
+    warnings: list[str] = []
+
+    node_features: list[list[float]] = []
+    node_missing_mask: list[bool] = []
+    for node in nodes:
+        node_features.append(
+            [
+                float(as_int(node.get("graph_in_degree"), "graph_in_degree")),
+                float(as_int(node.get("graph_out_degree"), "graph_out_degree")),
+                log1p_nonnegative(node.get("graph_incident_capacity_sat"), "graph_incident_capacity_sat"),
+                float(as_int(node.get("local_channel_count"), "local_channel_count")),
+                log1p_nonnegative(node.get("node_capacity_sat"), "node_capacity_sat"),
+                log1p_nonnegative(node.get("local_balance_sat"), "local_balance_sat"),
+                log1p_nonnegative(node.get("remote_balance_sat"), "remote_balance_sat"),
+                bool_float(node.get("is_observer")),
+                bool_float(node.get("node_missing_announcement")),
+            ]
+        )
+        node_missing_mask.append(as_bool(node.get("node_missing_announcement")))
+
+    edge_index = [[], []]
+    edge_features: list[list[float]] = []
+    edge_active_mask: list[bool] = []
+    edge_channel_idx: list[int] = []
+    missing_policy_count = 0
+    disabled_missing_count = 0
+
+    for edge in directed_edges:
+        src = as_int(edge.get("src"), "src")
+        dst = as_int(edge.get("dst"), "dst")
+        channel_idx = as_int(edge.get("channel_idx"), "channel_idx")
+        if src < 0 or src >= node_count or dst < 0 or dst >= node_count:
+            raise ValueError(f"edge {edge.get('edge_id')} references node outside 0..{node_count - 1}")
+        if channel_idx < 0 or channel_idx >= channel_count:
+            raise ValueError(f"edge {edge.get('edge_id')} references channel outside 0..{channel_count - 1}")
+
+        policy_missing = as_bool(edge.get("policy_missing"))
+        disabled = as_bool(edge.get("disabled"))
+        disabled_missing = as_bool(edge.get("disabled_missing", True))
+        if policy_missing:
+            missing_policy_count += 1
+        if disabled_missing:
+            disabled_missing_count += 1
+
+        edge_index[0].append(src)
+        edge_index[1].append(dst)
+        edge_features.append(
+            [
+                log1p_nonnegative(edge.get("capacity_sat"), "capacity_sat"),
+                log1p_nonnegative(edge.get("fee_base_msat"), "fee_base_msat"),
+                float(as_int(edge.get("fee_rate_milli_msat"), "fee_rate_milli_msat")),
+                float(as_int(edge.get("time_lock_delta"), "time_lock_delta")),
+                bool_float(policy_missing),
+                bool_float(disabled),
+                bool_float(disabled_missing),
+                bool_float(edge.get("direction_is_node2_to_node1")),
+                log1p_nonnegative(edge.get("source_balance_sat"), "source_balance_sat"),
+                log1p_nonnegative(edge.get("destination_balance_sat"), "destination_balance_sat"),
+                log1p_nonnegative_with_fallback(edge, "source_spendable_balance_sat", "source_balance_sat"),
+                log1p_nonnegative_with_fallback(edge, "destination_spendable_balance_sat", "destination_balance_sat"),
+                bool_float(edge.get("balance_missing")),
+            ]
+        )
+        edge_active_mask.append(not policy_missing and not disabled)
+        edge_channel_idx.append(channel_idx)
+
+    if missing_policy_count:
+        warnings.append(
+            f"{missing_policy_count} directed edges have missing UV routing policy; edge_active_mask marks them inactive"
+        )
+    if disabled_missing_count:
+        warnings.append(
+            f"{disabled_missing_count} directed edges have no LND disabled-policy state in UV; disabled_missing records this"
+        )
+    if not directed_edges:
+        warnings.append("graph has no directed edges")
+    if not nodes:
+        warnings.append("graph has no nodes")
+
+    validate_no_nan(node_features, "node features")
+    validate_no_nan(edge_features, "edge features")
+
+    return (
+        nodes,
+        channels,
+        directed_edges,
+        node_features,
+        edge_index,
+        edge_features,
+        edge_active_mask,
+        edge_channel_idx,
+        node_missing_mask,
+        warnings,
+    )
+
+
+def validate_no_nan(rows: list[list[float]], label: str) -> None:
+    for row_index, row in enumerate(rows):
+        for col_index, value in enumerate(row):
+            if not math.isfinite(value):
+                raise ValueError(f"{label} contains non-finite value at row {row_index}, column {col_index}")
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def write_metadata(
+    path: Path,
+    data: dict[str, Any],
+    input_json: Path,
+    nodes: list[dict[str, Any]],
+    channels: list[dict[str, Any]],
+    directed_edges: list[dict[str, Any]],
+    warnings: list[str],
+    wrote_graph_pt: bool,
+) -> None:
+    source = data.get("source", {})
+    graph = data.get("graph", {})
+    metadata = {
+        "schema": TARGET_SCHEMA,
+        "source_schema": data.get("schema"),
+        "source_file": str(input_json),
+        "source_command": source.get("source_command", "uv node graph json export"),
+        "snapshot_scope": source.get("snapshot_scope", "observer_graph"),
+        "capture_time_utc": data.get("exported_at_utc"),
+        "observer_identity_pubkey": source.get("observer_pub_key", ""),
+        "observer_alias": source.get("observer_alias", ""),
+        "observer_block_height": source.get("current_block_height", 0),
+        "total_capacity_sat": graph.get("total_capacity_sat"),
+        "num_nodes": len(nodes),
+        "num_channels": len(channels),
+        "num_directed_edges": len(directed_edges),
+        "node_feature_names": NODE_FEATURE_NAMES,
+        "edge_feature_names": EDGE_FEATURE_NAMES,
+        "normalization": {
+            "log1p": [name for name in NODE_FEATURE_NAMES + EDGE_FEATURE_NAMES if name.endswith("_log1p")],
+            "standardization": "none",
+        },
+        "graph_pt_written": wrote_graph_pt,
+        "warnings": warnings,
+    }
+    path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_graph_pt(
+    path: Path,
+    node_features: list[list[float]],
+    edge_index: list[list[int]],
+    edge_features: list[list[float]],
+    edge_active_mask: list[bool],
+    edge_channel_idx: list[int],
+    node_missing_mask: list[bool],
+) -> None:
+    try:
+        import torch
+        from torch_geometric.data import Data
+    except ImportError as exc:
+        raise RuntimeError(
+            "graph.pt requires torch and torch_geometric. "
+            "Install them in your Python environment, or rerun with --sidecars-only."
+        ) from exc
+
+    if node_features:
+        x = torch.tensor(node_features, dtype=torch.float32)
+    else:
+        x = torch.empty((0, len(NODE_FEATURE_NAMES)), dtype=torch.float32)
+    if edge_index[0]:
+        edge_index_tensor = torch.tensor(edge_index, dtype=torch.long)
+    else:
+        edge_index_tensor = torch.empty((2, 0), dtype=torch.long)
+    if edge_features:
+        edge_attr = torch.tensor(edge_features, dtype=torch.float32)
+    else:
+        edge_attr = torch.empty((0, len(EDGE_FEATURE_NAMES)), dtype=torch.float32)
+
+    data = Data(
+        x=x,
+        edge_index=edge_index_tensor,
+        edge_attr=edge_attr,
+        num_nodes=len(node_features),
+    )
+    data.edge_active_mask = torch.tensor(edge_active_mask, dtype=torch.bool)
+    data.edge_channel_idx = torch.tensor(edge_channel_idx, dtype=torch.long)
+    data.node_missing_mask = torch.tensor(node_missing_mask, dtype=torch.bool)
+    torch.save(data, path)
+
+
+def require_graph_dependencies() -> None:
+    try:
+        import torch  # noqa: F401
+        from torch_geometric.data import Data  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "graph.pt requires torch and torch_geometric. "
+            "Install them in your Python environment, or rerun with --sidecars-only."
+        ) from exc
+
+
+def main() -> int:
+    args = parse_args()
+    data = load_uv_graph(args.input_json)
+    (
+        nodes,
+        channels,
+        directed_edges,
+        node_features,
+        edge_index,
+        edge_features,
+        edge_active_mask,
+        edge_channel_idx,
+        node_missing_mask,
+        warnings,
+    ) = build_features(data)
+
+    if not args.sidecars_only:
+        require_graph_dependencies()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    write_jsonl(args.output_dir / "nodes.jsonl", nodes)
+    write_jsonl(args.output_dir / "channels.jsonl", channels)
+    write_jsonl(args.output_dir / "directed_edges.jsonl", directed_edges)
+
+    wrote_graph_pt = False
+    if not args.sidecars_only:
+        write_graph_pt(
+            args.output_dir / "graph.pt",
+            node_features,
+            edge_index,
+            edge_features,
+            edge_active_mask,
+            edge_channel_idx,
+            node_missing_mask,
+        )
+        wrote_graph_pt = True
+
+    write_metadata(
+        args.output_dir / "metadata.json",
+        data,
+        args.input_json,
+        nodes,
+        channels,
+        directed_edges,
+        warnings,
+        wrote_graph_pt,
+    )
+
+    print(
+        f"Converted {len(nodes)} nodes, {len(channels)} channels, "
+        f"{len(directed_edges)} directed edges into {args.output_dir}"
+    )
+    if args.sidecars_only:
+        print("Skipped graph.pt because --sidecars-only was set")
+    for warning in warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)

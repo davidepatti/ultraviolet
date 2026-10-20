@@ -1,0 +1,60 @@
+{
+  "capture_time_utc": "2026-07-08T09:01:47.057583Z",
+  "edge_feature_names": [
+    "capacity_sat_log1p",
+    "fee_base_msat_log1p",
+    "fee_rate_milli_msat",
+    "time_lock_delta",
+    "policy_missing",
+    "disabled",
+    "disabled_missing",
+    "direction_is_node2_to_node1",
+    "source_balance_sat_log1p",
+    "destination_balance_sat_log1p",
+    "source_spendable_balance_sat_log1p",
+    "destination_spendable_balance_sat_log1p",
+    "balance_missing"
+  ],
+  "graph_pt_written": true,
+  "node_feature_names": [
+    "graph_in_degree",
+    "graph_out_degree",
+    "graph_incident_capacity_sat_log1p",
+    "local_channel_count",
+    "node_capacity_sat_log1p",
+    "local_balance_sat_log1p",
+    "remote_balance_sat_log1p",
+    "is_observer",
+    "node_missing_announcement"
+  ],
+  "normalization": {
+    "log1p": [
+      "graph_incident_capacity_sat_log1p",
+      "node_capacity_sat_log1p",
+      "local_balance_sat_log1p",
+      "remote_balance_sat_log1p",
+      "capacity_sat_log1p",
+      "fee_base_msat_log1p",
+      "source_balance_sat_log1p",
+      "destination_balance_sat_log1p",
+      "source_spendable_balance_sat_log1p",
+      "destination_spendable_balance_sat_log1p"
+    ],
+    "standardization": "none"
+  },
+  "num_channels": 885,
+  "num_directed_edges": 1770,
+  "num_nodes": 100,
+  "observer_alias": "",
+  "observer_block_height": 455,
+  "observer_identity_pubkey": "",
+  "schema": "uv-graph-pyg-v1",
+  "snapshot_scope": "actual_uv_network_state",
+  "source_command": "uv omniscient graph json export",
+  "source_file": "data/exports/uv_omnigraph_exp100_b2c2026.json",
+  "source_schema": "uv-omniscient-graph-v1",
+  "total_capacity_sat": 3508210000,
+  "warnings": [
+    "1770 directed edges have no LND disabled-policy state in UV; disabled_missing records this"
+  ]
+}

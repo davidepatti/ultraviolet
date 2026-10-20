@@ -23,10 +23,12 @@ public class UltraViolet {
     private static final String CONFIG_DIRECTORY = "uv_configs";
     private static final String DEFAULT_CONFIG_FILE = "template.properties";
     private static final Pattern ANSI_ESCAPE_PATTERN = Pattern.compile("\\u001B\\[[;\\d]*m");
+    private static final Pattern SYNTHETIC_PUBKEY_PATTERN = Pattern.compile("^pk\\d+$");
+    private static final int NODE_LABEL_MAX_WIDTH = 32;
+    private static final int NODE_SHORT_ID_WIDTH = 14;
 
     private UVNetwork networkManager;
     boolean quit = false;
-    private String imported_graph_root;
     private static final int LOOP_SLEEP_TIME = 500;
     private final Scanner menuInputScanner;
     private final TerminalStyle ui;
@@ -327,6 +329,8 @@ public class UltraViolet {
         menuItems.add(new MenuItem("net", "Show All Nodes ", this::showAllNodes));
         menuItems.add(new MenuItem("node", "Show Node ", this::showNode));
         menuItems.add(new MenuItem("graph", "Show Node Graph", this::showNodeGraph));
+        menuItems.add(new MenuItem("gexp", "Export Node Graph JSON", this::exportNodeGraphJson));
+        menuItems.add(new MenuItem("gexpall", "Export Omniscient Graph JSON", this::exportOmniscientGraphJson));
         menuItems.add(new MenuItem("qs", "Show Queues Status", this::showQueuesStatus));
         menuItems.add(new MenuItem("rep", "Show Invoice Reports", this::invoiceReportsMethod));
         menuItems.add(new MenuItem("stat", "Show Network Stats", this::showNetworkStatsMethod));
@@ -357,6 +361,7 @@ public class UltraViolet {
                 } else {
                     System.out.println(" " + ui.running("Running..."));
                 }
+                System.out.println(ui.label("Topology: ") + networkManager.describeTopologyMode());
 
                 System.out.print("\n" + ui.label(" -> "));
                 var ch = menuInputScanner.nextLine();
@@ -409,7 +414,6 @@ public class UltraViolet {
         String json = menuInputScanner.nextLine();
         System.out.print("Enter root node pubkey or alias:");
         String root = menuInputScanner.nextLine();
-        imported_graph_root = root;
         new Thread(()-> networkManager.importTopology(json,root)).start();
     }
 
@@ -454,7 +458,7 @@ public class UltraViolet {
     }
 
     private void showNode(Object x) {
-        System.out.print("insert node public key:");
+        System.out.print("insert node public key or alias:");
         String node = menuInputScanner.nextLine();
         showNodeCommand(node);
     }
@@ -463,12 +467,12 @@ public class UltraViolet {
         int purged;
         for (UVNode node : networkManager.getUVNodeList().values()) {
             purged = node.getChannelGraph().purgeNullPolicyChannels();
-            if (purged > 0) System.out.println("Pruned " + purged + " null policy nodes on " + node.getPubKey());
+            if (purged > 0) System.out.println("Pruned " + purged + " null policy nodes on " + displayNodeId(node.getPubKey()));
         }
     }
 
     private void showNodeGraph(Object x) {
-        System.out.print("Insert node public key:");
+        System.out.print("Insert node public key or alias:");
         String node = menuInputScanner.nextLine();
         showGraphCommand(node);
     }
@@ -500,6 +504,62 @@ public class UltraViolet {
 
     }
 
+    private void exportNodeGraphJson(Object x) {
+        if (!networkManager.isBootstrapCompleted()) {
+            System.out.println("Bootstrap not completed!");
+            return;
+        }
+
+        String defaultNode = networkManager.isImportedObserverView()
+                ? nodeInputDefault(networkManager.getImportedRootNodeGraph())
+                : "pk0";
+        String pubkey = readLineOrDefault("Node pubkey or alias", defaultNode);
+        UVNode node = searchNodeForInput(pubkey);
+        String defaultOutput = "uv_graph_" + sanitizeFileStem(node.getPubKey()) + "." + ReportExporter.timestampNow() + ".json";
+        String output = readLineOrDefault("Output JSON file", defaultOutput);
+
+        try {
+            GraphJsonExporter.WrittenGraph written = GraphJsonExporter.writeNodeGraph(networkManager, node, Path.of(output));
+            System.out.println("Written " + written.path());
+            System.out.println(
+                    "Nodes: " + written.nodes()
+                            + ", channels: " + written.channels()
+                            + ", directed edges: " + written.directedEdges()
+                            + ", missing policies: " + written.missingPolicies()
+            );
+            System.out.println("Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg " + written.path() + " <output-dir>");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    private void exportOmniscientGraphJson(Object x) {
+        if (!networkManager.isBootstrapCompleted()) {
+            System.out.println("Bootstrap not completed!");
+            return;
+        }
+
+        String defaultOutput = "uv_omnigraph." + ReportExporter.timestampNow() + ".json";
+        String output = readLineOrDefault("Output JSON file", defaultOutput);
+
+        try {
+            GraphJsonExporter.WrittenGraph written = GraphJsonExporter.writeOmniscientGraph(networkManager, Path.of(output));
+            System.out.println("Written " + written.path());
+            System.out.println(
+                    "Nodes: " + written.nodes()
+                            + ", channels: " + written.channels()
+                            + ", directed edges: " + written.directedEdges()
+                            + ", missing policies: " + written.missingPolicies()
+            );
+            System.out.println("Schema: uv-omniscient-graph-v1");
+            System.out.println("Convert with: tools/uv-graph-to-pyg/uv_graph_to_pyg " + written.path() + " <output-dir>");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     // Method for "Generate Invoice Events"
     public void generateInvoiceEventsMethod(Object x) {
         // Default values for invoice generation
@@ -516,6 +576,34 @@ public class UltraViolet {
             System.out.println("Timechain not running, please start the timechain");
             return;
         }
+
+        if (networkManager.isImportedObserverView()) {
+            String rootPubkey = networkManager.getImportedRootNodeGraph();
+            UVNode root = networkManager.getUVNode(rootPubkey);
+            if (root == null) {
+                System.out.println("Imported observer root not found: " + rootPubkey);
+                return;
+            }
+
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: invoices will be generated only from root node " + displayNodeId(rootPubkey) + "."
+            ));
+            System.out.println(ui.hint("Press ENTER to accept defaults."));
+            double events_per_block = readDoubleOrDefault(
+                    "Root invoice generation rate (events/block)",
+                    1.0
+            );
+            int n_blocks = readIntOrDefault("Timechain duration (blocks)", DEFAULT_N_BLOCKS);
+            int amt_min = readIntOrDefault("Min amount", DEFAULT_AMT_MIN);
+            int amt_max = readIntOrDefault("Max amount", DEFAULT_AMT_MAX);
+            int fees = readIntOrDefault("Max fees", DEFAULT_FEES);
+
+            applyPathFinderStrategy(root, readPathFinderStrategyOrDefault(), Math.max(amt_min, 0));
+
+            networkManager.generateRootInvoiceEvents(events_per_block, n_blocks, amt_min, amt_max, fees);
+            return;
+        }
+
         System.out.println(ui.hint("Press ENTER to accept defaults."));
         double node_events_per_block = readDoubleOrDefault(
                 "Invoice generation rate (events/node/block)",
@@ -594,7 +682,7 @@ public class UltraViolet {
             System.out.println("EMPTY NODE LIST");
             return;
         }
-        var node = networkManager.searchNode(pubkey);
+        var node = searchNodeForInput(pubkey);
         printNodeAndChannels(node, computeNodeAmountWidth(List.of(node)));
         printNodeGraphSummary(node);
         printNodeHtlcStats(node);
@@ -632,6 +720,163 @@ public class UltraViolet {
     private double readDoubleOrDefault(String prompt, double defaultValue) {
         String value = readLineOrDefault(prompt, Double.toString(defaultValue));
         return Double.parseDouble(value);
+    }
+
+    private UVNode searchNodeForInput(String identifier) {
+        String value = identifier;
+        UVNode node = resolveNodeForInput(value);
+        while (node == null) {
+            System.out.println("Node " + value + " not found or alias is ambiguous.");
+            System.out.print("Please enter a valid pubkey or unique alias:");
+            value = menuInputScanner.nextLine();
+            node = resolveNodeForInput(value);
+        }
+        return node;
+    }
+
+    private UVNode resolveNodeForInput(String identifier) {
+        String value = identifier == null ? "" : identifier.trim();
+        if (value.isBlank()) {
+            return null;
+        }
+
+        UVNode byPubkey = networkManager.getUVNode(value);
+        if (byPubkey != null) {
+            return byPubkey;
+        }
+
+        UVNode exactAliasMatch = findUniqueAliasMatch(value, false);
+        if (exactAliasMatch != null) {
+            return exactAliasMatch;
+        }
+
+        return findUniqueAliasMatch(value, true);
+    }
+
+    private UVNode findUniqueAliasMatch(String alias, boolean ignoreCase) {
+        UVNode match = null;
+        int matches = 0;
+        for (UVNode node : networkManager.getUVNodeList().values()) {
+            String nodeAlias = cleanAlias(node.getAlias());
+            if (nodeAlias.isBlank()) {
+                continue;
+            }
+            boolean matchesAlias = ignoreCase
+                    ? nodeAlias.equalsIgnoreCase(alias)
+                    : nodeAlias.equals(alias);
+            if (!matchesAlias) {
+                continue;
+            }
+            match = node;
+            matches++;
+            if (matches > 1) {
+                return null;
+            }
+        }
+        return matches == 1 ? match : null;
+    }
+
+    private String nodeInputDefault(String pubkey) {
+        UVNode node = networkManager.getUVNode(pubkey);
+        if (node == null || isSyntheticPubkey(node.getPubKey())) {
+            return pubkey == null ? "" : pubkey;
+        }
+
+        String alias = cleanAlias(node.getAlias());
+        UVNode aliasAsPubkey = networkManager.getUVNode(alias);
+        if (!alias.isBlank() && isAliasUnique(alias) && (aliasAsPubkey == null || aliasAsPubkey == node)) {
+            return alias;
+        }
+        return node.getPubKey();
+    }
+
+    private boolean isAliasUnique(String alias) {
+        return buildAliasCounts().getOrDefault(cleanAlias(alias), 0) == 1;
+    }
+
+    private String displayNodeId(String pubkey) {
+        return displayNodeId(pubkey, buildAliasCounts());
+    }
+
+    private String displayNodeId(String pubkey, Map<String, Integer> aliasCounts) {
+        UVNode node = networkManager.getUVNode(pubkey);
+        if (node == null) {
+            return shortNodeId(pubkey);
+        }
+        return displayNodeId(node, aliasCounts);
+    }
+
+    private String displayNodeId(UVNode node, Map<String, Integer> aliasCounts) {
+        if (node == null) {
+            return "-";
+        }
+
+        String pubkey = node.getPubKey();
+        if (isSyntheticPubkey(pubkey)) {
+            return pubkey;
+        }
+
+        String alias = cleanAlias(node.getAlias());
+        if (!alias.isBlank()) {
+            if (aliasCounts.getOrDefault(alias, 0) > 1) {
+                String suffix = " [" + shortNodeId(pubkey) + "]";
+                int aliasWidth = Math.max(1, NODE_LABEL_MAX_WIDTH - suffix.length());
+                return abbreviateMiddle(alias, aliasWidth) + suffix;
+            }
+            return abbreviateMiddle(alias, NODE_LABEL_MAX_WIDTH);
+        }
+
+        return shortNodeId(pubkey);
+    }
+
+    private String nodeSecondaryLabel(UVNode node) {
+        if (node == null) {
+            return "";
+        }
+        if (isSyntheticPubkey(node.getPubKey())) {
+            return cleanAlias(node.getAlias());
+        }
+        return shortNodeId(node.getPubKey());
+    }
+
+    private String formatTopologyModeForDisplay(Map<String, Integer> aliasCounts) {
+        if (networkManager.isImportedObserverView()) {
+            return "imported observer view, root=" + displayNodeId(networkManager.getImportedRootNodeGraph(), aliasCounts);
+        }
+        return networkManager.describeTopologyMode();
+    }
+
+    private Map<String, Integer> buildAliasCounts() {
+        Map<String, Integer> aliasCounts = new HashMap<>();
+        for (UVNode node : networkManager.getUVNodeList().values()) {
+            String alias = cleanAlias(node.getAlias());
+            if (!alias.isBlank()) {
+                aliasCounts.merge(alias, 1, Integer::sum);
+            }
+        }
+        return aliasCounts;
+    }
+
+    private boolean usesImportedDisplayLabels() {
+        return networkManager.isImportedObserverView();
+    }
+
+    private boolean isSyntheticPubkey(String pubkey) {
+        return pubkey != null && SYNTHETIC_PUBKEY_PATTERN.matcher(pubkey).matches();
+    }
+
+    private String shortNodeId(String pubkey) {
+        if (pubkey == null || pubkey.isBlank()) {
+            return "-";
+        }
+        return abbreviateMiddle(pubkey, NODE_SHORT_ID_WIDTH);
+    }
+
+    private String cleanAlias(String alias) {
+        if (alias == null) {
+            return "";
+        }
+        return alias.replaceAll("\\s+", " ").trim();
     }
 
     private PathFinderFactory.Strategy parsePathFinderStrategy(String value) {
@@ -680,10 +925,25 @@ public class UltraViolet {
             return;
         }
 
-        String start_id = readLineOrDefault("Starting node public key", "pk0");
-        var sender = networkManager.searchNode(start_id);
-        String end_id = readLineOrDefault("Destination node public key", "pk99");
-        var dest = networkManager.searchNode(end_id);
+        String start_id;
+        UVNode sender;
+        if (networkManager.isImportedObserverView()) {
+            start_id = networkManager.getImportedRootNodeGraph();
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: sender is locked to root node " + displayNodeId(start_id) + "."
+            ));
+            sender = networkManager.getUVNode(start_id);
+            if (sender == null) {
+                System.out.println("Imported observer root not found: " + start_id);
+                return;
+            }
+        } else {
+            start_id = readLineOrDefault("Starting node pubkey or alias", nodeInputDefault("pk0"));
+            sender = searchNodeForInput(start_id);
+            start_id = sender.getPubKey();
+        }
+        String end_id = readLineOrDefault("Destination node pubkey or alias", nodeInputDefault("pk99"));
+        var dest = searchNodeForInput(end_id);
         int amount = readIntOrDefault("Invoice amount", 10000);
         int fees = readIntOrDefault("Max fees", 1000);
         String msg = readLineOrDefault("Invoice message", "default");
@@ -702,12 +962,20 @@ public class UltraViolet {
      */
     private void findPathsCmd() {
         String start;
-        if (imported_graph_root != null) {
-            System.out.println("Using imported graph root node " + imported_graph_root + " as starting point");
-            start = imported_graph_root;
+        UVNode startNode;
+        if (networkManager.isImportedObserverView()) {
+            start = networkManager.getImportedRootNodeGraph();
+            System.out.println("Using imported observer root node " + displayNodeId(start) + " as starting point");
+            startNode = networkManager.getUVNode(start);
+            if (startNode == null) {
+                System.out.println("Imported observer root not found: " + start);
+                return;
+            }
         } else {
             if (networkManager.isBootstrapCompleted()) {
-                start = readLineOrDefault("Starting node public key", "pk0");
+                start = readLineOrDefault("Starting node pubkey or alias", nodeInputDefault("pk0"));
+                startNode = searchNodeForInput(start);
+                start = startNode.getPubKey();
             }
             else  {
                 System.out.println("Bootstrap Non completed!");
@@ -715,14 +983,13 @@ public class UltraViolet {
             }
         }
 
-        String destination = readLineOrDefault("Destination node public key", "pk99");
+        String destinationInput = readLineOrDefault("Destination node pubkey or alias", nodeInputDefault("pk99"));
+        String destination = searchNodeForInput(destinationInput).getPubKey();
         int amount = readIntOrDefault("Payment amount", 10000);
         String choice = readLineOrDefault("Single[1] or All paths", "all");
         boolean stopfirst = choice.equals("1");
         int topk = stopfirst ? 1 : readIntOrDefault("Top K paths", 20);
         String strategyChoice = readPathFinderChoiceOrDefault(true);
-
-        var startNode = networkManager.searchNode(start);
 
         if (strategyChoice.equals("all")) {
             for (PathFinderFactory.Strategy strategy : PathFinderFactory.Strategy.values()) {
@@ -757,7 +1024,7 @@ public class UltraViolet {
 
     private String formatPathDetails(PathFinder.PathDetails pathDetails) {
         StringBuilder s = new StringBuilder();
-        s.append(pathDetails.path()).append(" COST: ").append(formatDouble(pathDetails.totalCost()));
+        s.append(formatPath(pathDetails.path())).append(" COST: ").append(formatDouble(pathDetails.totalCost()));
         if (!pathDetails.components().isEmpty()) {
             s.append(" [");
             for (int i = 0; i < pathDetails.components().size(); i++) {
@@ -769,6 +1036,21 @@ public class UltraViolet {
             }
             s.append(']');
         }
+        return s.toString();
+    }
+
+    private String formatPath(topology.Path path) {
+        if (path == null || path.edges().isEmpty()) {
+            return "EMPTY_PATH";
+        }
+
+        Map<String, Integer> aliasCounts = buildAliasCounts();
+        StringBuilder s = new StringBuilder("(");
+        for (int i = path.edges().size(); i > 0; i--) {
+            var edge = path.edges().get(i - 1);
+            s.append(displayNodeId(edge.source(), aliasCounts)).append("->");
+        }
+        s.append(displayNodeId(path.edges().get(0).destination(), aliasCounts)).append(")");
         return s.toString();
     }
 
@@ -793,7 +1075,14 @@ public class UltraViolet {
     private void showGraphCommand(String node_id) {
 
         if (!networkManager.isBootstrapCompleted()) return;
-        var n = networkManager.searchNode(node_id);
+        var n = searchNodeForInput(node_id);
+        if (networkManager.isImportedObserverView() && !n.getPubKey().equals(networkManager.getImportedRootNodeGraph())) {
+            System.out.println(ui.hint(
+                    "Imported observer-view mode: only root node "
+                            + displayNodeId(networkManager.getImportedRootNodeGraph())
+                            + " has the imported routing graph."
+            ));
+        }
         printGraphTable(n);
     }
 
@@ -861,7 +1150,6 @@ public class UltraViolet {
         }
         networkManager.shutdown();
         networkManager = new UVNetwork(newConfig);
-        imported_graph_root = null;
         updateSelectedConfigPath(newConfig, chosenConfigPath);
         System.out.println("Selected " + formatConfigSelection(getSelectedConfigPath()));
     }
@@ -945,8 +1233,17 @@ public class UltraViolet {
     }
 
     private void printNodeAndChannels(UVNode node, int nodeAmountWidth) {
+        Map<String, Integer> aliasCounts = buildAliasCounts();
+        String nodeLabel = displayNodeId(node, aliasCounts);
+        String nodeDetail = nodeSecondaryLabel(node);
+        if (nodeDetail.equals(nodeLabel)) {
+            nodeDetail = "";
+        }
         System.out.println(ui.separator());
-        System.out.println(ui.title(" Node " + node.getPubKey() + " ") + " " + ui.accent(node.getAlias()));
+        System.out.println(
+                ui.title(" Node " + nodeLabel + " ")
+                        + (nodeDetail.isBlank() ? "" : " " + ui.accent(nodeDetail))
+        );
         System.out.println(
                 "  "
                         + ui.hint("Capacity: ") + ui.value(formatAmountWithUnit(node.getNodeCapacity(), nodeAmountWidth))
@@ -968,7 +1265,7 @@ public class UltraViolet {
                         + ui.hint("Remote: ") + ui.accent(formatAmountWithUnit(node.getRemoteBalance(), nodeAmountWidth))
         );
 
-        var rows = buildChannelDisplayRows(node);
+        var rows = buildChannelDisplayRows(node, aliasCounts);
         if (rows.isEmpty()) {
             System.out.println("  " + ui.hint("(no channels)"));
             return;
@@ -1013,9 +1310,11 @@ public class UltraViolet {
         System.out.println(ui.title(title));
         printNodeCollectionSummary(nodes);
 
-        var rows = buildNodeOverviewRows(nodes);
+        Map<String, Integer> aliasCounts = buildAliasCounts();
+        String secondaryHeader = usesImportedDisplayLabels() ? "Key" : "Alias";
+        var rows = buildNodeOverviewRows(nodes, aliasCounts);
         int pubkeyWidth = maxWidth("Node", rows.stream().map(NodeOverviewRow::pubkey).toList());
-        int aliasWidth = maxWidth("Alias", rows.stream().map(NodeOverviewRow::alias).toList());
+        int aliasWidth = maxWidth(secondaryHeader, rows.stream().map(NodeOverviewRow::alias).toList());
         int capacityWidth = maxWidth("Capacity", rows.stream().map(NodeOverviewRow::capacity).toList());
         int channelsWidth = maxWidth("Channels", rows.stream().map(NodeOverviewRow::channels).toList());
         int onChainWidth = maxWidth("On-chain", rows.stream().map(NodeOverviewRow::onChain).toList());
@@ -1027,7 +1326,7 @@ public class UltraViolet {
         System.out.println(
                 "  " + ui.hint(
                         padRight("Node", pubkeyWidth) + "  "
-                                + padRight("Alias", aliasWidth) + "  "
+                                + padRight(secondaryHeader, aliasWidth) + "  "
                                 + padLeft("Capacity", capacityWidth) + "  "
                                 + padLeft("Channels", channelsWidth) + "  "
                                 + padLeft("On-chain", onChainWidth) + "  "
@@ -1055,6 +1354,7 @@ public class UltraViolet {
     }
 
     private void printNodeCollectionSummary(List<UVNode> nodes) {
+        Map<String, Integer> aliasCounts = buildAliasCounts();
         GlobalStats stats = networkManager.getStats();
         int uniqueChannels = countUniqueChannels(nodes);
         long totalCapacity = computeTotalNetworkCapacity(nodes);
@@ -1062,6 +1362,10 @@ public class UltraViolet {
         UVNode maxGraphNode = stats.getMaxGraphSizeNode();
         UVNode minGraphNode = stats.getMinGraphSizeNode();
 
+        System.out.println(
+                "  "
+                        + ui.hint("Topology: ") + ui.detail(formatTopologyModeForDisplay(aliasCounts))
+        );
         System.out.println(
                 "  "
                         + ui.hint("Nodes: ") + ui.value(padLeft(Integer.toString(nodes.size()), 4))
@@ -1075,10 +1379,10 @@ public class UltraViolet {
 
         String largest = maxGraphNode == null
                 ? "-"
-                : maxGraphNode.getPubKey() + " (" + maxGraphNode.getChannelGraph().getNodeCount() + ")";
+                : displayNodeId(maxGraphNode, aliasCounts) + " (" + maxGraphNode.getChannelGraph().getNodeCount() + ")";
         String smallest = minGraphNode == null
                 ? "-"
-                : minGraphNode.getPubKey() + " (" + minGraphNode.getChannelGraph().getNodeCount() + ")";
+                : displayNodeId(minGraphNode, aliasCounts) + " (" + minGraphNode.getChannelGraph().getNodeCount() + ")";
         System.out.println(
                 "  "
                         + ui.hint("Avg graph size: ") + ui.value(formatWhole(stats.getAverageGraphSize()))
@@ -1089,12 +1393,12 @@ public class UltraViolet {
         );
     }
 
-    private ArrayList<NodeOverviewRow> buildNodeOverviewRows(List<UVNode> nodes) {
+    private ArrayList<NodeOverviewRow> buildNodeOverviewRows(List<UVNode> nodes, Map<String, Integer> aliasCounts) {
         ArrayList<NodeOverviewRow> rows = new ArrayList<>();
         for (UVNode node : nodes) {
             rows.add(new NodeOverviewRow(
-                    node.getPubKey(),
-                    node.getAlias(),
+                    displayNodeId(node, aliasCounts),
+                    nodeSecondaryLabel(node),
                     formatAmountNumber(node.getNodeCapacity()),
                     Integer.toString(node.getChannels().size()),
                     formatAmountNumber(node.getOnChainBalance()),
@@ -1156,7 +1460,7 @@ public class UltraViolet {
             return;
         }
 
-        var rows = buildInvoiceDisplayRows(reports);
+        var rows = buildInvoiceDisplayRows(reports, buildAliasCounts());
         int hashWidth = maxWidth("Hash", rows.stream().map(InvoiceDisplayRow::hash).toList());
         int senderWidth = maxWidth("From", rows.stream().map(InvoiceDisplayRow::sender).toList());
         int destWidth = maxWidth("To", rows.stream().map(InvoiceDisplayRow::dest).toList());
@@ -1215,13 +1519,16 @@ public class UltraViolet {
         }
     }
 
-    private ArrayList<InvoiceDisplayRow> buildInvoiceDisplayRows(List<GlobalStats.NodeStats.InvoiceReport> reports) {
+    private ArrayList<InvoiceDisplayRow> buildInvoiceDisplayRows(
+            List<GlobalStats.NodeStats.InvoiceReport> reports,
+            Map<String, Integer> aliasCounts
+    ) {
         ArrayList<InvoiceDisplayRow> rows = new ArrayList<>();
         for (GlobalStats.NodeStats.InvoiceReport report : reports) {
             rows.add(new InvoiceDisplayRow(
                     abbreviateMiddle(report.hash(), 16),
-                    abbreviateMiddle(report.sender(), 14),
-                    abbreviateMiddle(report.dest(), 14),
+                    displayNodeId(report.sender(), aliasCounts),
+                    displayNodeId(report.dest(), aliasCounts),
                     formatAmountNumber(report.amt()),
                     Integer.toString(report.search_returned_paths()),
                     Integer.toString(report.candidate_paths()),
@@ -1240,9 +1547,18 @@ public class UltraViolet {
     }
 
     private void printGraphTable(UVNode node) {
+        Map<String, Integer> aliasCounts = buildAliasCounts();
+        String nodeLabel = displayNodeId(node, aliasCounts);
+        String nodeDetail = nodeSecondaryLabel(node);
+        if (nodeDetail.equals(nodeLabel)) {
+            nodeDetail = "";
+        }
         ChannelGraph graph = node.getChannelGraph();
         System.out.println(ui.separator());
-        System.out.println(ui.title(" Graph " + node.getPubKey() + " ") + " " + ui.accent(node.getAlias()));
+        System.out.println(
+                ui.title(" Graph " + nodeLabel + " ")
+                        + (nodeDetail.isBlank() ? "" : " " + ui.accent(nodeDetail))
+        );
         System.out.println(
                 "  "
                         + ui.hint("Visible nodes: ") + ui.value(Integer.toString(graph.getNodeCount()))
@@ -1252,7 +1568,7 @@ public class UltraViolet {
                         + ui.hint("Null policies: ") + ui.accent(Integer.toString(graph.countNullPolicies()))
         );
 
-        var rows = buildGraphDisplayRows(graph);
+        var rows = buildGraphDisplayRows(graph, aliasCounts);
         if (rows.isEmpty()) {
             System.out.println("  " + ui.hint("(graph is empty)"));
             System.out.println(ui.separator());
@@ -1275,7 +1591,7 @@ public class UltraViolet {
                 )
         );
         for (GraphDisplayRow row : rows) {
-            String source = row.source().equals(node.getPubKey())
+            String source = row.source().equals(nodeLabel)
                     ? ui.accent(padRight(row.source(), sourceWidth))
                     : ui.section(padRight(row.source(), sourceWidth));
             System.out.println(
@@ -1290,7 +1606,7 @@ public class UltraViolet {
         System.out.println(ui.separator());
     }
 
-    private ArrayList<GraphDisplayRow> buildGraphDisplayRows(ChannelGraph graph) {
+    private ArrayList<GraphDisplayRow> buildGraphDisplayRows(ChannelGraph graph, Map<String, Integer> aliasCounts) {
         ArrayList<GraphDisplayRow> rows = new ArrayList<>();
         ArrayList<String> sources = new ArrayList<>(graph.getAdjMap().keySet());
         sources.sort(String::compareTo);
@@ -1299,8 +1615,8 @@ public class UltraViolet {
             edges.sort(Comparator.comparing(ChannelGraph.Edge::destination).thenComparing(ChannelGraph.Edge::id));
             for (ChannelGraph.Edge edge : edges) {
                 rows.add(new GraphDisplayRow(
-                        source,
-                        edge.destination(),
+                        displayNodeId(source, aliasCounts),
+                        displayNodeId(edge.destination(), aliasCounts),
                         edge.id(),
                         formatAmountNumber(edge.capacity()),
                         formatPolicy(edge.policy())
@@ -1380,7 +1696,7 @@ public class UltraViolet {
         );
     }
 
-    private ArrayList<ChannelDisplayRow> buildChannelDisplayRows(UVNode node) {
+    private ArrayList<ChannelDisplayRow> buildChannelDisplayRows(UVNode node, Map<String, Integer> aliasCounts) {
         ArrayList<ChannelDisplayRow> rows = new ArrayList<>();
         var channels = node.getChannels().values().stream().sorted().toList();
         for (UVChannel channel : channels) {
@@ -1390,7 +1706,7 @@ public class UltraViolet {
                     : channel.getNode1PubKey();
             rows.add(new ChannelDisplayRow(
                     channel.getChannelId(),
-                    peerId,
+                    displayNodeId(peerId, aliasCounts),
                     formatAmountNumber(channel.getCapacity()),
                     formatAmountNumber(Math.max(0, channel.getLiquidity(localId))),
                     formatAmountNumber(Math.max(0, channel.getLiquidity(peerId))),
@@ -1485,6 +1801,17 @@ public class UltraViolet {
         int prefix = (maxWidth - 3) / 2;
         int suffix = maxWidth - 3 - prefix;
         return value.substring(0, prefix) + "..." + value.substring(value.length() - suffix);
+    }
+
+    private String sanitizeFileStem(String value) {
+        String sanitized = value == null ? "" : value.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (sanitized.isBlank()) {
+            return "node";
+        }
+        if (sanitized.length() > 72) {
+            return sanitized.substring(0, 72);
+        }
+        return sanitized;
     }
 
     private String formatBootstrapProgressLine(int totalNodes) {

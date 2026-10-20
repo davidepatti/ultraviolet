@@ -1,0 +1,566 @@
+{
+  "task": "source_spendable_balance_sat >= amount_sat",
+  "started_utc": "2026-09-15T10:37:52.314582+00:00",
+  "completed_utc": "2026-09-15T10:38:50.182750+00:00",
+  "setup": {
+    "network_sizes": [
+      100,
+      500,
+      1000
+    ],
+    "amount_thresholds_sat": [
+      1000,
+      10000,
+      100000
+    ],
+    "snapshots_per_size": 1,
+    "bootstrap_seed": 0,
+    "payment_traffic": false,
+    "num_splits": 10,
+    "epochs": 100,
+    "test_fraction": 0.3,
+    "split_unit": "physical channel; both directions together",
+    "stratification": "number of usable directions per channel (0, 1, 2)",
+    "full_public_graph_visible": true,
+    "test_labels_used_in_training": false,
+    "standardization": "all visible node/edge features within each fixed snapshot; no labels",
+    "node_features": [
+      "graph_in_degree",
+      "graph_out_degree",
+      "graph_incident_capacity_sat_log1p",
+      "local_channel_count",
+      "node_capacity_sat_log1p"
+    ],
+    "edge_features": [
+      "capacity_sat_log1p",
+      "fee_base_msat_log1p",
+      "fee_rate_milli_msat",
+      "time_lock_delta",
+      "policy_missing",
+      "disabled",
+      "direction_is_node2_to_node1"
+    ],
+    "hidden_channels": 32,
+    "dropout": 0.1,
+    "optimizer": "Adam",
+    "learning_rate": 0.01,
+    "weight_decay": 0.0001,
+    "loss": "binary cross-entropy; positive class weight from training labels only",
+    "accuracy_threshold": 0.5,
+    "parameter_counts": {
+      "gnn": 4769,
+      "endpoint_mlp": 3585,
+      "edge_mlp": 289
+    },
+    "models": {
+      "gnn": "GraphSAGE",
+      "endpoint_mlp": "Endpoint MLP",
+      "edge_mlp": "Edge MLP"
+    }
+  },
+  "runtime": {
+    "python": "3.12.11",
+    "torch": "2.12.1",
+    "torch_geometric": "2.8.0",
+    "numpy": "2.5.1",
+    "sklearn": "1.9.0",
+    "matplotlib": "3.11.0",
+    "device": "cpu",
+    "torch_threads": 1,
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "experiment_script_sha256": "ee79d4cbc7a79fe3be7b96be989332ca6fe343646b5c996e14da5ef4e5b6f15e",
+  "datasets": [
+    {
+      "nodes": 100,
+      "physical_channels": 885,
+      "directed_edges": 1770,
+      "capture_time_utc": "2026-07-08T09:01:47.057583Z",
+      "one_sided_channels": 885,
+      "one_percent_reserve_channels": 885,
+      "input_sha256": {
+        "data/processed/uv-omnigraph-exp100-b2c2026-pyg/metadata.json": "18fb9cbe3fd67d45ace4df2cd614d317d258a6389ae67c9518545bac886ea683",
+        "data/processed/uv-omnigraph-exp100-b2c2026-pyg/graph.pt": "9b6f4bb1458c6991fba5257f75025d946e470034ef41eaca5dc6d08954d82279",
+        "data/processed/uv-omnigraph-exp100-b2c2026-pyg/nodes.jsonl": "910ab00edc333b326e48d782b4aafb2e6e50be98ba991cbbde0fa6d7899e9d87",
+        "data/processed/uv-omnigraph-exp100-b2c2026-pyg/channels.jsonl": "63f0ed63784cbcf4a6ab834fcdcf289f8aec75b1aa9bad06a639b38ac22d2126",
+        "data/processed/uv-omnigraph-exp100-b2c2026-pyg/directed_edges.jsonl": "0480715a8aac63c042caf3c68aaa8421cd390de1f5795d4bfeff8675bbfc7031",
+        "data/exports/uv_omnigraph_exp100_b2c2026.json": "f644c20bcfb99e56143d31227a7b095785fdeee42f09e12381f3f19d92a917fe"
+      }
+    },
+    {
+      "nodes": 500,
+      "physical_channels": 5187,
+      "directed_edges": 10374,
+      "capture_time_utc": "2026-07-08T09:04:15.086631Z",
+      "one_sided_channels": 5187,
+      "one_percent_reserve_channels": 5187,
+      "input_sha256": {
+        "data/processed/uv-omnigraph-exp500-b2c2026-pyg/metadata.json": "e47422473501f23c723da92ff114e946b1fb155e80ce73adf732762cc0548f0c",
+        "data/processed/uv-omnigraph-exp500-b2c2026-pyg/graph.pt": "3a83a1ee5ae3ed4233d266a3a8beb6275a5884c0ad60ef6a017797a6db886a4e",
+        "data/processed/uv-omnigraph-exp500-b2c2026-pyg/nodes.jsonl": "0f5f7e79efb9cb2f6c9cac35583dfb725d057cc6498006864f4048586c7d78db",
+        "data/processed/uv-omnigraph-exp500-b2c2026-pyg/channels.jsonl": "83c6ebb3cabd21145d687825cc98157ebd2668cf0826ad7395b1ac6f05e636d0",
+        "data/processed/uv-omnigraph-exp500-b2c2026-pyg/directed_edges.jsonl": "74ba812305ca4f156695b2642a188cfa639adcf4a1cee8e7232d1237e7d91982",
+        "data/exports/uv_omnigraph_exp500_b2c2026.json": "de51f8b36791bc9bcd9bfff8f209ade333d88fd5301aeb95951b3584ca3b5f12"
+      }
+    },
+    {
+      "nodes": 1000,
+      "physical_channels": 10797,
+      "directed_edges": 21594,
+      "capture_time_utc": "2026-07-08T09:41:31.687435Z",
+      "one_sided_channels": 10797,
+      "one_percent_reserve_channels": 10797,
+      "input_sha256": {
+        "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/metadata.json": "56c7f605580c4ec2cfca9f8f88686f0d45038f6acc2eda67e7fcdf59591a3e3b",
+        "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/graph.pt": "e3a5348a14929280ffc59d19f51a04489905ade9f3f9e549895d894e6a82e2fa",
+        "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/nodes.jsonl": "10640f79e3065e37ee5bada3008416024ea4662e52615eb2f86858134b5f5801",
+        "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/channels.jsonl": "ebba1ecf1b9ba583517a118e3a07a96e9e1386396964bd046c9e589c39a711d7",
+        "data/processed/uv-omnigraph-exp1000-b2c2026-pyg/directed_edges.jsonl": "c7490dc194e1442b275b6d2ee19f94190e6cfd61d692eafa0744cc44422583cd",
+        "data/exports/uv_omnigraph_exp1000_b2c2026.json": "0f963fc04c8b23ffe8b160641e144431fd484c57f7bdd18ab06fd680294454cd"
+      }
+    }
+  ],
+  "results": [
+    {
+      "network_size": 100,
+      "amount_sat": 1000,
+      "usable_share": 0.5,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9010303013172027,
+            "std": 0.01885650520166384
+          },
+          "ap": {
+            "mean": 0.9014050932939239,
+            "std": 0.01878855440869865
+          },
+          "accuracy": {
+            "mean": 0.8193609022556391,
+            "std": 0.026927051665449234
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.8817838769856973,
+            "std": 0.02233297911553074
+          },
+          "ap": {
+            "mean": 0.8848729205819547,
+            "std": 0.021221295370111987
+          },
+          "accuracy": {
+            "mean": 0.806954887218045,
+            "std": 0.027297737775275256
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.7316397195997513,
+            "std": 0.02328526628931009
+          },
+          "ap": {
+            "mean": 0.6898142417137106,
+            "std": 0.02066724078739738
+          },
+          "accuracy": {
+            "mean": 0.7304511278195489,
+            "std": 0.025299631545453435
+          }
+        }
+      }
+    },
+    {
+      "network_size": 100,
+      "amount_sat": 10000,
+      "usable_share": 0.4299435019493103,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.8827044847217381,
+            "std": 0.015748510195459194
+          },
+          "ap": {
+            "mean": 0.8444861805412642,
+            "std": 0.021860218244481932
+          },
+          "accuracy": {
+            "mean": 0.8062264150943397,
+            "std": 0.013103815468280499
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.8653726617869177,
+            "std": 0.0208433508032397
+          },
+          "ap": {
+            "mean": 0.8119411959689924,
+            "std": 0.024061350960121946
+          },
+          "accuracy": {
+            "mean": 0.7964150943396227,
+            "std": 0.025739334683448984
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.7869742651330313,
+            "std": 0.01614306654554214
+          },
+          "ap": {
+            "mean": 0.6895956925350324,
+            "std": 0.021434127402924563
+          },
+          "accuracy": {
+            "mean": 0.7581132075471698,
+            "std": 0.022250288830303378
+          }
+        }
+      }
+    },
+    {
+      "network_size": 100,
+      "amount_sat": 100000,
+      "usable_share": 0.4079096019268036,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.8942301221563895,
+            "std": 0.013487706972974772
+          },
+          "ap": {
+            "mean": 0.8438878975630386,
+            "std": 0.021117631055667642
+          },
+          "accuracy": {
+            "mean": 0.8154135338345865,
+            "std": 0.014715642945453305
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.8798098163996781,
+            "std": 0.01772750708337435
+          },
+          "ap": {
+            "mean": 0.8121949201074374,
+            "std": 0.029812947586759935
+          },
+          "accuracy": {
+            "mean": 0.806015037593985,
+            "std": 0.020299204743174502
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.8109209275107891,
+            "std": 0.010040862082686298
+          },
+          "ap": {
+            "mean": 0.693175430636902,
+            "std": 0.019692550399598985
+          },
+          "accuracy": {
+            "mean": 0.775563909774436,
+            "std": 0.014099832760937554
+          }
+        }
+      }
+    },
+    {
+      "network_size": 500,
+      "amount_sat": 1000,
+      "usable_share": 0.5,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9473592148479062,
+            "std": 0.004910348462220531
+          },
+          "ap": {
+            "mean": 0.9473070864478228,
+            "std": 0.004926456975870294
+          },
+          "accuracy": {
+            "mean": 0.8776349614395886,
+            "std": 0.005691683519646394
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.919414977101658,
+            "std": 0.007032489229370479
+          },
+          "ap": {
+            "mean": 0.9192744979155384,
+            "std": 0.007241987941296161
+          },
+          "accuracy": {
+            "mean": 0.846111825192802,
+            "std": 0.00900055287111897
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.6910447203296303,
+            "std": 0.018882028663407942
+          },
+          "ap": {
+            "mean": 0.6535248704533412,
+            "std": 0.018268874296658896
+          },
+          "accuracy": {
+            "mean": 0.6919665809768636,
+            "std": 0.01856240212733753
+          }
+        }
+      }
+    },
+    {
+      "network_size": 500,
+      "amount_sat": 10000,
+      "usable_share": 0.43676498532295227,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.937879833456952,
+            "std": 0.006323295490430254
+          },
+          "ap": {
+            "mean": 0.9173896521223055,
+            "std": 0.009342101039868142
+          },
+          "accuracy": {
+            "mean": 0.8702763496143959,
+            "std": 0.005336405145434147
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.9080896115436714,
+            "std": 0.006751829277090975
+          },
+          "ap": {
+            "mean": 0.8725041606054351,
+            "std": 0.009506370071067855
+          },
+          "accuracy": {
+            "mean": 0.8364074550128535,
+            "std": 0.00801619118164441
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.7522862940310042,
+            "std": 0.007628588709177156
+          },
+          "ap": {
+            "mean": 0.6489006437985008,
+            "std": 0.00836917873640038
+          },
+          "accuracy": {
+            "mean": 0.7218830334190232,
+            "std": 0.008199861030260285
+          }
+        }
+      }
+    },
+    {
+      "network_size": 500,
+      "amount_sat": 100000,
+      "usable_share": 0.4173896312713623,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9420162822010397,
+            "std": 0.004545926150933869
+          },
+          "ap": {
+            "mean": 0.9172170739816682,
+            "std": 0.006075403317285988
+          },
+          "accuracy": {
+            "mean": 0.8735861182519281,
+            "std": 0.006201790236091442
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.9119625092406352,
+            "std": 0.0035274594152753446
+          },
+          "ap": {
+            "mean": 0.8659048462866338,
+            "std": 0.005566140573626946
+          },
+          "accuracy": {
+            "mean": 0.8386568123393315,
+            "std": 0.006727553440814472
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.7731906931675985,
+            "std": 0.009347437418730916
+          },
+          "ap": {
+            "mean": 0.6522722377934818,
+            "std": 0.014070710807225835
+          },
+          "accuracy": {
+            "mean": 0.7336760925449871,
+            "std": 0.011993511667329017
+          }
+        }
+      }
+    },
+    {
+      "network_size": 1000,
+      "amount_sat": 1000,
+      "usable_share": 0.5,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9782018623176685,
+            "std": 0.0023601448243764683
+          },
+          "ap": {
+            "mean": 0.9781811987770096,
+            "std": 0.0023935666058013307
+          },
+          "accuracy": {
+            "mean": 0.933451682618092,
+            "std": 0.004784846608624365
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.9554352199350287,
+            "std": 0.0035435807441252442
+          },
+          "ap": {
+            "mean": 0.9550484121393114,
+            "std": 0.0034866983767744626
+          },
+          "accuracy": {
+            "mean": 0.8855510960172893,
+            "std": 0.007120766197498228
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.832478068835542,
+            "std": 0.009659648631479976
+          },
+          "ap": {
+            "mean": 0.8039938548005123,
+            "std": 0.011093444172718544
+          },
+          "accuracy": {
+            "mean": 0.8287743130595864,
+            "std": 0.00864611346091599
+          }
+        }
+      }
+    },
+    {
+      "network_size": 1000,
+      "amount_sat": 10000,
+      "usable_share": 0.43377789855003357,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9692771328057994,
+            "std": 0.0032170654663018815
+          },
+          "ap": {
+            "mean": 0.9600318433543409,
+            "std": 0.004140808332469289
+          },
+          "accuracy": {
+            "mean": 0.9215807347946898,
+            "std": 0.0036912434772997742
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.9437808962383138,
+            "std": 0.0046249945075861375
+          },
+          "ap": {
+            "mean": 0.9227972029911014,
+            "std": 0.008104127108843891
+          },
+          "accuracy": {
+            "mean": 0.8763507255325719,
+            "std": 0.007287187801626213
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.8635470618254637,
+            "std": 0.005658998105978775
+          },
+          "ap": {
+            "mean": 0.7932332869620327,
+            "std": 0.00924787086640638
+          },
+          "accuracy": {
+            "mean": 0.8375270145106514,
+            "std": 0.006053599588524336
+          }
+        }
+      }
+    },
+    {
+      "network_size": 1000,
+      "amount_sat": 100000,
+      "usable_share": 0.4140501916408539,
+      "models": {
+        "gnn": {
+          "auc": {
+            "mean": 0.9740985595339968,
+            "std": 0.0031648445227316314
+          },
+          "ap": {
+            "mean": 0.9629175777614026,
+            "std": 0.0044653165511133784
+          },
+          "accuracy": {
+            "mean": 0.9274467428218587,
+            "std": 0.005852451253725633
+          }
+        },
+        "endpoint_mlp": {
+          "auc": {
+            "mean": 0.952813423054528,
+            "std": 0.002655717938477377
+          },
+          "ap": {
+            "mean": 0.9294958758693271,
+            "std": 0.0037914582209531743
+          },
+          "accuracy": {
+            "mean": 0.885504785427601,
+            "std": 0.003440300836194773
+          }
+        },
+        "edge_mlp": {
+          "auc": {
+            "mean": 0.8747012927772788,
+            "std": 0.002998957449673988
+          },
+          "ap": {
+            "mean": 0.7926856330538625,
+            "std": 0.005959294803615653
+          },
+          "accuracy": {
+            "mean": 0.8517906761346093,
+            "std": 0.0037864569365051713
+          }
+        }
+      }
+    }
+  ]
+}

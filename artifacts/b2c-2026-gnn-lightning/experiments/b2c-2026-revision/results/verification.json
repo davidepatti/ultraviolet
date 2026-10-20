@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "paired_splits": 90,
+  "model_fits": 270,
+  "channel_overlap": 0,
+  "recomputed_metrics": 810,
+  "unchanged_input_files": 18,
+  "frozen_artifact_hashes_verified": {
+    "paper/main.tex": "a132bb40b518f33a6e1171221eb495e78ce4675e401f275be5710217c05ee4a9",
+    "paper/main.pdf": "b3f8a56d4425c926ae93bcc78d39719933bc857eba22ec6d69a8e92577deee1c",
+    "paper/Patti_B2C_2026_final.pdf": "b3f8a56d4425c926ae93bcc78d39719933bc857eba22ec6d69a8e92577deee1c",
+    "results/directed-liquidity-metrics.csv": "28e4311fd4d6faf0f7ca538eaf7bb23b68515b4fa5cc5197ba0220447e76a313"
+  },
+  "original_working_paper_unchanged": true
+}

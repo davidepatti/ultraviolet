@@ -1,0 +1,76 @@
+{
+  "status": "passed",
+  "validation_date": "2026-10-15",
+  "runtime": {
+    "python": "3.12.11",
+    "torch": "2.12.1",
+    "torch_geometric": "2.8.0",
+    "numpy": "2.5.1",
+    "sklearn": "1.9.0",
+    "matplotlib": "3.11.0",
+    "device": "cpu",
+    "torch_threads": 1,
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "revised_saved_result_audit": {
+    "status": "passed",
+    "published_files_verified": 44,
+    "unchanged_input_files": 18,
+    "paired_splits": 90,
+    "model_fits": 270,
+    "channel_overlap": 0,
+    "recomputed_metrics": 810,
+    "scope": "public experiment audit; private paper/archive checks are not required"
+  },
+  "revised_rerun_audit": {
+    "status": "passed",
+    "published_files_verified": 44,
+    "unchanged_input_files": 18,
+    "paired_splits": 90,
+    "model_fits": 270,
+    "channel_overlap": 0,
+    "recomputed_metrics": 810,
+    "scope": "public experiment audit; private paper/archive checks are not required"
+  },
+  "revised_fresh_training_comparison": {
+    "metrics": 810,
+    "maximum_absolute_difference": 0.0,
+    "tolerance": 1e-06,
+    "passed": true
+  },
+  "submitted_fresh_training_comparison": {
+    "metrics": 540,
+    "maximum_absolute_difference": 0.0,
+    "tolerance": 1e-06,
+    "passed": true
+  },
+  "tests": {
+    "tests": {
+      "passed": 8
+    },
+    "experiments/b2c-2026-revision/tests": {
+      "passed": 5
+    }
+  },
+  "conversion_checks": [
+    {
+      "nodes": 100,
+      "sidecar_files_byte_identical": 4,
+      "pyg_attributes_equal": 7,
+      "status": "passed"
+    },
+    {
+      "nodes": 500,
+      "sidecar_files_byte_identical": 4,
+      "pyg_attributes_equal": 7,
+      "status": "passed"
+    },
+    {
+      "nodes": 1000,
+      "sidecar_files_byte_identical": 4,
+      "pyg_attributes_equal": 7,
+      "status": "passed"
+    }
+  ],
+  "scope": "Local full reruns using the recorded environment; no fresh dependency installation or new simulator bootstrap was performed. Paper and slide contents were not changed."
+}

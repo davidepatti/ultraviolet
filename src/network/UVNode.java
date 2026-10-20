@@ -343,6 +343,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public void processInvoice(LNInvoice invoice, int max_fees, boolean showui) {
 
         log("Processing Invoice " + invoice);
+        if (uvNetwork.isImportedObserverView() && !getPubKey().equals(uvNetwork.getImportedRootNodeGraph())) {
+            String logMessage = "Invoice routing disabled for " + getPubKey()
+                    + " in imported observer-view mode; valid sender is root "
+                    + uvNetwork.getImportedRootNodeGraph();
+            log(logMessage);
+            if (showui) System.out.println(logMessage);
+            return;
+        }
 
         // Keep post-search filtering separate from pathfinder-internal pruning stats.
         int filtered_policy = 0;

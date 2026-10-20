@@ -21,12 +21,18 @@ import java.util.regex.Pattern;
 public class UVNetwork implements LNetwork {
     private static final Pattern SYNTHETIC_PUBKEY_PATTERN = Pattern.compile("^pk\\d+$");
 
+    public enum TopologyMode {
+        SIMULATED_DISTRIBUTED,
+        IMPORTED_OBSERVER_VIEW
+    }
+
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
     private final HashMap<String, UVNode> uvnodes;
 
     private List<String> pubkeys_list;
     private String imported_rootnode_graph;
+    private TopologyMode topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
 
     private UVTimechain uvTimechain;
 
@@ -43,6 +49,25 @@ public class UVNetwork implements LNetwork {
 
     public UVConfig getConfig() {
         return uvConfig;
+    }
+
+    public synchronized TopologyMode getTopologyMode() {
+        return topologyMode;
+    }
+
+    public synchronized boolean isImportedObserverView() {
+        return topologyMode == TopologyMode.IMPORTED_OBSERVER_VIEW && imported_rootnode_graph != null;
+    }
+
+    public synchronized String getImportedRootNodeGraph() {
+        return imported_rootnode_graph;
+    }
+
+    public synchronized String describeTopologyMode() {
+        if (isImportedObserverView()) {
+            return "imported observer view, root=" + imported_rootnode_graph;
+        }
+        return "simulated distributed";
     }
     private final BlockingQueue<String> logQueue = new ArrayBlockingQueue<>(LOG_QUEUE_CAPACITY);
     private final AtomicInteger droppedLogMessages = new AtomicInteger(0);
@@ -87,12 +112,36 @@ public class UVNetwork implements LNetwork {
         private final UVTimechain timechain;
         private final LinkedHashMap<String, UVNode> nodes;
         private final Random random;
+        private final TopologyMode topologyMode;
+        private final String importedRootNodeGraph;
 
-        private LoadedStatus(UVConfig config, UVTimechain timechain, LinkedHashMap<String, UVNode> nodes, Random random) {
+        private LoadedStatus(
+                UVConfig config,
+                UVTimechain timechain,
+                LinkedHashMap<String, UVNode> nodes,
+                Random random,
+                TopologyMode topologyMode,
+                String importedRootNodeGraph
+        ) {
             this.config = config;
             this.timechain = timechain;
             this.nodes = nodes;
             this.random = random;
+            this.topologyMode = topologyMode;
+            this.importedRootNodeGraph = importedRootNodeGraph;
+        }
+    }
+
+    private static final class TopologySnapshotMetadata implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
+        private final TopologyMode topologyMode;
+        private final String importedRootNodeGraph;
+
+        private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph) {
+            this.topologyMode = topologyMode;
+            this.importedRootNodeGraph = importedRootNodeGraph;
         }
     }
 
@@ -203,6 +252,8 @@ public class UVNetwork implements LNetwork {
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
 
         bootstrap_started = true;
+        topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
+        imported_rootnode_graph = null;
         bootstrap_latch = new CountDownLatch(uvConfig.bootstrap_nodes);
         bootstraps_running = 0;
         bootstraps_ended = 0;
@@ -540,6 +591,7 @@ public class UVNetwork implements LNetwork {
                 uvnodes.putAll(importedNodes);
                 refreshPubkeyList();
                 imported_rootnode_graph = root.getPubKey();
+                topologyMode = TopologyMode.IMPORTED_OBSERVER_VIEW;
                 bootstrap_started = true;
                 bootstrap_completed = true;
                 bootstrap_latch = null;
@@ -547,7 +599,7 @@ public class UVNetwork implements LNetwork {
                 bootstraps_ended = uvnodes.size();
             }
 
-            print_log("Import completed");
+            print_log("Import completed (observer graph rooted at " + root.getPubKey() + ")");
 
         } catch (IOException | NumberFormatException | ClassCastException e) {
             print_log("Import failed: " + e.getMessage());
@@ -968,6 +1020,8 @@ public class UVNetwork implements LNetwork {
             for (UVNode n: uvnodes.values()) f.writeObject(n);
             print_log("Saving random generator...");
             f.writeObject(random);
+            print_log("Saving topology metadata...");
+            f.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -1019,12 +1073,33 @@ public class UVNetwork implements LNetwork {
 
             print_log("Load random generator");
             Random loadedRandom = (Random) s.readObject();
+            TopologyMode loadedTopologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
+            String loadedImportedRootNodeGraph = null;
+
+            try {
+                Object metadata = s.readObject();
+                if (metadata instanceof TopologySnapshotMetadata topologyMetadata) {
+                    loadedTopologyMode = topologyMetadata.topologyMode == null
+                            ? TopologyMode.SIMULATED_DISTRIBUTED
+                            : topologyMetadata.topologyMode;
+                    loadedImportedRootNodeGraph = topologyMetadata.importedRootNodeGraph;
+                }
+            } catch (EOFException ignored) {
+                // Snapshots written before topology metadata default to simulated distributed mode.
+            }
 
             if (loadedConfig == null || loadedTimechain == null || loadedRandom == null) {
                 throw new InvalidObjectException("snapshot is missing required serialized fields");
             }
 
-            return new LoadedStatus(loadedConfig, loadedTimechain, loadedNodes, loadedRandom);
+            return new LoadedStatus(
+                    loadedConfig,
+                    loadedTimechain,
+                    loadedNodes,
+                    loadedRandom,
+                    loadedTopologyMode,
+                    loadedImportedRootNodeGraph
+            );
         }
     }
 
@@ -1034,6 +1109,13 @@ public class UVNetwork implements LNetwork {
         this.uvTimechain = loadedStatus.timechain;
         this.uvTimechain.initialize(this);
         this.random = loadedStatus.random;
+        this.topologyMode = loadedStatus.topologyMode == null
+                ? TopologyMode.SIMULATED_DISTRIBUTED
+                : loadedStatus.topologyMode;
+        this.imported_rootnode_graph = loadedStatus.importedRootNodeGraph;
+        if (this.topologyMode == TopologyMode.IMPORTED_OBSERVER_VIEW && this.imported_rootnode_graph == null) {
+            this.topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
+        }
 
         uvnodes.clear();
         for (UVNode node : loadedStatus.nodes.values()) {
@@ -1263,6 +1345,10 @@ public class UVNetwork implements LNetwork {
             print_log("ERROR: must execute bootstrap or load/import a network!");
             return;
         }
+        if (isImportedObserverView()) {
+            print_log("ERROR: normal invoice event generation is disabled in imported observer-view mode; use root-origin invoice generation");
+            return;
+        }
 
         // node_events_per_block = 0.01 -> each node has (on average) one event every 100 blocks
         // so, if there are 1000 nodes, 10 node events will happen globally at each block
@@ -1329,6 +1415,89 @@ public class UVNetwork implements LNetwork {
         print_log("Completed events generation");
         print_log("Waiting for queues to flush...");
         // the wait interval is just a reasonable value of ms between checks
+        waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
+        Instant end_gen = Instant.now();
+        Duration timeElapsed = Duration.between(start_gen, end_gen);
+        print_log("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
+        invoiceExecutor.shutdown();
+    }
+
+    public void generateRootInvoiceEvents(double events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
+        if (!isBootstrapCompleted()) {
+            print_log("ERROR: must execute bootstrap or load/import a network!");
+            return;
+        }
+        if (!isImportedObserverView()) {
+            print_log("ERROR: root invoice generation is available only in imported observer-view mode");
+            return;
+        }
+        if (uvnodes.size() < 2) {
+            print_log("ERROR: root invoice generation requires at least two nodes");
+            return;
+        }
+
+        UVNode sender = getUVNode(imported_rootnode_graph);
+        if (sender == null) {
+            print_log("ERROR: imported observer root " + imported_rootnode_graph + " not found");
+            return;
+        }
+
+        int expected_total_events = (int)(events_per_block*blocks_duration);
+
+        print_log("Generating " + expected_total_events + " root-origin invoice events from " + sender.getPubKey()
+                + " (min/max amt:" + min_amt + "," + max_amt + ", max_fees" + max_fees + ")");
+
+        int end = getTimechain().getCurrentBlockHeight()+blocks_duration;
+
+        print_log("Expected end after block "+end);
+
+        print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
+        ThreadFactory namedThreadFactory = new ThreadFactory() {
+            private final AtomicInteger count = new AtomicInteger(0);
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread thread = new Thread(r);
+                thread.setName("RootInvoiceProcess-" + count.incrementAndGet());
+                return thread;
+            }
+        };
+
+        var invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
+
+        waitForBlocks(1);
+        Instant start_gen = Instant.now();
+
+        for (int nb = 0; nb < blocks_duration; nb++) {
+            int current_block = getTimechain().getCurrentBlockHeight();
+            int eventsThisBlock;
+
+            if (events_per_block < 1.0) {
+                eventsThisBlock = random.nextDouble(1) <= events_per_block ? 1 : 0;
+            } else {
+                int baseEvents = (int) events_per_block;
+                double fractional = events_per_block - baseEvents;
+                eventsThisBlock = baseEvents + (random.nextDouble(1) <= fractional ? 1 : 0);
+            }
+
+            for (int eb = 0; eb < eventsThisBlock; eb++ ) {
+                UVNode dest;
+                do {
+                    dest = getRandomNode();
+                }
+                while (dest.equals(sender));
+
+                if (max_amt==min_amt) max_amt++;
+                int amount = random.nextInt(max_amt+1-min_amt)+min_amt;
+                var invoice = dest.generateInvoice(amount,amount+ " "+ sender.getPubKey()+" to "+dest.getPubKey(),true);
+                invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
+            }
+
+            int current_block2 = getTimechain().getCurrentBlockHeight();
+            if (current_block2==current_block)
+                waitForBlocks(1);
+        }
+        print_log("Completed root-origin events generation");
+        print_log("Waiting for queues to flush...");
         waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
         Instant end_gen = Instant.now();
         Duration timeElapsed = Duration.between(start_gen, end_gen);

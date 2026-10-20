@@ -1,0 +1,183 @@
+{
+  "datasets": [
+    {
+      "amount_labels": {
+        "1000": {
+          "amount_label": "1k",
+          "unusable_directions": 885,
+          "usable_directions": 885,
+          "usable_share": 0.5
+        },
+        "10000": {
+          "amount_label": "10k",
+          "unusable_directions": 1009,
+          "usable_directions": 761,
+          "usable_share": 0.42994350282485877
+        },
+        "100000": {
+          "amount_label": "100k",
+          "unusable_directions": 1048,
+          "usable_directions": 722,
+          "usable_share": 0.40790960451977404
+        }
+      },
+      "average_degree": 17.7,
+      "capture_time_utc": "2026-07-08T09:01:47.057583Z",
+      "config": "configs/uv-exp-100.properties",
+      "connected_components": 1,
+      "density": 0.1787878787878788,
+      "directed_policy_edges": 1770,
+      "gnn_processing_seconds": 6.63,
+      "gnn_seconds_per_split": 0.221,
+      "max_degree": 71,
+      "median_channel_capacity_sat": 1600000.0,
+      "network_size": "100",
+      "nodes": 100,
+      "physical_channels": 885,
+      "snapshot_scope": "actual_uv_network_state",
+      "source_file": "data/exports/uv_omnigraph_exp100_b2c2026.json",
+      "total_capacity_sat": 3508210000,
+      "uv_bootstrap_seconds": 22.785,
+      "warnings": [
+        "1770 directed edges have no LND disabled-policy state in UV; disabled_missing records this"
+      ]
+    },
+    {
+      "amount_labels": {
+        "1000": {
+          "amount_label": "1k",
+          "unusable_directions": 5187,
+          "usable_directions": 5187,
+          "usable_share": 0.5
+        },
+        "10000": {
+          "amount_label": "10k",
+          "unusable_directions": 5843,
+          "usable_directions": 4531,
+          "usable_share": 0.4367649893965683
+        },
+        "100000": {
+          "amount_label": "100k",
+          "unusable_directions": 6044,
+          "usable_directions": 4330,
+          "usable_share": 0.4173896279159437
+        }
+      },
+      "average_degree": 20.748,
+      "capture_time_utc": "2026-07-08T09:04:15.086631Z",
+      "config": "configs/uv-exp-500.properties",
+      "connected_components": 1,
+      "density": 0.041579158316633266,
+      "directed_policy_edges": 10374,
+      "gnn_processing_seconds": 18.41,
+      "gnn_seconds_per_split": 0.614,
+      "max_degree": 180,
+      "median_channel_capacity_sat": 1700000.0,
+      "network_size": "500",
+      "nodes": 500,
+      "physical_channels": 5187,
+      "snapshot_scope": "actual_uv_network_state",
+      "source_file": "data/exports/uv_omnigraph_exp500_b2c2026.json",
+      "total_capacity_sat": 23013460000,
+      "uv_bootstrap_seconds": 57.933,
+      "warnings": [
+        "10374 directed edges have no LND disabled-policy state in UV; disabled_missing records this"
+      ]
+    },
+    {
+      "amount_labels": {
+        "1000": {
+          "amount_label": "1k",
+          "unusable_directions": 10797,
+          "usable_directions": 10797,
+          "usable_share": 0.5
+        },
+        "10000": {
+          "amount_label": "10k",
+          "unusable_directions": 12227,
+          "usable_directions": 9367,
+          "usable_share": 0.433777901268871
+        },
+        "100000": {
+          "amount_label": "100k",
+          "unusable_directions": 12653,
+          "usable_directions": 8941,
+          "usable_share": 0.4140501991293878
+        }
+      },
+      "average_degree": 21.594,
+      "capture_time_utc": "2026-07-08T09:41:31.687435Z",
+      "config": "configs/uv-exp-1000.properties",
+      "connected_components": 1,
+      "density": 0.021615615615615615,
+      "directed_policy_edges": 21594,
+      "gnn_processing_seconds": 27.837,
+      "gnn_seconds_per_split": 0.928,
+      "max_degree": 219,
+      "median_channel_capacity_sat": 1630000.0,
+      "network_size": "1000",
+      "nodes": 1000,
+      "physical_channels": 10797,
+      "snapshot_scope": "actual_uv_network_state",
+      "source_file": "data/exports/uv_omnigraph_exp1000_b2c2026.json",
+      "total_capacity_sat": 49799320000,
+      "uv_bootstrap_seconds": 118.67,
+      "warnings": [
+        "21594 directed edges have no LND disabled-policy state in UV; disabled_missing records this"
+      ]
+    }
+  ],
+  "inputs": {
+    "edge_features": [
+      "capacity_sat_log1p",
+      "fee_base_msat_log1p",
+      "fee_rate_milli_msat",
+      "time_lock_delta",
+      "policy_missing",
+      "disabled",
+      "direction_is_node2_to_node1"
+    ],
+    "excluded_target_leakage_features": [
+      "local_balance_sat_log1p",
+      "remote_balance_sat_log1p",
+      "source_balance_sat_log1p",
+      "destination_balance_sat_log1p",
+      "source_spendable_balance_sat_log1p",
+      "destination_spendable_balance_sat_log1p"
+    ],
+    "node_features": [
+      "graph_in_degree",
+      "graph_out_degree",
+      "graph_incident_capacity_sat_log1p",
+      "local_channel_count",
+      "node_capacity_sat_log1p"
+    ]
+  },
+  "outputs": {
+    "latex_summary": "experiments/b2c-2026-extended-abstract/results/directed-liquidity-summary.tex",
+    "methodology_figure": "experiments/b2c-2026-extended-abstract/figures/methodology-dataflow.pdf",
+    "metrics_csv": "experiments/b2c-2026-extended-abstract/results/directed-liquidity-metrics.csv",
+    "result_figure": "experiments/b2c-2026-extended-abstract/figures/directed-liquidity-results.pdf"
+  },
+  "setup": {
+    "amount_thresholds_sat": [
+      1000,
+      10000,
+      100000
+    ],
+    "epochs": 100,
+    "models": [
+      "GraphSAGE + edge MLP",
+      "edge-feature-only MLP"
+    ],
+    "num_splits": 10,
+    "snapshot_scope": "actual_uv_network_state from UV gexpall",
+    "snapshots": [
+      "configs/uv-exp-100.properties",
+      "configs/uv-exp-500.properties",
+      "configs/uv-exp-1000.properties"
+    ],
+    "test_fraction": 0.3
+  },
+  "task": "amount-aware directed edge classification: source_spendable_balance_sat >= amount_sat"
+}

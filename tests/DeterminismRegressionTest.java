@@ -1,11 +1,14 @@
 package tests;
 
 import misc.UVConfig;
+import misc.json.JsonArray;
+import misc.json.JsonObject;
 import network.LNChannel;
 import network.UVChannel;
 import network.UVNetwork;
 import network.UVNode;
 import stats.DistributionGenerator;
+import stats.GraphJsonExporter;
 import topology.PathFinder;
 import topology.PathFinderFactory;
 
@@ -20,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 6;
+    private static final int TOTAL_TESTS = 7;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -98,6 +101,11 @@ public class DeterminismRegressionTest {
                     "Imported topology snapshot",
                     "Imports the same JSON topology twice with seed 7, compares a sorted canonical state snapshot, then checks at least one alternate seed changes imported channel balances.",
                     () -> assertImportedTopologyIsDeterministic(workDir, topologyPath)
+            );
+            runCase(
+                    "Omniscient graph export",
+                    "Builds a global graph export from actual UV channels, then checks topology counts and per-channel balance distribution without transient runtime state.",
+                    () -> assertOmniscientGraphExport(workDir, topologyPath)
             );
             runCase(
                     "Pathfinding on fixed graph",
@@ -267,6 +275,52 @@ public class DeterminismRegressionTest {
         assertContains(first, "Node Capacity", "network report must include capacity statistics");
     }
 
+    private static void assertOmniscientGraphExport(Path workDir, Path topologyPath) throws IOException {
+        UVNetwork network = importNetwork(workDir, topologyPath, 7, "omniscient-export");
+        try {
+            JsonObject export = GraphJsonExporter.buildOmniscientGraph(network);
+            assertEquals("uv-omniscient-graph-v1", String.valueOf(export.get("schema")), "omniscient export schema must be explicit");
+
+            JsonObject graph = (JsonObject) export.get("graph");
+            assertEquals("7", String.valueOf(graph.get("num_nodes")), "omniscient export must include every imported node");
+            assertEquals("5", String.valueOf(graph.get("num_channels")), "omniscient export must include every actual channel once");
+            assertEquals("10", String.valueOf(graph.get("num_directed_edges")), "omniscient export must include two directed edges per channel");
+            assertEquals("10", String.valueOf(graph.get("num_missing_policies")), "imported null-policy channels must be visible in both directions");
+            assertEquals("600000", String.valueOf(graph.get("total_capacity_sat")), "total capacity must sum unique channels once");
+
+            JsonObject source = (JsonObject) export.get("source");
+            assertEquals("actual_uv_network_state", String.valueOf(source.get("snapshot_scope")), "source must identify global state export");
+
+            JsonArray channels = (JsonArray) export.get("channels");
+            for (Object item : channels) {
+                JsonObject channel = (JsonObject) item;
+                long capacity = asLong(channel.get("capacity_sat"));
+                long node1Balance = asLong(channel.get("node1_balance_sat"));
+                long node2Balance = asLong(channel.get("node2_balance_sat"));
+                assertEquals(
+                        Long.toString(capacity),
+                        Long.toString(node1Balance + node2Balance),
+                        "channel balances must preserve capacity for " + channel.get("channel_id")
+                );
+                assertEquals("0", String.valueOf(channel.get("reserve_sat")), "imported fixture channels must have zero reserve");
+            }
+
+            JsonArray directedEdges = (JsonArray) export.get("directed_edges");
+            for (Object item : directedEdges) {
+                JsonObject edge = (JsonObject) item;
+                assertEquals("true", String.valueOf(edge.get("policy_missing")), "imported fixture policies must be marked missing");
+                assertEquals("false", String.valueOf(edge.get("balance_missing")), "omniscient export must expose actual channel balances");
+            }
+
+            String json = export.toJsonString();
+            assertNotContains(json, "pendingHTLC", "omniscient export must not include pending HTLC maps");
+            assertNotContains(json, "GossipMessageQueue", "omniscient export must not include gossip queues");
+            assertNotContains(json, "channelsToAcceptQueue", "omniscient export must not include channel acceptance queues");
+        } finally {
+            network.shutdown();
+        }
+    }
+
     private static String runImportSnapshot(Path workDir, Path topologyPath, int seed, String runName) throws IOException {
         return runImportSnapshot(workDir, topologyPath, seed, runName, "R");
     }
@@ -423,6 +477,21 @@ public class DeterminismRegressionTest {
                     + "Missing substring: " + expectedSubstring + System.lineSeparator()
                     + "Value:" + System.lineSeparator() + value);
         }
+    }
+
+    private static void assertNotContains(String value, String unexpectedSubstring, String message) {
+        if (value.contains(unexpectedSubstring)) {
+            throw new AssertionError(message + System.lineSeparator()
+                    + "Unexpected substring: " + unexpectedSubstring + System.lineSeparator()
+                    + "Value:" + System.lineSeparator() + value);
+        }
+    }
+
+    private static long asLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
     }
 
     private static void assertIntArrayEquals(int[] expected, int[] actual, String message) {
