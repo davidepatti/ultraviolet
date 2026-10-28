@@ -31,6 +31,8 @@ public class UVNetwork implements LNetwork {
         IMPORTED_OBSERVER_VIEW
     }
 
+    public enum SnapshotConfigPolicy { RESTORE_SAVED, APPLY_RUNTIME }
+
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
     private final Map<String, UVNode> uvnodes;
@@ -730,7 +732,7 @@ public class UVNetwork implements LNetwork {
             if (!batchIds.add(batchId)) { batchOwner = null; batchActive.set(false); throw new IllegalArgumentException("duplicate batch ID"); }
         }
         var batch = new InvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees,
-                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight());
+                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight(), fixedSender == null ? null : fixedSender.getPubKey());
         lastInvoiceBatch = batch;
         var futures = new ArrayList<Future<GlobalStats.NodeStats.InvoiceReport>>();
         // Injection and every submitted task remain accounted for, even if injection fails.
@@ -1373,6 +1375,13 @@ public class UVNetwork implements LNetwork {
     }
 
     public boolean loadStatus(String file) {
+        return loadStatus(file, SnapshotConfigPolicy.RESTORE_SAVED);
+    }
+
+    /** APPLY_RUNTIME validates the current config before changing live state, rebuilds
+     * workers/pathfinders from it, and preserves the saved topology, clock and RNG. */
+    public boolean loadStatus(String file, SnapshotConfigPolicy configPolicy) {
+        Objects.requireNonNull(configPolicy, "Snapshot config policy");
         lastLoadStatusError = null;
 
         LoadedStatus loadedStatus;
@@ -1388,6 +1397,19 @@ public class UVNetwork implements LNetwork {
         lifecycle.lock();
         try {
             if (batchActive.get()) { lastLoadStatusError = "Cannot load during an invoice batch"; return false; }
+            if (configPolicy == SnapshotConfigPolicy.APPLY_RUNTIME) {
+                try { uvConfig.validateSnapshotRuntimeSettings(loadedStatus.config); }
+                catch (IllegalArgumentException conflict) {
+                    lastLoadStatusError = "Cannot apply runtime settings to snapshot: " + conflict.getMessage();
+                    log(lastLoadStatusError);
+                    return false;
+                }
+                var selected = new LoadedStatus(uvConfig, loadedStatus.timechain, loadedStatus.nodes,
+                        loadedStatus.random, loadedStatus.topologyMode, loadedStatus.importedRootNodeGraph);
+                selected.invoiceIdentity = loadedStatus.invoiceIdentity;
+                selected.processedInvoices = loadedStatus.processedInvoices;
+                loadedStatus = selected;
+            }
             if (isHealthy()) pauseAndDrain();
             synchronized (admission) { draining = true; }
             stopWorkers();

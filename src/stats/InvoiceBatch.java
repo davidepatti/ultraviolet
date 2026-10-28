@@ -28,10 +28,21 @@ public final class InvoiceBatch {
     private String infrastructureFailure;
 
     public InvoiceBatch(String id, double rate, int blocks, int min, int max, int fees, int threads, int height) {
+        this(id, rate, blocks, min, max, fees, threads, height, null);
+    }
+
+    public InvoiceBatch(String id, double rate, int blocks, int min, int max, int fees, int threads, int height, String rootSender) {
         metadata = object("schema", "uv-invoice-batch-v1", "htlc_resolution", "uv-shared-channel-htlc-v1", "batch_id", id,
                 "node_events_per_block", rate, "generator_iterations", blocks,
                 "min_amount_sat", min, "max_amount_sat", max, "max_fees_sat", fees,
                 "invoice_pool_size", threads, "start_height", height, "started_at_utc", Instant.now().toString());
+        metadata.put("sender_scope", rootSender == null ? "all_nodes" : "imported_root");
+        metadata.put("rate_unit", rootSender == null ? "per_node_per_block" : "per_root_per_block");
+        if (rootSender != null) {
+            metadata.remove("node_events_per_block");
+            metadata.put("events_per_block", rate);
+            metadata.put("sender", rootSender);
+        }
     }
 
     public synchronized void request(long id, String sender, LNInvoice invoice, int height) {

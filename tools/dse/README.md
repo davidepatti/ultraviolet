@@ -368,7 +368,7 @@ Important implications:
 - Add DSE values only for parameters that can affect the selected command sequence. Otherwise the runner will still create extra configurations and rerun the experiment, but the results may be duplicates.
 - For fresh-bootstrap experiments, topology parameters should be varied at the DSE parameter level because `boot` must be rerun.
 - For pathfinding-only sensitivity on a fixed topology, the current tool is conservative but inefficient: it reruns `boot` unless you split workflows manually.
-- When `boot` loads a `.dat` snapshot, UltraViolet restores the config serialized inside that snapshot. Generated DSE `.properties` overrides such as `bootstrap_nodes`, `seed`, and `pathfinding_*` do not reliably reshape or retune the loaded network after the snapshot is applied. Keep snapshot-mode parameter spaces single-valued unless you intentionally need separate output folders.
+- Snapshot-mode sweeps apply supported runtime settings, including `pathfinding_*` and `max_threads`. Changes to snapshot-owned settings such as `seed`, `bootstrap_nodes`, profiles or `blocktime_ms` fail explicitly. Use the configuration that produced the snapshot as the base; see the restore policy below.
 - The visualizer can hide or aggregate background variation, but it does not change what was executed. Always check the parameter context before interpreting a figure.
 
 ### Runner Commands
@@ -382,7 +382,7 @@ Experiment commands execute in order. A command can be a plain string when no op
 | `rndbal` | Randomize initiator-side channel balances. | `min_delta` |
 | `path` | Run path finding between two nodes and store results in `run.json`. | `start`, `destination`, `amount`, `path_finder`, `topk` |
 | `route` | Generate one invoice and try to pay it. | `sender`, `destination`, `amount`, `max_fees`, `path_finder` |
-| `inv` | Generate invoice traffic over a number of blocks. | `node_events_per_block`, `blocks`, `min_amt`, `max_amt`, `max_fees`, `path_finder` |
+| `inv` | Generate distributed or imported-root invoice traffic over a number of blocks. | `node_events_per_block` (distributed), `events_per_block` (root), `blocks`, `min_amt`, `max_amt`, `max_fees`, `path_finder` |
 
 Supported `path_finder` values:
 
@@ -405,7 +405,17 @@ For the `path` command only, `path_finder: "all"` runs all strategies and record
 
 Relative snapshot paths are resolved from the DSE JSON file directory before each run starts.
 
-When `boot` loads a `.dat` snapshot, UltraViolet restores the config stored in that snapshot. Fresh-bootstrap parameters such as `bootstrap_nodes` and `bootstrap_blocks` therefore do not reshape that loaded network during the run; use snapshot loading for a fixed-topology run or prepare separate DSE JSON files when you need to compare different snapshots.
+Snapshot loading preserves topology, channel/node state, clock interval and saved RNG state. DSE applies these settings from the generated run configuration:
+
+- All currently supported `pathfinding_*` settings.
+- `max_threads`, `node_services_tick_ms`, `gossip_flush_period_ms`, `gossip_flush_size`, `p2p_max_hops`, `p2p_max_age` and `htlc_stall_timeout_ms`.
+- `logfile` and `debug`.
+
+Every other resolved setting must match the snapshot, including `seed`, bootstrap settings, profiles, channel-opening settings and `blocktime_ms`. An unsupported difference fails before traffic starts and identifies the conflicting keys. This also applies to single-valued parameters. Use the configuration that produced the snapshot as your base, then sweep supported runtime settings. The RNG continues from its saved state; matching `seed` does not reseed it.
+
+`run.json` records `requested_settings` and `effective_settings`. Its boot result records `settings_policy`, `rng_policy`, `topology_mode` and the resolved snapshot path. Ordinary terminal loading and the one-argument Java `loadStatus` still restore the saved configuration; scripts can opt into `SnapshotConfigPolicy.APPLY_RUNTIME` through the shared core.
+
+After loading an imported observer-view snapshot, `inv` sends only from its root. Specify `events_per_block` as the root's total rate. Existing `node_events_per_block` requests are accepted as an alias in this mode and are not multiplied by network size; using both fields is rejected. Distributed runs continue to use `node_events_per_block`; `events_per_block` alone is rejected there. Command and batch receipts record `sender_scope`, `rate_unit` and, for root traffic, `sender`. Root batches use `events_per_block` instead of the distributed rate key.
 
 ### Runner Outputs
 
@@ -740,12 +750,12 @@ Aggregation: mean
 
 ### Fixed Snapshot Route Probe
 
-Use this when you want to run a command sequence on the same saved `.dat` network instead of regenerating a topology. Keep the parameter space single-valued unless you intentionally need multiple generated config folders; the loaded snapshot restores its own saved simulator config.
+Use this to compare routing settings on the same saved `.dat` network. Use its original configuration as the base. This example sweeps a supported runtime hop limit; snapshot-owned settings must match the saved values.
 
 ```json
 {
   "parameters": {
-    "seed": [1]
+    "pathfinding_max_hops": [3, 6]
   },
   "experiment": {
     "name": "snapshot_route_probe",

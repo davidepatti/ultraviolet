@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 25;
+    private static final int TOTAL_TESTS = 27;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -139,6 +139,8 @@ public class DeterminismRegressionTest {
             runCase("Capture awaits submitted work", "A gated manual submission must finish before capture; live exports resume the same network.", () -> SimulationConsistencyTest.queuedCapture(workDir));
             runCase("Concurrent batch lifecycle boundary", "Rejects capture and reload while a batch owns the lifecycle, then settles all requests.", () -> SimulationConsistencyTest.concurrentBatchBoundary(workDir));
             runCase("Ordinary DSE commands", "Repeated route descriptions remain unique; standard inv waits for exact accounting and honors equal amount bounds.", () -> SimulationConsistencyTest.dseCommands(workDir));
+            runCase("DSE snapshot runtime settings", "Real DSE processes honor runtime sweeps, reject snapshot-owned conflicts, and preserve ordinary restore behavior.", () -> DseSnapshotTest.settings(workDir));
+            runCase("DSE imported-topology traffic", "Load an observer snapshot, execute root-only traffic with explicit units, and write settled reports.", () -> DseSnapshotTest.observerTraffic(workDir));
             runCase("Terminal command smoke", "A subprocess executes load/start/two routes/stop/export/save/quit and verifies both saved outcomes.", () -> SimulationConsistencyTest.terminalCommands(workDir));
             runCase("Ordinary bootstrap completion", "A six-node DSE bootstrap drains all opening responses without terminal reservation cleanup.", () -> SimulationConsistencyTest.smallBootstrap(workDir));
             System.out.println("Determinism regression passed");

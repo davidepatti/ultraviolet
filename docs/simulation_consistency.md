@@ -41,6 +41,16 @@ New snapshots preserve invoice identity allocation, attempted invoice hashes and
 
 Changes to identity allocation, opening rejection, completed-work accounting, equal amount bounds and timeout handling can change hashes, topology and numerical results. Those corrections must not be represented as reproducing historical experiment outputs. Newly built research adapters retain historical schema names for consumers but record the new source provenance. Their `opening-cleanup.json` receipt is empty because normal protocol handling resolves rejections.
 
+## DSE snapshot settings and traffic
+
+DSE `boot.mode=load` uses the core `loadStatus(file, SnapshotConfigPolicy.APPLY_RUNTIME)` policy. It applies the run configuration's routing, worker, P2P/gossip service, watchdog, logging and debug settings when rebuilding the restored runtime. Differences in other settings are rejected before live state changes: the saved topology, profiles, clock interval, seed and RNG state remain snapshot-owned. Unknown changed settings are also rejected. Use the snapshot's original configuration as the base for a runtime parameter sweep. An ordinary one-argument `loadStatus` retains `RESTORE_SAVED` behavior for terminal and existing script callers.
+
+DSE `run.json` contains `requested_settings` and `effective_settings`; the boot command records its settings and RNG policy. A failed conflict is an explicit failed run, not a successful run with ignored parameter labels.
+
+For imported observer-view snapshots, DSE `inv` uses `generateRootInvoiceEvents`, the same method used by the terminal. `events_per_block` is the root's rate; the existing `node_events_per_block` field remains a compatibility alias in observer mode, without multiplying by network size. Supplying both is rejected. Distributed traffic continues using events per node per block. Both DSE command results and shared batch receipts record sender scope and rate units; root receipts also identify the sender.
+
+Two end-to-end DSE regression groups exercise routing sweeps after load, actual worker budgets and effective-settings receipts, rejection of snapshot-owned conflicts, unchanged ordinary restoration, and imported-root traffic through report generation. All snapshots and outputs are temporary fixtures.
+
 ## HTLC resolution and model boundary
 
 The core now resolves HTLC expiry, fulfillment and failure through an authoritative per-channel contract ledger. Late replies cannot debit twice or act on a retry with the same invoice hash. A resolved protocol expiry is an ordinary failed attempt; a host watchdog or interruption remains an infrastructure failure. See [HTLC resolution](htlc-resolution.md) for identities, transitions, clocks, receipts and tests.
@@ -55,8 +65,9 @@ Run from the repository root with Java 24 or set `JAVA_RELEASE`:
 tools/determinism-regression/determinism_regression.sh
 tools/determinism-regression/compatibility_regression.sh
 python3 -B -m unittest discover -s tools/journal -p 'test_*.py' -v
+python3 -B -m unittest discover -s tools/dse/tests -p 'test_*.py' -v
 ```
 
-The main Java suite has 25 groups covering deterministic static behavior, research adapter contracts, opening rejection, retries, expiry, late fulfillment, watchdog rejection and concurrent transfers, queued failures, manual identities, live capture, concurrent batch ownership, DSE route/inv/load, terminal subprocess commands and a small bootstrap. The compatibility runner requires the original commit to be available locally and builds only core sources for its current reader. All simulation fixtures and builds are temporary.
+The main Java suite has 27 groups covering deterministic static behavior, research adapter contracts, opening rejection, retries, expiry, late fulfillment, watchdog rejection and concurrent transfers, queued failures, manual identities, live capture, concurrent batch ownership, DSE route/inv/load, terminal subprocess commands and a small bootstrap. The compatibility runner requires the original commit to be available locally and builds only core sources for its current reader. All simulation fixtures and builds are temporary.
 
-Python tests include optional read-only checks of a saved acceptance fixture when `UV_OT_ACCEPTANCE` names its directory. The full run with that fixture has 31 tests. These tests do not generate study data. Passing these checks supports a future integration review; this branch has not been merged.
+Python tests include optional read-only checks of a saved acceptance fixture when `UV_OT_ACCEPTANCE` names its directory. The full adapter run with that fixture has 31 tests; the DSE Python suite has another 31. These tests do not generate study data. Passing these checks supports a future integration review; this branch has not been merged.

@@ -158,6 +158,29 @@ public class UVConfig implements Serializable {
         return Collections.unmodifiableMap(settings);
     }
 
+    /** Settings that can be rebuilt safely while restoring a settled network. The saved
+     * topology, profiles, clock interval and RNG state still belong to the snapshot. */
+    private static final Set<String> SNAPSHOT_RUNTIME_SETTINGS = Set.of(
+            "pathfinding_max_hops", "pathfinding_lnd_risk_factor", "pathfinding_lnd_base_attempt_cost_msat",
+            "pathfinding_lnd_attempt_cost_ppm", "pathfinding_lnd_default_path_probability",
+            "pathfinding_lnd_default_payment_amount_sat", "max_threads", "node_services_tick_ms",
+            "gossip_flush_period_ms", "gossip_flush_size", "p2p_max_hops", "p2p_max_age",
+            "htlc_stall_timeout_ms", "logfile", "debug");
+
+    public void validateSnapshotRuntimeSettings(UVConfig saved) {
+        Map<String, Object> requested = getEffectiveSettings(), original = saved.getEffectiveSettings();
+        Set<String> keys = new TreeSet<>(requested.keySet());
+        keys.addAll(original.keySet());
+        List<String> conflicts = new ArrayList<>();
+        for (String key : keys) {
+            if (!SNAPSHOT_RUNTIME_SETTINGS.contains(key) && !Objects.equals(requested.get(key), original.get(key))) {
+                conflicts.add(key + " (requested=" + requested.get(key) + ", saved=" + original.get(key) + ")");
+            }
+        }
+        if (!conflicts.isEmpty()) throw new IllegalArgumentException(
+                "Snapshot-owned settings cannot be overridden: " + String.join(", ", conflicts));
+    }
+
     /** Host-stall watchdog, independent of simulated CLTV expiry; works with old snapshots. */
     public long getHTLCStallTimeoutMs() {
         long value = Long.parseLong(properties.getProperty("htlc_stall_timeout_ms", "15000").trim());

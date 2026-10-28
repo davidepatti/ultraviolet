@@ -74,12 +74,15 @@ public class DseExperimentRunner {
 
         try {
             network = new UVNetwork(new UVConfig(configPath.toString()));
+            runReport.put("requested_settings", network.getConfig().getEffectiveSettings());
+            runReport.put("effective_settings", network.getConfig().getEffectiveSettings());
             JsonArray commandResults = new JsonArray();
             runReport.put("commands", commandResults);
 
             for (Object rawCommand : commands) {
                 JsonObject command = normalizeCommand(rawCommand);
                 commandResults.add(executeCommand(network, command));
+                runReport.put("effective_settings", network.getConfig().getEffectiveSettings());
                 writeRunReport();
             }
 
@@ -94,6 +97,7 @@ public class DseExperimentRunner {
         } catch (Throwable t) {
             runReport.put("status", "failed");
             runReport.put("error", t.toString());
+            if (network != null) runReport.put("effective_settings", network.getConfig().getEffectiveSettings());
             runReport.put("ended_at", Instant.now().toString());
             runReport.put("duration_ms", Duration.between(start, Instant.now()).toMillis());
             writeRunReport();
@@ -139,18 +143,25 @@ public class DseExperimentRunner {
         if (network.isBootstrapStarted() || network.isBootstrapCompleted()) {
             throw new IllegalStateException("Command 'boot' cannot run after the network has already been bootstrapped.");
         }
-        String mode = getString(command, "mode", "scratch");
+        String mode = getString(command, "mode", getString(command, "source", "scratch")).trim().toLowerCase(Locale.ROOT);
         if (mode.equals("load") || mode.equals("snapshot") || mode.equals("dat")) {
-            String file = getString(command, "file", null);
+            String file = getString(command, "file", getString(command, "path", getString(command, "snapshot", null)));
             if (file == null || file.isBlank()) throw new IllegalArgumentException("boot.mode=load requires file");
             Path snapshot = Path.of(file);
             if (!snapshot.isAbsolute()) snapshot = experimentPath.toAbsolutePath().getParent().resolve(snapshot);
-            if (!network.loadStatus(snapshot.normalize().toString())) throw new IllegalStateException(network.getLastLoadStatusError());
+            if (!network.loadStatus(snapshot.normalize().toString(), UVNetwork.SnapshotConfigPolicy.APPLY_RUNTIME)) {
+                throw new IllegalStateException(network.getLastLoadStatusError());
+            }
+            result.put("snapshot", snapshot.normalize().toString());
+            result.put("settings_policy", "runtime-overrides-preserve-snapshot-state-v1");
+            result.put("rng_policy", "restore_saved_state");
             network.resume();
         } else if (mode.equals("scratch") || mode.equals("fresh")) {
             network.bootstrapNetwork();
         } else throw new IllegalArgumentException("Unknown boot mode: " + mode);
         result.put("mode", mode);
+        result.put("effective_settings", network.getConfig().getEffectiveSettings());
+        result.put("topology_mode", network.getTopologyMode().name());
         result.put("nodes", network.getUVNodeList().size());
         result.put("channels", countUniqueChannels(network));
         result.put("current_block", network.getTimechain().getCurrentBlockHeight());
@@ -229,17 +240,31 @@ public class DseExperimentRunner {
         requireBootstrapped(network, "inv");
         requireTimechainRunning(network, "inv");
 
-        double nodeEventsPerBlock = getDouble(command, "node_events_per_block", 0.1);
+        boolean rootTraffic = network.isImportedObserverView();
+        if (command.containsKey("events_per_block") && (!rootTraffic || command.containsKey("node_events_per_block"))) {
+            throw new IllegalArgumentException("events_per_block requires imported-root traffic and cannot be combined with node_events_per_block");
+        }
+        double rate = rootTraffic ? getDouble(command, "events_per_block", getDouble(command, "node_events_per_block", 0.1))
+                : getDouble(command, "node_events_per_block", 0.1);
         int blocks = getInt(command, "blocks", getInt(command, "duration_blocks", 500));
         int minAmount = getInt(command, "min_amt", getInt(command, "amount_min", 1000));
         int maxAmount = getInt(command, "max_amt", getInt(command, "amount_max", 1_000_000));
         int maxFees = getInt(command, "max_fees", 1000);
         PathFinderFactory.Strategy strategy = parsePathFinderStrategy(getString(command, "path_finder", "lnd"));
 
-        applyPathFinderStrategyToAllNodes(network, strategy);
-        network.generateInvoiceEvents(nodeEventsPerBlock, blocks, minAmount, maxAmount, maxFees);
-
-        result.put("node_events_per_block", nodeEventsPerBlock);
+        if (rootTraffic) {
+            String root = network.getImportedRootNodeGraph();
+            applyPathFinderStrategy(network, requireNode(network, root), strategy, minAmount);
+            network.generateRootInvoiceEvents(rate, blocks, minAmount, maxAmount, maxFees);
+            result.put("events_per_block", rate);
+            result.put("sender", root);
+        } else {
+            applyPathFinderStrategyToAllNodes(network, strategy);
+            network.generateInvoiceEvents(rate, blocks, minAmount, maxAmount, maxFees);
+            result.put("node_events_per_block", rate);
+        }
+        result.put("sender_scope", rootTraffic ? "imported_root" : "all_nodes");
+        result.put("rate_unit", rootTraffic ? "per_root_per_block" : "per_node_per_block");
         result.put("blocks", blocks);
         result.put("min_amt", minAmount);
         result.put("max_amt", maxAmount);
