@@ -46,7 +46,7 @@ This distinction is important because `search_*` counters are **not path counts*
 | `attempt_failed_temporary_channel` | Number of attempted paths that failed with `temporary_channel_failure`. |
 | `attempt_failed_expiry_too_soon` | Number of attempted paths that failed with `expiry_too_soon`. |
 | `attempt_failed_local_liquidity` | Number of attempted paths that failed later because the sender could not reserve the first hop anymore. |
-| `attempt_failed_timeout` | Number of attempted paths that timed out while waiting for HTLC completion. |
+| `attempt_failed_timeout` | Number of attempted paths irreversibly resolved by CLTV expiry in the shared-channel model. A later route may still succeed; host-stall exceptions are not ordinary timeout outcomes. |
 | `attempt_failed_unknown` | Number of attempted paths that failed for a reason that was not classified explicitly. |
 | `success` | `true` if the invoice was eventually routed successfully, otherwise `false`. |
 
@@ -88,3 +88,5 @@ When analyzing a row, it is usually best to read it in this order:
 3. Look at `filtered_*` to understand why returned paths were discarded before routing.
 4. If `candidate_paths > 0`, inspect `attempted_paths` and the `attempt_failed_*` fields to see what happened during HTLC routing.
 5. Use the `search_*` fields to study algorithm behavior and search complexity, not to count final candidate paths.
+
+The current timeout semantics and model boundary are described in [HTLC resolution](htlc-resolution.md). Historical reports from earlier sources used a sender waiting deadline; do not reinterpret their counters as proof of end-to-end resolution.

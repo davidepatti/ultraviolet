@@ -40,6 +40,17 @@ public class UVNetwork implements LNetwork {
     private TopologyMode topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
 
     private UVTimechain uvTimechain;
+    private final HTLCResolution htlcResolution = new HTLCResolution(this);
+
+    HTLCResolution htlcResolution() { return htlcResolution; }
+
+    /** Chain observation runs independently of P2P delivery; never called under the clock lock. */
+    public void onBlockCommitted(int height) {
+        requireHealthy();
+        if (height != uvTimechain.getCurrentBlockHeight()) throw new IllegalArgumentException("Resolution requires the committed block height");
+        htlcResolution.onBlock(height);
+        for (UVNode node : getUVNodeList().values()) node.reconcileHTLCs();
+    }
 
     private volatile boolean bootstrap_started = false;
     private volatile boolean bootstrap_completed = false;
@@ -442,6 +453,11 @@ public class UVNetwork implements LNetwork {
         if (failure != null) throw new IllegalStateException("Simulation integrity failure: " + failure);
     }
 
+    void checkPaymentProgress() {
+        requireHealthy();
+        if (closed) throw new IllegalStateException("Simulation closed with unresolved payment state");
+    }
+
     public boolean isDraining() { synchronized (admission) { return draining; } }
 
     public boolean isHealthy() { return integrityFailure.get() == null; }
@@ -537,6 +553,8 @@ public class UVNetwork implements LNetwork {
             var pending = node.unsettledState();
             if (!pending.isEmpty()) state.put(node.getPubKey(), pending);
         }
+        int pending = htlcResolution.pendingCount();
+        if (pending != 0) state.put("@htlc-resolution", Map.of("pending", pending));
         return state;
     }
 
@@ -939,6 +957,7 @@ public class UVNetwork implements LNetwork {
             }
 
             synchronized (this) {
+                htlcResolution.reset();
                 uvnodes.clear();
                 uvnodes.putAll(importedNodes);
                 refreshPubkeyList();
@@ -1474,6 +1493,7 @@ public class UVNetwork implements LNetwork {
             this.topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
         }
 
+        htlcResolution.reset();
         uvnodes.clear();
         for (UVNode node : loadedStatus.nodes.values()) {
             node.setUVM(this);

@@ -117,6 +117,20 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         node.pending -=amt;
     }
 
+    /** Release the exact reservation and, on fulfillment, transfer atomically. */
+    synchronized void resolvePending(String sender, int amount, boolean fulfilled) {
+        NodeData from = resolveNode(sender);
+        if (amount <= 0 || from.pending < amount || (fulfilled && from.balance < amount)) {
+            throw new IllegalStateException("Invalid HTLC settlement on " + channel_id);
+        }
+        if (fulfilled) {
+            int left = sender.equals(node1.pubkey) ? node1.balance - amount : node1.balance + amount;
+            int right = sender.equals(node1.pubkey) ? node2.balance + amount : node2.balance - amount;
+            newCommitment(left, right);
+        }
+        from.pending -= amount;
+    }
+
     public synchronized void setPolicy(String pubkey, Policy policy) {
         var node = resolveNode(pubkey);
         node.setPolicy(policy);
@@ -181,7 +195,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
     public synchronized int getNextHTLCid() {
-        this.htlc_id++;
+        this.htlc_id = Math.incrementExact(htlc_id);
         return htlc_id;
     }
 

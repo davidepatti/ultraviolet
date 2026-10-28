@@ -154,7 +154,15 @@ public class UVConfig implements Serializable {
             }
         }
         settings.put("seed", master_seed);
+        settings.put("htlc_stall_timeout_ms", getHTLCStallTimeoutMs());
         return Collections.unmodifiableMap(settings);
+    }
+
+    /** Host-stall watchdog, independent of simulated CLTV expiry; works with old snapshots. */
+    public long getHTLCStallTimeoutMs() {
+        long value = Long.parseLong(properties.getProperty("htlc_stall_timeout_ms", "15000").trim());
+        if (value <= 0) throw new IllegalArgumentException("htlc_stall_timeout_ms must be positive");
+        return value;
     }
 
     public String getSourcePath() {
@@ -241,6 +249,7 @@ public class UVConfig implements Serializable {
         max_threads = Integer.parseInt(properties.getProperty("max_threads"));
         blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
         node_services_tick_ms = Integer.parseInt(properties.getProperty("node_services_tick_ms"));
+        getHTLCStallTimeoutMs(); // reject invalid watchdog settings before any network work starts
         gossip_flush_period_ms = Integer.parseInt(properties.getProperty("gossip_flush_period_ms"));
         to_self_delay = Integer.parseInt(properties.getProperty("to_self_delay"));
         minimum_depth = Integer.parseInt(properties.getProperty("minimum_depth"));

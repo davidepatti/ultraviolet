@@ -10,7 +10,8 @@ public final class LegacySnapshotWriter {
     public static void main(String[] args) throws Exception {
         Path directory = Path.of(args[0]);
         Path config = directory.resolve("legacy.properties"), topology = directory.resolve("legacy.json");
-        Files.writeString(config, "@include=" + Path.of("uv_configs/template.properties").toAbsolutePath()
+        Path template = args.length > 1 ? Path.of(args[1]) : Path.of("uv_configs/template.properties");
+        Files.writeString(config, "@include=" + template.toAbsolutePath()
                 + "\nseed=7\nbootstrap_nodes=2\nmax_threads=4\nlogfile=" + directory.resolve("legacy.log") + "\n");
         Files.writeString(topology, "{\"nodes\":[{\"pub_key\":\"a\",\"alias\":\"a\"},{\"pub_key\":\"b\",\"alias\":\"b\"}],\"edges\":[{\"channel_id\":\"ab\",\"node1_pub\":\"a\",\"node2_pub\":\"b\",\"capacity\":100000}]}");
         UVNetwork.Log = ignored -> {};

@@ -82,6 +82,22 @@ class TrafficRequestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Symlink'):ot.output_path(b,'acceptance','new')
 
 
+class TrafficAccountingTests(unittest.TestCase):
+    def test_legacy_timeout_remains_invalid(self):
+        with self.assertRaisesRegex(ValueError, 'Unsafe legacy timeout'):
+            ot.validate_attempt_accounting({'attempted_paths': 1, 'attempt_failed_timeout': 1}, False)
+
+    def test_resolved_expiry_and_successful_retry(self):
+        ot.validate_attempt_accounting({'attempted_paths': 1, 'attempt_failed_timeout': 1}, False, 'uv-shared-channel-htlc-v1')
+        ot.validate_attempt_accounting({'attempted_paths': 2, 'attempt_failed_timeout': 1}, True, 'uv-shared-channel-htlc-v1')
+
+    def test_unknown_model_and_wrong_accounting_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Unknown HTLC'):
+            ot.validate_attempt_accounting({'attempted_paths': 1, 'attempt_failed_timeout': 0}, True, 'unknown')
+        with self.assertRaisesRegex(ValueError, 'accounting mismatch'):
+            ot.validate_attempt_accounting({'attempted_paths': 1, 'attempt_failed_timeout': 1}, True, 'uv-shared-channel-htlc-v1')
+
+
 @unittest.skipUnless(os.environ.get('UV_OT_ACCEPTANCE'), 'Set UV_OT_ACCEPTANCE to the tiny saved acceptance capture')
 class TrafficCaptureTests(unittest.TestCase):
     def setUp(self):

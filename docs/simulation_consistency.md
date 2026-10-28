@@ -15,7 +15,7 @@ The research changes were not all suitable for direct integration. In particular
 | Unique identities only for research invoices | Apply network-wide to ordinary invoice issuance too. Repeated descriptions are independent requests. Explicit identities remain available for replay schedules. |
 | Dedicated invoice execution and batch accounting | Use ordinary `processInvoice` and managed `submitInvoice`. Standard `inv` and root traffic use `generateInvoiceBatch`, with an outcome for every submitted task. |
 | Synchronized outcome/report access | Keep in the shared implementation; return report/outcome snapshots rather than exposing the paid/report containers. |
-| Research-only timeout invalidation | Apply to all execution. Retain unresolved HTLC state and refuse further successful capture/save/resume. This is a safety boundary, not a complete cancellation protocol. |
+| Research-only timeout invalidation | Replace with shared per-contract resolution of protocol expiry and late fulfillment. Preserve conservative rejection for host stalls, interruptions and integrity errors. See [HTLC resolution](htlc-resolution.md). |
 | Cleanup of unfunded opening proposals after stopping | Remove from core. A normal rejection message now releases exactly the matching proposal's reservation; stale responses cannot cancel newer proposals. Funding completion is queued to the recipient's service worker. |
 | Synchronized registry from the research checkout's uncommitted fix | Keep in core. Iteration uses snapshots; use `registerNode` instead of mutating `getUVNodeList()`. |
 | Research capture/traffic runners and exporters | Move to `tools/journal/java/`. Their one-sided opening, reserve convention, LND selection, schema and provenance constraints belong to the adapter, not general network validation. |
@@ -41,9 +41,11 @@ New snapshots preserve invoice identity allocation, attempted invoice hashes and
 
 Changes to identity allocation, opening rejection, completed-work accounting, equal amount bounds and timeout handling can change hashes, topology and numerical results. Those corrections must not be represented as reproducing historical experiment outputs. Newly built research adapters retain historical schema names for consumers but record the new source provenance. Their `opening-cleanup.json` receipt is empty because normal protocol handling resolves rejections.
 
-## Remaining limitation
+## HTLC resolution and model boundary
 
-A sender timeout cannot prove that all downstream HTLC work has been cancelled. The simulator now records an integrity failure and preserves reservations/messages for diagnosis, consistently for manual and automated calls. Clean shutdown or explicit restore of a valid snapshot is possible; continued successful execution/export of that failed trajectory is not. End-to-end timeout cancellation remains future protocol work. Parallel simulation scheduling and all low-level extension APIs have not been exhaustively verified.
+The core now resolves HTLC expiry, fulfillment and failure through an authoritative per-channel contract ledger. Late replies cannot debit twice or act on a retry with the same invoice hash. A resolved protocol expiry is an ordinary failed attempt; a host watchdog or interruption remains an infrastructure failure. See [HTLC resolution](htlc-resolution.md) for identities, transitions, clocks, receipts and tests.
+
+This deliberately retains UV's high-level shared-channel model. It does not add force-closing channels or on-chain transaction/confirmation behavior. Terminal outcome records consume memory for the network lifetime and are discarded on a settled restore. Low-level extension APIs and all parallel interleavings are not exhaustively verified.
 
 ## Validation
 
@@ -55,6 +57,6 @@ tools/determinism-regression/compatibility_regression.sh
 python3 -B -m unittest discover -s tools/journal -p 'test_*.py' -v
 ```
 
-The main Java suite has 19 groups covering deterministic static behavior, research adapter contracts, opening rejection, retries/expiry/unsafe timeout, queued failures, manual identities, live capture, concurrent batch ownership, DSE route/inv/load, terminal subprocess commands and a small bootstrap. The compatibility runner requires the original commit to be available locally and builds only core sources for its current reader. All simulation fixtures and builds are temporary.
+The main Java suite has 25 groups covering deterministic static behavior, research adapter contracts, opening rejection, retries, expiry, late fulfillment, watchdog rejection and concurrent transfers, queued failures, manual identities, live capture, concurrent batch ownership, DSE route/inv/load, terminal subprocess commands and a small bootstrap. The compatibility runner requires the original commit to be available locally and builds only core sources for its current reader. All simulation fixtures and builds are temporary.
 
-Python tests include optional read-only checks of a saved acceptance fixture when `UV_OT_ACCEPTANCE` names its directory. The full run with that fixture has 28 tests. These tests do not generate study data. Passing these checks supports a future integration review; this branch has not been merged.
+Python tests include optional read-only checks of a saved acceptance fixture when `UV_OT_ACCEPTANCE` names its directory. The full run with that fixture has 31 tests. These tests do not generate study data. Passing these checks supports a future integration review; this branch has not been merged.

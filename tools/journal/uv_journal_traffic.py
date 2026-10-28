@@ -17,6 +17,14 @@ REPO = Path(__file__).resolve().parents[2]
 B = REPO.parent / 'b'
 
 
+def validate_attempt_accounting(report, success, resolution_model=None):
+    require(resolution_model in (None, 'uv-shared-channel-htlc-v1'), 'Unknown HTLC resolution model')
+    counters = [value for key, value in report.items() if key.startswith('attempt_failed_')]
+    require(all(type(value) is int and value >= 0 for value in counters), 'Invalid attempt counters')
+    require(resolution_model is not None or report['attempt_failed_timeout'] == 0, 'Unsafe legacy timeout')
+    require(report['attempted_paths'] == sum(counters) + int(success), 'Attempt accounting mismatch')
+
+
 def validate_request(request, b=B):
     require(set(request) == {'schema', 'purpose', 'topology_id', 'overrides', 'traffic'}, 'Unexpected O/T request fields')
     require(request['schema'] == 'journal-ot-request-v1' and request['purpose'] in ('acceptance', 'pilot'), 'Unsupported O/T request')
@@ -188,8 +196,7 @@ def validate_trajectory(directory):
                 report = row['report']; ok = row['status'] == 'success'
                 require(report['success'] is ok and report['sender'] == row['sender'] and report['dest'] == row['destination']
                         and report['amt'] == row['amount_sat'] and report['max_fees'] == traffic['max_fees_sat'] and report['path_finder'] == 'lnd', 'Invoice report mismatch')
-                failures = sum(report[k] for k in report if k.startswith('attempt_failed_'))
-                require(report['attempt_failed_timeout'] == 0 and report['attempted_paths'] == failures + int(ok), 'Unsafe timeout or attempt accounting mismatch')
+                validate_attempt_accounting(report, ok, batch.get('htlc_resolution'))
                 success += int(ok); failed += int(not ok); amount += row['amount_sat']; delivered += row['amount_sat'] if ok else 0
             require(summary == {'requested': len(batch['requests']), 'completed': len(batch['requests']), 'successful': success,
                                 'failed': failed, 'exceptional': 0, 'unfinished': 0, 'requested_amount_sat': amount, 'delivered_amount_sat': delivered}, 'Invoice accounting mismatch')

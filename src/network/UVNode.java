@@ -472,6 +472,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             pendingInvoices.put(hash, invoice);
 
             for (var path : candidatePaths) {
+                synchronized (this) { failure_reason.remove(hash); }
                 attempted_paths++;
                 logMessage = "Trying path " + attempted_paths + " of " + candidatePaths.size() + " for invoice " + hash;
                 if (showui) System.out.println(logMessage);
@@ -480,31 +481,28 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 routeInvoiceOnPath(invoice, path);
                 debug(()->"Waiting for pending HTLC "+invoice.getHash());
 
-                long timeoutMs = Math.max(
-                        15_000L,
-                        8L * Math.max(1, path.getSize()) * uvNetwork.getConfig().node_services_tick_ms
-                );
-                long deadline = System.currentTimeMillis() + timeoutMs;
-
-                while (pendingHTLC.containsKey(hash) && System.currentTimeMillis() < deadline) {
-                    try {
-                        Thread.sleep(invoice_check_delay);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-
+                // A host watchdog detects a stalled simulator; block expiry resolves the contract.
+                // Continued block progress must not turn a valid long-lived HTLC into a host timeout.
+                long watchdogMs = Math.max(uvNetwork.getConfig().getHTLCStallTimeoutMs(),
+                        Math.max(2L * uvNetwork.getConfig().blocktime_ms,
+                                8L * Math.max(1, path.getSize()) * uvNetwork.getConfig().node_services_tick_ms));
+                long lastProgress = System.nanoTime();
+                int lastHeight = uvNetwork.getTimechain().getCurrentBlockHeight();
                 synchronized (this) {
-                    if (pendingHTLC.containsKey(hash)) {
-                        // A sender-side deadline is not end-to-end cancellation. Preserve all
-                        // reservations and stop retrying; no caller may export this as settled.
-                        uvNetwork.recordFailure("Unresolved payment timeout: " + hash, null);
-                        failure_reason.put(hash, "attempt_timeout");
+                    while (pendingHTLC.containsKey(hash)) {
+                        uvNetwork.checkPaymentProgress();
+                        int height = uvNetwork.getTimechain().getCurrentBlockHeight();
+                        if (height != lastHeight) { lastHeight = height; lastProgress = System.nanoTime(); }
+                        if (System.nanoTime() - lastProgress >= TimeUnit.MILLISECONDS.toNanos(watchdogMs)) {
+                            throw new IllegalStateException("HTLC resolution stalled without block progress: " + hash);
+                        }
+                        try { wait(Math.max(1, Math.min(invoice_check_delay, watchdogMs))); }
+                        catch (InterruptedException error) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException("Payment interrupted with unresolved state: " + hash, error);
+                        }
                     }
                 }
-
-                debug(()->"Cleared pending HTLC "+hash);
 
                 boolean paid;
                 synchronized (this) { paid = payedInvoices.containsKey(hash); }
@@ -651,235 +649,127 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var local_channel = channels.get(channel_id);
         var amt_to_forward= invoice.getAmount()+cumulatedFees;
 
-        debug(()->"Trying to reserve pending for node "+this.getPubKey()+ " , required: "+amt_to_forward+ " in channel "+local_channel.getChannelId());
-        if (!local_channel.reservePending(this.getPubKey(),amt_to_forward)) {
-
-            failure_reason.put(invoice.getHash(),"missing local liquidity");
-            // even if previuously checked, the local liquidity might have been reserved in the meanwhile...
-            log("Warning:Cannot reserve "+amt_to_forward+" on first hop channel "+local_channel.getChannelId());
+        var message = new MsgUpdateAddHTLC(channel_id, local_channel.getNextHTLCid(), amt_to_forward,
+                invoice.getHash(), out_cltv, onionLayer);
+        if (!uvNetwork.htlcResolution().offer(local_channel, pubkey, message, null)) {
+            failure_reason.put(invoice.getHash(), "missing local liquidity");
             return;
         }
-
-        var update_htcl = new MsgUpdateAddHTLC(channel_id,local_channel.getNextHTLCid(),amt_to_forward,invoice.getHash(),out_cltv,onionLayer);
-
-        sendToPeer(uvNetwork.getUVNode(first_hop),update_htcl, uvNetwork);
-        pendingHTLC.put(update_htcl.getPayment_hash(),update_htcl);
+        pendingHTLC.put(message.getPayment_hash(), message);
+        sendToPeer(uvNetwork.getUVNode(first_hop), message, uvNetwork);
     }
 
-    /**
-     * This method processes a fulfilled Hash Time Locked Contract (HTLC) transaction.
-     */
+    private synchronized void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC message) {
+        uvNetwork.htlcResolution().acceptFulfillment(pubkey,
+                new HTLCResolution.Key(message.getChannel_id(), message.getId()), message.getPayment_preimage());
+        reconcileHTLCs();
+    }
 
-    private synchronized void processUpdateFulfillHTLC(MsgUpdateFulFillHTLC msg) throws IllegalStateException {
+    private synchronized void processUpdateFailHTLC(MsgUpdateFailHTLC message) {
+        uvNetwork.htlcResolution().acceptFailure(pubkey,
+                new HTLCResolution.Key(message.getChannel_id(), message.getId()));
+        reconcileHTLCs();
+    }
 
-        var preimage = msg.getPayment_preimage();
-        var channel_id = msg.getChannel_id();
-        var computed_hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
-        var channel_peer_id = getChannelPeer(channel_id).getPubKey();
-        log("UpdateFulfillHTLC invoice hash " + computed_hash + " from "+channel_peer_id+ " via " + channel_id);
-
-        // As expected, I offered a HTLC with the same hash
-        if (pendingHTLC.containsKey(computed_hash)) {
-            var htlc = pendingHTLC.get(computed_hash);
-
-            channels.get(channel_id).removePending(this.getPubKey(),htlc.getAmount());
-
-            if (!pushSats(channel_id, htlc.getAmount())) {
-                throw new IllegalStateException("Cannot push "+htlc.getAmount()+ " from "+ this.getPubKey()+ " via "+channel_id);
-            }
-
-            // If I forwarded an incoming htlc, must also send back the fulfill message
-            if (receivedHTLC.containsKey(computed_hash)) {
-                var received_htlc = receivedHTLC.get(computed_hash);
-                var new_msg = new MsgUpdateFulFillHTLC(received_htlc.getChannel_id(),received_htlc.getId(),preimage);
-                sendToPeer(getChannelPeer(received_htlc.getChannel_id()),new_msg, uvNetwork);
-                receivedHTLC.remove(computed_hash);
-                // I successfully partecipated to some HTLC routing, my balances will change
-                nodeStats.incrementForwardeVolume(received_htlc.getAmount());
-            }
-            // I offered, but did not receive the htlc, I'm initial sender?
-            else {
-                if (pendingInvoices.containsKey(computed_hash)) {
-                    log("LN invoice for hash "+computed_hash+ " Completed!");
-                    payedInvoices.put(computed_hash,pendingInvoices.get(computed_hash));
-                    nodeStats.incrementInvoiceProcessingSuccessses();
-                    nodeStats.incrementInvoiceProcessingVolume(pendingInvoices.get(computed_hash).getAmount());
-                }
-                else {
-                    log("FATAL: Missing pending invoice for " + computed_hash);
-                    throw new IllegalStateException("Node "+this.getPubKey()+": Missing pending Invoice for hash "+computed_hash);
-                }
-            }
-            pendingHTLC.remove(computed_hash);
-        }
-        else {
-            log("Late/unknown fulfill HTLC for hash "+computed_hash+ ", ignoring");
+    private void sendHTLCOutcome(MsgUpdateAddHTLC incoming, HTLCResolution.Outcome outcome) {
+        if (outcome.state() == HTLCResolution.State.FULFILLED) {
+            sendToPeer(getChannelPeer(incoming.getChannel_id()),
+                    new MsgUpdateFulFillHTLC(incoming.getChannel_id(), incoming.getId(), outcome.preimage()), uvNetwork);
+        } else if (outcome.state() == HTLCResolution.State.FAILED) {
+            sendToPeer(getChannelPeer(incoming.getChannel_id()),
+                    new MsgUpdateFailHTLC(incoming.getChannel_id(), incoming.getId(), outcome.reason()), uvNetwork);
         }
     }
-    /**
-     * This function processes the failure of an HTLC (Hash Time-Locked Contract) update message.
-     * If the failure update message is found among the pending HTLCs, it removes the
-     * HTLC from the pendingHTLC map, updates the channel's list of pending HTLCs, and reduces the node's statistics of successful HTLCs. If the outgoing
-     */
 
-    private synchronized void processUpdateFailHTLC(final MsgUpdateFailHTLC msg) {
-        log("Processing: " + msg);
-        var ch_id = msg.getChannel_id();
-
-        for (MsgUpdateAddHTLC pending_msg : pendingHTLC.values()) {
-
-            if (pending_msg.getChannel_id().equals(ch_id) && pending_msg.getId()==msg.getId()) {
-                final var hash = pending_msg.getPayment_hash();
-
-                pendingHTLC.remove(hash);
-                debug(()->"Removing pending "+pending_msg.getAmount()+" on channel "+ch_id);
-                channels.get(ch_id).removePending(this.getPubKey(),pending_msg.getAmount());
-
-                // I previouosly forwarded this HTLC, so I shoould send back the failure msg to the previous node
-                // no stats involved, the node is not responsible for the failure
-                if (receivedHTLC.containsKey(hash)) {
-                    var prev_htlc = receivedHTLC.get(hash);
-                    var prev_ch_id = prev_htlc.getChannel_id();
-                    var prev_peer = getChannelPeer(prev_ch_id);
-                    var fail_msg = new MsgUpdateFailHTLC(prev_ch_id, prev_htlc.getId(), msg.getReason());
-                    debug(()->"Sending "+fail_msg+ " to "+prev_peer.getPubKey());
-                    sendToPeer(prev_peer, fail_msg, uvNetwork);
-                    receivedHTLC.remove(hash);
-                } // I offered, but did not receive the htlc, I'm initial sender?
-                else {
-                    // The origin node can detect the sender of the error message by matching the hmac field with the computed HMAC.
-                    // https://github.com/lightning/bolts/blob/master/04-onion-routing.md#failure-messages
-
-                    // TODO: This could be abstracted in the future if necessary, by putting some field in the fail message
-
-                    // this set the reason of current HTLC routing attempt failure, so that we can make some invoice specific stats
-                    // however, no need to increase stats about invoice failures, the invoice could still succeed in another attempt...
-                    failure_reason.put(hash,msg.getReason());
-                    log("Original sender of "+msg+ " recognize failure due to "+msg.getReason());
-                }
-                return;
-            }
+    private void failHTLC(MsgUpdateAddHTLC message, String reason) {
+        var before = uvNetwork.htlcResolution().receive(pubkey, message);
+        var outcome = uvNetwork.htlcResolution().fail(pubkey, message, reason);
+        if (before.state() == HTLCResolution.State.PENDING && outcome.state() == HTLCResolution.State.FAILED) {
+            nodeStats.incrementForwardingFailures(reason);
         }
-
-        log("Late/unknown fail HTLC " + msg + ", ignoring");
+        sendHTLCOutcome(message, outcome);
     }
 
-    private void failHTLC(final MsgUpdateAddHTLC msg, String reason) {
-        var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), reason);
-        nodeStats.incrementForwardingFailures(reason);
-        sendToPeer(getChannelPeer(msg.getChannel_id()), fail_msg, uvNetwork);
+    /** Apply authoritative channel outcomes once, from normal P2P or chain observation. */
+    synchronized void reconcileHTLCs() {
+        var resolver = uvNetwork.htlcResolution();
+        for (var outgoing : new ArrayList<>(pendingHTLC.values())) {
+            var outcome = resolver.outcome(outgoing);
+            if (outcome == null || outcome.state() == HTLCResolution.State.PENDING) continue;
+            String hash = outgoing.getPayment_hash();
+            var incoming = receivedHTLC.get(hash);
+            if (incoming != null) {
+                var upstream = outcome.state() == HTLCResolution.State.FULFILLED
+                        ? resolver.fulfill(pubkey, incoming, outcome.preimage())
+                        : resolver.fail(pubkey, incoming, outcome.reason());
+                sendHTLCOutcome(incoming, upstream);
+                receivedHTLC.remove(hash);
+                if (outcome.state() == HTLCResolution.State.FULFILLED) nodeStats.incrementForwardeVolume(incoming.getAmount());
+            } else if (outcome.state() == HTLCResolution.State.FULFILLED) {
+                var invoice = pendingInvoices.get(hash);
+                if (invoice == null) throw new IllegalStateException("Missing pending invoice for resolved HTLC " + hash);
+                payedInvoices.put(hash, invoice);
+                nodeStats.incrementInvoiceProcessingSuccessses();
+                nodeStats.incrementInvoiceProcessingVolume(invoice.getAmount());
+            } else failure_reason.put(hash, outcome.reason());
+            pendingHTLC.remove(hash, outgoing);
+        }
+        // Obsolete deliveries cannot revive a resolved contract, including while P2P is stopped.
+        updateAddHTLCQueue.removeIf(message -> {
+            var outcome = resolver.outcome(message);
+            return outcome != null && outcome.state() != HTLCResolution.State.PENDING;
+        });
+        updateFulFillHTLCQueue.removeIf(message -> resolver.terminal(new HTLCResolution.Key(message.getChannel_id(), message.getId())));
+        updateFailHTLCQueue.removeIf(message -> resolver.terminal(new HTLCResolution.Key(message.getChannel_id(), message.getId())));
+        notifyAll();
     }
 
-    /**
-     * This method is responsible for handling HTLC messages in Lightning Network.
-     */
-    private synchronized void processUpdateAddHTLC(final MsgUpdateAddHTLC msg) {
-
-        log("Processing: "+msg);
-        final var payload = msg.getOnionPacket().getPayload();
+    private synchronized void processUpdateAddHTLC(MsgUpdateAddHTLC message) {
+        var resolver = uvNetwork.htlcResolution();
+        var known = resolver.receive(pubkey, message);
+        if (known.state() != HTLCResolution.State.PENDING) { sendHTLCOutcome(message, known); return; }
+        if (resolver.forwarded(message)) return; // Duplicate add; its original forwarding is still active.
+        final var payload = message.getOnionPacket().getPayload();
         int currentBlock = uvNetwork.getTimechain().getCurrentBlockHeight();
-        int cltv_expiry = msg.getCLTVExpiry();
+        if (currentBlock >= message.getCLTVExpiry()) { failHTLC(message, "expiry_too_soon"); return; }
 
-        // check if I'm the final destination
         if (payload.getShortChannelId().equals("00")) {
-
-            final var secret = payload.getPayment_secret().get();
-
-            for (long s: generatedInvoices.keySet()) {
-                var preimage_bytes = BigInteger.valueOf(s).toByteArray();
-                var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(preimage_bytes));
-                if (hash.equals(secret)) {
-                    var own_invoice =  generatedInvoices.get(s);
-                    log("Received HTLC of own invoice "+own_invoice);
-
-                    if (currentBlock <= cltv_expiry) {
-                        var incomingPeer = getChannelPeer(msg.getChannel_id());
-                        var to_send = new MsgUpdateFulFillHTLC(msg.getChannel_id(),msg.getId(),s);
-                        sendToPeer(incomingPeer,to_send, uvNetwork);
+            for (var entry : generatedInvoices.entrySet()) {
+                var invoice = entry.getValue();
+                if (invoice.getHash().equals(message.getPayment_hash())
+                        && invoice.getHash().equals(payload.getPayment_secret().orElse(null))) {
+                    if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
+                        failHTLC(message, "temporary_channel_failure"); return;
                     }
-                    else {
-                        log("Final node discarding late HTLC: expired in block "+cltv_expiry+ " hash:"+msg.getPayment_hash());
-                        var fail_msg = new MsgUpdateFailHTLC(msg.getChannel_id(), msg.getId(), "expiry_too_soon");
-                        var incomingPeer = getChannelPeer(msg.getChannel_id());
-                        sendToPeer(incomingPeer,fail_msg, uvNetwork);
-                    }
+                    var outcome = resolver.fulfill(pubkey, message, entry.getKey());
+                    sendHTLCOutcome(message, outcome);
                     return;
                 }
             }
-            throw new IllegalStateException(" Received update_add_htlc, but no generated invoice was found!");
+            throw new IllegalStateException("No generated invoice matches the final HTLC");
         }
 
-        // I'm not the final destination, must forward the HTLC
-        final var forwardingChannel = channels.get(payload.getShortChannelId());
-        if (forwardingChannel == null) {
-            log("Unknown forwarding channel " + payload.getShortChannelId()
-                    + " for HTLC " + msg.getPayment_hash()
-                    + ", failing upstream");
-            failHTLC(msg, "temporary_channel_failure");
-            return;
+        var channel = channels.get(payload.getShortChannelId());
+        var inner = message.getOnionPacket().getInnerLayer();
+        if (channel == null || inner.isEmpty() || payload.getAmtToForward() <= 0
+                || payload.getAmtToForward() > message.getAmount() || channel.getPolicy(pubkey) == null) {
+            failHTLC(message, "temporary_channel_failure"); return;
         }
-
-        int amt_incoming = msg.getAmount();
-        int amt_forward = payload.getAmtToForward();
-
-        int fees = amt_incoming-amt_forward;
-
-        if (fees>=0) {
-            // TODO: check fees here...
-            debug(()->"Fees "+fees+" ok for channel "+forwardingChannel.getPolicy(this.getPubKey()));
+        int delta = channel.getPolicy(pubkey).getCLTVDelta();
+        if (payload.getOutgoingCLTV() <= currentBlock
+                || (long) message.getCLTVExpiry() - payload.getOutgoingCLTV() < delta
+                || message.getCLTVExpiry() <= payload.getOutgoingCLTV()) {
+            failHTLC(message, "expiry_too_soon"); return;
         }
-        else {
-           throw new IllegalStateException("Negative fees value for forwading "+msg);
+        var outgoing = new MsgUpdateAddHTLC(channel.getChannelId(), channel.getNextHTLCid(), payload.getAmtToForward(),
+                message.getPayment_hash(), payload.getOutgoingCLTV(), inner.get());
+        if (!resolver.offer(channel, pubkey, outgoing, message)) {
+            failHTLC(message, "temporary_channel_failure"); return;
         }
-
-        //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#normal-operation
-        // - once the cltv_expiry of an incoming HTLC has been reached,
-        // OR if cltv_expiry minus current_height is less than cltv_expiry_delta for the corresponding outgoing HTLC:
-        // MUST fail that incoming HTLC (update_fail_htlc).
-
-        //TODO: expand with more failure cases (see antonop 263)
-
-        var cltv_expiry_delta = forwardingChannel.getPolicy(this.getPubKey()).getCLTVDelta();
-
-        if ((currentBlock > cltv_expiry) || (cltv_expiry - currentBlock) < cltv_expiry_delta) {
-            var reason = "expiry_too_soon";
-            log("Expired HTLC: cltv_expiry=" + cltv_expiry + ", out cltv_expiry_delta=" + cltv_expiry_delta + " , hash:" + msg.getPayment_hash());
-            failHTLC(msg, reason);
-            return;
-        }
-
-        if (!forwardingChannel.reservePending(this.getPubKey(), amt_forward)) {
-            var reason = "temporary_channel_failure";
-            log("Not enough local liquidity to forward " + amt_forward + " in channel " + forwardingChannel.getChannelId());
-            failHTLC(msg, reason);
-            return;
-        }
-
-        debug(()->"Reserved liquidity on "+forwardingChannel.getChannelId()+ " to forward: "+amt_forward + " from "+this.getPubKey()+ " to "+getChannelPeer(forwardingChannel.getChannelId()).getPubKey());
-
-        // CREATE NEW HTLC UPDATE MESSAGE HERE USING PAYLOAD
-        int cltv = payload.getOutgoingCLTV();
-
-        // fields that does not depend on payload, but message received
-        var onionPacket = msg.getOnionPacket().getInnerLayer();
-        if (onionPacket.isEmpty()) {
-            log("Missing inner onion layer while forwarding HTLC " + msg.getPayment_hash()
-                    + " on channel " + forwardingChannel.getChannelId()
-                    + ", failing upstream");
-            failHTLC(msg, "temporary_channel_failure");
-            return;
-        }
-        var payhash = msg.getPayment_hash();
-
-        var new_msg = new MsgUpdateAddHTLC(forwardingChannel.getChannelId(), forwardingChannel.getNextHTLCid(),amt_forward,payhash,cltv,onionPacket.get());
-
-        debug(()->"Forwarding "+new_msg);
-        receivedHTLC.put(msg.getPayment_hash(),msg);
-        pendingHTLC.put(new_msg.getPayment_hash(), new_msg);
+        receivedHTLC.put(message.getPayment_hash(), message);
+        pendingHTLC.put(outgoing.getPayment_hash(), outgoing);
         nodeStats.incrementForwardingSuccesses();
-
-        var next_channel_peer = getChannelPeer(forwardingChannel.getChannelId());
-        sendToPeer(next_channel_peer,new_msg, uvNetwork);
+        sendToPeer(getChannelPeer(channel.getChannelId()), outgoing, uvNetwork);
     }
 
     private String getMyChannelWith(String node_id) {
@@ -1370,7 +1260,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 processUpdateFailHTLC(msg);
             } catch (Exception e) { uvNetwork.recordFailure("processUpdateFailHTLC on node " + getPubKey(), e); }
         }
-        // check for expired htlc
+        reconcileHTLCs();
     }
 
     /**

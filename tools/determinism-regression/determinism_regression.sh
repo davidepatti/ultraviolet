@@ -19,7 +19,7 @@ What is tested:
 - pathfinding on a fixed graph for BFS, SHORTEST_HOP, MINI_DIJKSTRA, and LND;
 - save/load structural round trips from a frozen imported topology;
 - network report generation from frozen imported topology state;
-- shared pause/resume, native sampling/accounting, retry/expiry and timeout rejection;
+- shared pause/resume, native sampling/accounting, retry/expiry resolution, late fulfillment and host-stall rejection;
 - terminal and DSE execution, queued work, persistence and batch ownership;
 - optional research adapter contracts.
 

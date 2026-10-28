@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 19;
+    private static final int TOTAL_TESTS = 25;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -128,7 +128,13 @@ public class DeterminismRegressionTest {
             runCase("Journal O/T lifecycle and routed payments", "Handcrafted four-node network: retry, multihop settlement, unchanged public/profile state, pause/resume and native batch sampling/accounting.", () -> JournalTrafficTest.lifecycleAndPayments(workDir));
             runCase("Journal O/T failure boundaries", "Reject unresolved forwarded state and task/service exceptions; verify wide-integer amounts and duplicate outcome rejection.", () -> JournalTrafficTest.rejectionAndAccounting(workDir));
             runCase("Journal O/T queued invoice tasks", "Delayed task failures leave empty protocol queues; require completion and preserve all 16 exception receipts.", () -> JournalTrafficTest.queuedTaskExceptions(workDir));
-            runCase("Journal O/T expiry and unsafe timeout", "Expiry releases reservations normally; a native sender timeout invalidates export without clearing unresolved messages.", () -> JournalTrafficTest.expiryAndTimeout(workDir));
+            runCase("Shared HTLC expiry resolution", "A stopped recipient expires safely, releases every reservation, and yields a valid settled failure.", () -> JournalTrafficTest.expiryAndTimeout(workDir));
+            runCase("Late fulfillment and duplicate replies", "An accepted preimage wins over expiry; delayed replies cannot debit twice or lose intermediary fees.", () -> network.HTLCResolutionTest.lateFulfillment(workDir));
+            runCase("Expiry retry and stale messages", "An expired attempt resolves before retry; stale replies and duplicate adds cannot affect the new contract.", () -> network.HTLCResolutionTest.expiryRetryAndStaleReplies(workDir));
+            runCase("Host watchdog boundary", "A stopped clock remains an infrastructure failure and preserves unresolved state.", () -> network.HTLCResolutionTest.stalledClock(workDir));
+            runCase("Fulfillment at the block boundary", "An advanced block cannot be bypassed by a handler that read an earlier height.", () -> network.HTLCResolutionTest.expiryFulfillmentRace(workDir));
+            runCase("Concurrent opposing payments", "Parallel payment workers share one channel without losing or duplicating transfers.", () -> network.HTLCResolutionTest.concurrentChannelPayments(workDir));
+            runCase("Batch expiry accounting", "Managed batches accept resolved protocol timeouts as complete outcomes and drain all state.", () -> network.HTLCResolutionTest.batchExpiry(workDir));
             runCase("Shared identities and persistence", "Ordinary invoice APIs, idempotent lifecycle, stable reports and identity/routing continuity after restore.", () -> SimulationConsistencyTest.identityAndPersistence(workDir));
             runCase("Capture awaits submitted work", "A gated manual submission must finish before capture; live exports resume the same network.", () -> SimulationConsistencyTest.queuedCapture(workDir));
             runCase("Concurrent batch lifecycle boundary", "Rejects capture and reload while a batch owns the lifecycle, then settles all requests.", () -> SimulationConsistencyTest.concurrentBatchBoundary(workDir));

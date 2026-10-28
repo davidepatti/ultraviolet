@@ -255,10 +255,11 @@ public class UVTimechain implements Runnable, Serializable {
                 synchronized (this) {
                     if (!status) break;
                     tictocNextBlock();
-                    synchronized (wait_blocks_latch) {
-                        for (CountDownLatch latch : wait_blocks_latch) latch.countDown();
-                        wait_blocks_latch.removeIf(latch -> latch.getCount() == 0);
-                    }
+                }
+                uvm.onBlockCommitted(getCurrentBlockHeight());
+                synchronized (wait_blocks_latch) {
+                    for (CountDownLatch latch : wait_blocks_latch) latch.countDown();
+                    wait_blocks_latch.removeIf(latch -> latch.getCount() == 0);
                 }
             }
         } catch (InterruptedException e) {

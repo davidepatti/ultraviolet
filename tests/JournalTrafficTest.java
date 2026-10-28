@@ -37,10 +37,14 @@ public final class JournalTrafficTest {
         var f = object.getClass().getDeclaredField(name); f.setAccessible(true); f.set(object, value);
     }
 
-    static UVNetwork fixture(Path tmp, String name) throws Exception {
+    public static UVNetwork fixture(Path tmp, String name) throws Exception {
+        return fixture(tmp, name, "");
+    }
+
+    public static UVNetwork fixture(Path tmp, String name, String overrides) throws Exception {
         Path configPath = tmp.resolve(name + ".properties");
         Files.writeString(configPath, "@include=" + Path.of("uv_configs/template.properties").toAbsolutePath()
-                + "\nseed=71\nbootstrap_nodes=4\nmax_threads=8\nblocktime_ms=100\nnode_services_tick_ms=5\nlogfile=" + tmp.resolve(name + ".log") + "\n");
+                + "\nseed=71\nbootstrap_nodes=4\nmax_threads=8\nblocktime_ms=100\nnode_services_tick_ms=5\nlogfile=" + tmp.resolve(name + ".log") + "\n" + overrides);
         var config = new UVConfig(configPath.toString());
         var network = new UVNetwork(config);
         for (String id : List.of("a", "b", "c", "d")) {
@@ -196,37 +200,6 @@ public final class JournalTrafficTest {
     }
 
     public static void expiryAndTimeout(Path tmp) throws Exception {
-        var n = fixture(tmp, "ot-expiry");
-        try {
-            n.resume();
-            var invoice = n.getUVNode("b").generateInvoiceWithIdentity(1000,"expired",100001);
-            var channel = n.getUVNode("a").getChannels().get("fixture_a_b");
-            var message = new MsgUpdateAddHTLC(channel.getChannelId(),channel.getNextHTLCid(),1000,invoice.getHash(),-1,
-                    new OnionLayer(new OnionLayer.Payload("00",1000,-1,invoice.getHash()),null));
-            channel.reservePending("a",1000);
-            n.getUVNode("a").getPendingHTLC().put(invoice.getHash(),message);
-            n.getUVNode("b").getUpdateAddHTLCQueue().add(message);
-            n.pauseAndDrain(2000);
-            check(channel.getPending("a")==0 && channel.getBalance("a")==100000, "Expiry did not release reservation without transfer");
-        } finally { n.shutdown(); }
-        n = fixture(tmp, "ot-timeout");
-        var pool = Executors.newSingleThreadExecutor();
-        try {
-            n.resume();
-            // Freeze final recipient processing so c forwards, but no final outcome can return.
-            var dest = n.getUVNode("d"); dest.p2pHandler.cancel(false); dest.setP2PServices(false);
-            var invoice = dest.generateInvoiceWithIdentity(1000,"timeout",100001);
-            UVNetwork timed = n;
-            var future = pool.submit(() -> timed.getUVNode("a").processInvoice(invoice,1000));
-            try { future.get(20,TimeUnit.SECONDS); throw new AssertionError("Timeout must fail every caller"); }
-            catch (java.util.concurrent.ExecutionException expected) {
-                check(expected.getCause().getMessage().contains("integrity failure"), "Expected timeout integrity failure");
-            }
-            check(timed.getUVNode("a").getInvoiceReports().getLast().attempt_failed_timeout() > 0, "Timeout diagnostics missing");
-            rejects(() -> timed.pauseAndDrain(100), "integrity failure");
-            rejects(() -> JournalTrafficExporter.build(timed,"fixture","unsafe",new JsonObject()),"barrier");
-            check(!dest.getUpdateAddHTLCQueue().isEmpty() && !timed.getUVNode("c").getReceivedHTLC().isEmpty()
-                    && !timed.getUVNode("c").getPendingHTLC().isEmpty(), "Multihop timeout diagnostics were erased");
-        } finally { pool.shutdownNow(); n.shutdown(); }
+        network.HTLCResolutionTest.expiryWithoutReceiver(tmp);
     }
 }
