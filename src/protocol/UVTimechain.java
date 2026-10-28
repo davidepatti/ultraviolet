@@ -20,6 +20,7 @@ public class UVTimechain implements Runnable, Serializable {
     private final List<Block>  blockChain = new ArrayList<>();
     boolean status;
     private volatile boolean threadAlive = false;
+    private transient Thread timechainThread;
 
     // Maps each fee band (upper bound) to the cumulative bytes of pending transactions within that band
     private final NavigableMap<Integer, Long> congestionLevelsByFeeBand = new TreeMap<>();
@@ -178,7 +179,7 @@ public class UVTimechain implements Runnable, Serializable {
         return Optional.empty();
     }
 
-    public int getCurrentBlockHeight() {
+    public synchronized int getCurrentBlockHeight() {
         return current_height;
     }
 
@@ -199,11 +200,26 @@ public class UVTimechain implements Runnable, Serializable {
         // not running --> running, must start the thread
         if (status && !getStatus()) {
             this.status = true;
-            Thread timechainThread = new Thread(this, "Timechain");
+            timechainThread = new Thread(this, "Timechain");
             timechainThread.start();
         }
         else  // just update the status if required
             this.status = status;
+    }
+
+    /** Join, rather than just request a stop: no final block can race a capture. */
+    public void stopAndAwait(long timeoutMillis) throws InterruptedException {
+        if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive timeout required");
+        Thread worker;
+        synchronized (this) {
+            status = false;
+            worker = timechainThread;
+        }
+        if (worker != null) {
+            worker.join(timeoutMillis);
+            if (worker.isAlive()) throw new IllegalStateException("Timechain stop timed out");
+        }
+        if (threadAlive) throw new IllegalStateException("Untracked live timechain worker");
     }
 
     public synchronized boolean getStatus() {

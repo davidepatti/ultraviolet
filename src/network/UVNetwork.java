@@ -38,6 +38,17 @@ public class UVNetwork implements LNetwork {
 
     private boolean bootstrap_started = false;
     private boolean bootstrap_completed = false;
+    private boolean bootstrapWorkersTerminated = false;
+    private boolean journalCaptureStopped = false;
+    private volatile boolean journalTrafficEnabled = false;
+    private volatile boolean journalTrafficPaused = false;
+    private volatile boolean journalTrafficFailed = false;
+    private final java.util.concurrent.atomic.AtomicBoolean journalBatchActive = new java.util.concurrent.atomic.AtomicBoolean();
+    private final AtomicInteger journalErrors = new AtomicInteger();
+    private long journalInvoiceIdentity = 0;
+    private JournalInvoiceBatch lastJournalBatch;
+    private final Set<String> journalBatchIds = new HashSet<>();
+    private Map<String, Map<String, Integer>> journalOpeningCleanup = Map.of();
     public static Consumer<String> Log = System.out::println;
     private static final int LOG_QUEUE_CAPACITY = 131072;
     private static final int LOG_BATCH_SIZE = 256;
@@ -244,6 +255,8 @@ public class UVNetwork implements LNetwork {
      */
     public void bootstrapNetwork() {
 
+        bootstrapWorkersTerminated = false;
+        journalCaptureStopped = false;
         Thread.currentThread().setName("Bootstrap");
         var startTime = new Date();
         bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(startTime);
@@ -325,6 +338,7 @@ public class UVNetwork implements LNetwork {
             bootstrapExecutor.shutdown();
             try {
                 var timeout = bootstrapExecutor.awaitTermination(60, TimeUnit.SECONDS);
+                bootstrapWorkersTerminated = timeout;
                 if (!timeout)
                     print_log("BOOTSTRAP: timeout! terminating threads...");
             }
@@ -410,6 +424,215 @@ public class UVNetwork implements LNetwork {
             n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
         }
     }
+    /** Terminal barrier for the single-owner, fresh-bootstrap journal batch process.
+     * No routing/invoice/import API may run concurrently. This is not a general UI pause.
+     */
+    public void stopForJournalCapture(long timeoutMillis) throws InterruptedException {
+        if (timeoutMillis <= 0 || !isBootstrapCompleted() || !bootstrapWorkersTerminated
+                || getTopologyMode() != TopologyMode.SIMULATED_DISTRIBUTED) {
+            throw new IllegalStateException("Capture requires a completed fresh bootstrap with terminated workers");
+        }
+        uvTimechain.stopAndAwait(timeoutMillis);
+        stopP2PNetwork();
+        if (p2pExecutor != null) {
+            p2pExecutor.shutdown();
+            if (!p2pExecutor.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException("P2P capture barrier timed out");
+            }
+        }
+        // Validate the whole network before cancelling any request. Empty queues include
+        // waiting funding confirmations and accepted peers, so these are unaccepted proposals.
+        for (UVNode node : uvnodes.values()) {
+            if (!node.areQueuesEmpty()) {
+                throw new IllegalStateException("Unsettled queues after capture barrier: " + node.getPubKey());
+            }
+        }
+        Map<String, Map<String, Integer>> cancelled = new TreeMap<>();
+        for (UVNode node : uvnodes.values()) {
+            var reservations = node.cancelUnacceptedOpeningsForJournal();
+            if (!reservations.isEmpty()) cancelled.put(node.getPubKey(), reservations);
+        }
+        journalOpeningCleanup = Collections.unmodifiableMap(cancelled);
+        journalCaptureStopped = true;
+    }
+
+    public Map<String, Map<String, Integer>> getJournalOpeningCleanup() {
+        if (!isStoppedForJournalCapture()) throw new IllegalStateException("Capture barrier not established");
+        return journalOpeningCleanup;
+    }
+
+    public boolean isStoppedForJournalCapture() {
+        return journalCaptureStopped && bootstrapWorkersTerminated
+                && !uvTimechain.getStatus() && !uvTimechain.isThreadAlive()
+                && (p2pExecutor == null || p2pExecutor.isTerminated());
+    }
+
+    /** Single-owner journal lifecycle, entered only from the validated fresh opening barrier. */
+    public void beginJournalTraffic() {
+        if (journalTrafficEnabled || !isStoppedForJournalCapture() || journalErrors.get() != 0) {
+            throw new IllegalStateException("Journal traffic requires a clean stopped opening");
+        }
+        if (!journalUnsettledState().isEmpty()) throw new IllegalStateException("Unsettled opening");
+        journalTrafficEnabled = true;
+        journalTrafficPaused = true;
+    }
+
+    public boolean isJournalTrafficRunning() {
+        return journalTrafficEnabled && !journalTrafficPaused && !journalTrafficFailed
+                && uvTimechain.getStatus() && p2pExecutor != null && !p2pExecutor.isShutdown();
+    }
+
+    public boolean isPausedForJournalTraffic() {
+        return journalTrafficEnabled && journalTrafficPaused && !journalTrafficFailed
+                && !journalBatchActive.get() && !uvTimechain.getStatus() && !uvTimechain.isThreadAlive()
+                && p2pExecutor != null && p2pExecutor.isTerminated() && journalErrors.get() == 0;
+    }
+
+    public Map<String, Map<String, Integer>> journalUnsettledState() {
+        Map<String, Map<String, Integer>> state = new TreeMap<>();
+        for (UVNode node : uvnodes.values()) {
+            var pending = node.journalUnsettledState();
+            if (!pending.isEmpty()) state.put(node.getPubKey(), pending);
+        }
+        return state;
+    }
+
+    public void resumeJournalTraffic() {
+        if (!isPausedForJournalTraffic() || !journalUnsettledState().isEmpty()) {
+            throw new IllegalStateException("Resume requires a settled journal pause");
+        }
+        // Old scheduled tasks have terminated; only now may a new executor be created.
+        p2pExecutor = null;
+        journalCaptureStopped = false;
+        journalTrafficPaused = false;
+        uvTimechain.setStatus(true);
+        startP2PNetwork();
+    }
+
+    private static long remainingMillis(long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) throw new IllegalStateException("Journal drain deadline exceeded");
+        return Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining));
+    }
+
+    /** Drain with services live, then join and recheck to catch dequeued/in-flight handlers.
+     * No payment state is cancelled or repaired to make a checkpoint pass.
+     */
+    public void pauseForJournalTraffic(long timeoutMillis) throws InterruptedException {
+        if (timeoutMillis <= 0 || !isJournalTrafficRunning() || journalBatchActive.get()) {
+            throw new IllegalStateException("Pause requires running journal with no active invoice batch");
+        }
+        long started = System.nanoTime();
+        long deadline = started + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        try {
+            while (true) {
+                if (journalErrors.get() != 0) throw new IllegalStateException("Journal protocol service exception");
+                if (!journalUnsettledState().isEmpty()) {
+                    Thread.sleep(Math.min(10, remainingMillis(deadline)));
+                    continue;
+                }
+                uvTimechain.stopAndAwait(remainingMillis(deadline));
+                stopP2PNetwork();
+                p2pExecutor.shutdown();
+                if (!p2pExecutor.awaitTermination(remainingMillis(deadline), TimeUnit.MILLISECONDS)) {
+                    throw new IllegalStateException("Journal P2P join deadline exceeded");
+                }
+                if (journalErrors.get() != 0) throw new IllegalStateException("Journal protocol service exception");
+                if (journalUnsettledState().isEmpty()) {
+                    journalTrafficPaused = true;
+                    if (lastJournalBatch != null) lastJournalBatch.markSettled(
+                            uvTimechain.getCurrentBlockHeight(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                    return;
+                }
+                // A handler was active while its queue appeared empty. Continue ordinary processing.
+                remainingMillis(deadline);
+                p2pExecutor = null;
+                uvTimechain.setStatus(true);
+                startP2PNetwork();
+            }
+        } catch (Exception error) {
+            journalTrafficFailed = true;
+            throw error;
+        }
+    }
+
+    /** Native sender timeout can leave a forwarded contract alive. Never export such a trajectory. */
+    public void noteJournalPaymentTimeout() {
+        if (journalTrafficEnabled) journalTrafficFailed = true;
+    }
+
+    public JournalInvoiceBatch getLastJournalBatch() { return lastJournalBatch; }
+
+    private void waitJournalBlock(long timeoutMillis) throws InterruptedException {
+        if (!uvTimechain.getWaitBlocksLatch(1).await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            throw new IllegalStateException("Journal timechain progress deadline exceeded");
+        }
+    }
+
+    /** Native uniform sender/recipient/amount law and rate rounding, with explicit lifecycle/accounting.
+     * The caller owns this trajectory; legacy UI/DSE mutation APIs must not run concurrently.
+     */
+    public JournalInvoiceBatch generateJournalInvoiceBatch(String batchId, double rate, int blocks,
+            int minAmount, int maxAmount, int maxFees, long drainMillis) throws InterruptedException {
+        if (!isJournalTrafficRunning() || uvnodes.size() < 2 || !Double.isFinite(rate) || rate <= 0
+                || rate * uvnodes.size() > 100000 || blocks <= 0 || minAmount <= 0 || minAmount >= maxAmount
+                || maxAmount == Integer.MAX_VALUE || maxFees < 0 || drainMillis <= 0
+                || batchId == null || !batchId.matches("[a-z0-9][a-z0-9-]{0,79}")
+                || journalBatchIds.contains(batchId) || !journalBatchActive.compareAndSet(false, true)) {
+            throw new IllegalArgumentException("Invalid journal batch/state or duplicate batch ID");
+        }
+        journalBatchIds.add(batchId);
+        var batch = new JournalInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees,
+                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight());
+        lastJournalBatch = batch;
+        var executor = Executors.newFixedThreadPool(invoice_thread_pool_size);
+        try {
+            waitJournalBlock(drainMillis);
+            double events = pubkeys_list.size() * rate;
+            for (int block = 0; block < blocks; block++) {
+                int height = uvTimechain.getCurrentBlockHeight();
+                int count = events < 1.0 ? (random.nextDouble(1) <= events ? 1 : 0)
+                        : (int) events + (random.nextDouble(1) <= events - (int) events ? 1 : 0);
+                for (int event = 0; event < count; event++) {
+                    UVNode sender = getRandomNode(), destination;
+                    do { destination = getRandomNode(); } while (destination.equals(sender));
+                    int amount = random.nextInt(maxAmount + 1 - minAmount) + minAmount;
+                    long identity = Math.incrementExact(journalInvoiceIdentity);
+                    journalInvoiceIdentity = identity;
+                    var invoice = destination.generateJournalInvoice(amount, amount + " " + sender.getPubKey()
+                            + " to " + destination.getPubKey(), identity);
+                    batch.request(identity, sender.getPubKey(), invoice, uvTimechain.getCurrentBlockHeight());
+                    executor.submit(() -> {
+                        try {
+                            var report = sender.processInvoiceForJournal(invoice, maxFees);
+                            batch.complete(identity, report, uvTimechain.getCurrentBlockHeight());
+                        } catch (Throwable error) {
+                            batch.exception(identity, error, uvTimechain.getCurrentBlockHeight());
+                        }
+                    });
+                }
+                if (uvTimechain.getCurrentBlockHeight() == height) waitJournalBlock(drainMillis);
+            }
+            batch.injectionStopped(uvTimechain.getCurrentBlockHeight());
+            executor.shutdown();
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
+            if (!executor.awaitTermination(remainingMillis(deadline), TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException("Journal invoice completion deadline exceeded");
+            }
+            batch.requireCompleted();
+            journalBatchActive.set(false);
+            pauseForJournalTraffic(remainingMillis(deadline));
+            return batch;
+        } catch (Exception error) {
+            journalTrafficFailed = true;
+            batch.fail(error);
+            throw error;
+        } finally {
+            executor.shutdownNow();
+            journalBatchActive.set(false);
+        }
+    }
+
     public void stopP2PNetwork() {
         print_log("Stopping p2p nodes services...");
 
@@ -841,6 +1064,7 @@ public class UVNetwork implements LNetwork {
         if (t == null) {
             return;
         }
+        journalErrors.incrementAndGet();
         String prefix = context == null || context.isBlank() ? "ERROR" : "ERROR: " + context;
         log(prefix + " -> " + t);
         StringWriter sw = new StringWriter();

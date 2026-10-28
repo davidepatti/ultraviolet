@@ -139,6 +139,24 @@ public class UVConfig implements Serializable {
         return master_seed;
     }
 
+    /** All resolved properties plus typed public defaults used by the running simulator. */
+    public Map<String, Object> getEffectiveSettings() {
+        Map<String, Object> settings = new TreeMap<>();
+        for (String key : properties.stringPropertyNames()) {
+            settings.put(key, properties.getProperty(key).trim());
+        }
+        for (var field : UVConfig.class.getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+            try {
+                settings.put(field.getName(), field.get(this));
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        settings.put("seed", master_seed);
+        return Collections.unmodifiableMap(settings);
+    }
+
     public String getSourcePath() {
         return sourcePath;
     }

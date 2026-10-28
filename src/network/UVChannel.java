@@ -163,6 +163,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
         return this.commitNumber;
     }
 
+    public synchronized int getPending(String pubkey) {
+        return resolveNode(pubkey).pending;
+    }
+
     public synchronized int getReserve() {
         return reserve;
     }

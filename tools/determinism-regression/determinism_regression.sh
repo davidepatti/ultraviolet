@@ -9,7 +9,8 @@ UltraViolet deterministic regression suite
 ==========================================
 
 This runner compiles the simulator and standalone regression harness into a
-temporary build directory, then executes tests that avoid threaded live replay.
+temporary build directory. Static tests avoid threaded replay; journal O/T tests
+use small handcrafted live fixtures and assert invariants, not scheduling order.
 
 What is tested:
 - config include/override parsing and seeded profile selection;
@@ -17,12 +18,13 @@ What is tested:
 - canonical snapshots of a fixed imported topology;
 - pathfinding on a fixed graph for BFS, SHORTEST_HOP, MINI_DIJKSTRA, and LND;
 - save/load structural round trips from a frozen imported topology;
-- network report generation from frozen imported topology state.
+- network report generation from frozen imported topology state;
+- journal O/T pause/resume, native sampling/accounting, retry/expiry and timeout rejection.
 
 What is intentionally not tested here:
 - byte-for-byte bootstrap logs;
 - threaded P2P/gossip scheduling order;
-- parallel invoice-routing outcomes.
+- byte-identical parallel invoice-routing outcomes.
 
 EOF
 
