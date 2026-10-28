@@ -57,13 +57,13 @@ public final class JournalCaptureRunner {
             UVNetwork.Log = ignored -> { };
             network = new UVNetwork(config);
             network.bootstrapNetwork();
-            network.stopForJournalCapture(30_000);
+            network.pauseAndDrain(30_000);
             byte[] cleanup = bytes(JournalCaptureExporter.object("schema", "journal-a2-opening-cleanup-v1",
-                    "topology_id", args[0], "cancelled_unaccepted_requests", network.getJournalOpeningCleanup(),
+                    "topology_id", args[0], "cancelled_unaccepted_requests", java.util.Map.of(),
                     "funded_channels_changed", false, "onchain_balances_changed", false));
             create(output.resolve("opening-cleanup.json"), cleanup);
             JsonArray warnings = new JsonArray();
-            if (!network.getJournalOpeningCleanup().isEmpty()) warnings.add("Unaccepted opening reservations cancelled at the terminal boundary; see opening-cleanup.json");
+            if (!java.util.Map.of().isEmpty()) warnings.add("Unaccepted opening reservations cancelled at the terminal boundary; see opening-cleanup.json");
             warnings.add("Synthetic opening state; CLTV and other routing constraints are outside static A2 labels");
             JsonObject provenance = JournalCaptureExporter.object(
                     "capture_id", UUID.randomUUID().toString(), "bootstrap_seed", config.getMasterSeed(),

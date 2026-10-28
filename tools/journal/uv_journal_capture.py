@@ -84,7 +84,7 @@ def validate_request(request, a2=A2):
 
 
 def source_snapshot(repo=REPO):
-    paths = sorted(set(repo.glob("src/**/*.java")) | {repo / "src/aliases.txt", repo / "uv_configs/template.properties"}
+    paths = sorted((set(repo.glob("src/**/*.java")) | set(repo.glob("tools/journal/java/**/*.java"))) | {repo / "src/aliases.txt", repo / "uv_configs/template.properties"}
                    | set(repo.glob("tools/journal/*.py")))
     require(all(p.is_file() and not p.is_symlink() for p in paths), "Source symlinks/missing files are unsupported")
     sources = {p.relative_to(repo).as_posix(): p.read_bytes() for p in paths}

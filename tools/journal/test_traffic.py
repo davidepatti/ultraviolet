@@ -46,6 +46,22 @@ class TrafficRequestTests(unittest.TestCase):
         self.request['purpose']='pilot'; self.request['topology_id']='journal-ot-pilot-000'
         with self.assertRaisesRegex(ValueError,'roster'): ot.validate_request(self.request, self.b)
 
+    def test_pilot_roster_pins_worker_limit(self):
+        request = copy.deepcopy(self.request)
+        request.update(purpose='pilot', topology_id='journal-ot-pilot-000')
+        request['overrides'] = {'bootstrap_nodes':500,'bootstrap_blocks':100,'seed':727,'max_threads':128}
+        request['traffic'] = {'node_events_per_block':0.02,'min_amount_sat':1000,'max_amount_sat':100000,
+            'max_fees_sat':1000,'pathfinder':'lnd','drain_timeout_ms':120000,
+            'batches':[{'id':'t500','blocks':50,'requested':500},{'id':'t2500','blocks':200,'requested':2000},
+                       {'id':'t10000','blocks':750,'requested':7500}]}
+        (self.b/'configs').mkdir()
+        roster = self.b/'configs/ot-pilot-plan.json'
+        roster.write_text(json.dumps({'requests':[request]}))
+        ot.validate_request(request,self.b)
+        request['overrides']['max_threads'] = 4000
+        roster.write_text(json.dumps({'requests':[request]}))
+        with self.assertRaisesRegex(ValueError,'worker'):ot.validate_request(request,self.b)
+
     def test_reject_invalid_request_and_exposure(self):
         for edit in (lambda r:r['traffic'].update(node_events_per_block=float('nan')),
                      lambda r:r['traffic'].update(min_amount_sat=100000),

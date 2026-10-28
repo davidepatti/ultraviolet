@@ -16,6 +16,8 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     private final String channel_id;
 
     public static class NodeData implements Serializable{
+        @Serial
+        private static final long serialVersionUID = -2966204623782850872L;
         final private String pubkey;
         private Policy policy;
         private int balance;
@@ -28,7 +30,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             this.pending = pending;
         }
 
-        public void setPolicy(Policy policy) {
+        public synchronized void setPolicy(Policy policy) {
             this.policy = policy;
         }
 
@@ -42,6 +44,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
     private final NodeData node1,node2;
+    private int capacity;
 
     public UVChannel(String channel_id, String pub1, String pub2, int fundingSatoshis, int channelReserveSatoshis, int pushMsat, boolean init_direction) {
 
@@ -51,6 +54,10 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
             System.exit(-1);
         }
 
+        if (fundingSatoshis <= 0 || channelReserveSatoshis < 0 || pushMsat < 0 || pushMsat > fundingSatoshis) {
+            throw new IllegalArgumentException("Invalid channel funding/reserve");
+        }
+        this.capacity = fundingSatoshis;
         this.channel_id = channel_id;
         this.init_direction = init_direction;
         this.reserve = channelReserveSatoshis;
@@ -98,6 +105,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public synchronized boolean reservePending(String pubkey, int amt) {
         var node = resolveNode(pubkey);
+        if (amt < 0) throw new IllegalArgumentException("Negative reservation");
         if (amt>getLiquidity(pubkey)) return false;
         node.pending+=amt;
         return true;
@@ -105,10 +113,11 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
     public synchronized void removePending(String pubkey, int amt) {
         var node = resolveNode(pubkey);
+        if (amt < 0 || amt > node.pending) throw new IllegalStateException("Invalid reservation release");
         node.pending -=amt;
     }
 
-    public void setPolicy(String pubkey, Policy policy) {
+    public synchronized void setPolicy(String pubkey, Policy policy) {
         var node = resolveNode(pubkey);
         node.setPolicy(policy);
     }
@@ -136,7 +145,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
 
 
     public synchronized int getCapacity() {
-        return node1.balance + node2.balance;
+        return capacity;
     }
 
     public synchronized int getBalance(String node_id) {
@@ -153,7 +162,7 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     }
 
 
-    public Policy getPolicy(String pubkey) {
+    public synchronized Policy getPolicy(String pubkey) {
         var node = resolveNode(pubkey);
         //Objects.requireNonNull(node.policy);
         return node.policy;
@@ -179,13 +188,24 @@ public class UVChannel implements LNChannel, Serializable, Comparable<LNChannel>
     // TODO: check when used, must account for reserved/pending liquidity ?
     public synchronized void newCommitment(int node1Balance, int node2Balance) {
 
-        if (node1Balance+node2Balance != this.getCapacity()) {
+        if (node1Balance < 0 || node2Balance < 0 || (long) node1Balance + node2Balance != this.getCapacity()) {
             throw new IllegalArgumentException("Channel "+this.getChannelId()+": Wrong balances in commitment:"+node1Balance+"+"+node2Balance+"!= "+getCapacity());
         }
         node1.balance = node1Balance;
         node2.balance = node2Balance;
         this.commitNumber = getLastCommitNumber()+1;
     }
+    @java.io.Serial
+    private void readObject(java.io.ObjectInputStream input) throws java.io.IOException, ClassNotFoundException {
+        input.defaultReadObject();
+        // Pre-consistency snapshots stored capacity only as the sum of endpoint balances.
+        long sum = (long) node1.balance + node2.balance;
+        if (capacity == 0 && sum > 0 && sum <= Integer.MAX_VALUE) capacity = (int) sum;
+        if (capacity <= 0 || node1.balance < 0 || node2.balance < 0 || sum != capacity) {
+            throw new java.io.InvalidObjectException("Invalid saved channel capacity");
+        }
+    }
+
     public static String generateLabels() {
         final String labelFormat = "%-15s %-6s %-6s %-20s %-12s %-12s";
 

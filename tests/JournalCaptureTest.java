@@ -28,41 +28,37 @@ public final class JournalCaptureTest {
         throw new AssertionError("Expected rejection: " + message);
     }
 
-    public static void assertTerminalUnacceptedOpeningCleanup(Path temporary) throws Exception {
-        Path configPath = temporary.resolve("journal-cleanup.properties");
+    public static void assertOpeningRejections(Path temporary) throws Exception {
+        Path configPath = temporary.resolve("opening-rejection.properties");
         Files.writeString(configPath, "@include=" + Path.of("uv_configs/template.properties").toAbsolutePath()
-                + "\nlogfile=" + temporary.resolve("journal-cleanup.log") + "\n");
+                + "\nlogfile=" + temporary.resolve("opening-rejection.log") + "\n");
         UVConfig config = new UVConfig(configPath.toString());
         UVNetwork network = new UVNetwork(config);
         try {
             UVNode left = new UVNode(network, "left", "left", 100_000, config.getNodeProfile("default"));
             UVNode right = new UVNode(network, "right", "right", 100_000, config.getNodeProfile("default"));
-            network.getUVNodeList().put("left", left);
-            network.getUVNodeList().put("right", right);
+            network.registerNode(left); network.registerNode(right);
             check(left.openChannel("right", 10_000) && right.openChannel("left", 20_000), "Mutual opening fixture");
-            rejected(left::cancelUnacceptedOpeningsForJournal, "empty queues");
-            // Deterministically process both conflicting requests; no background workers or blocks.
+            String oldProposal = left.getSentChannelOpenings().get("right").getTemporary_channel_id();
+            var accept = UVNode.class.getDeclaredMethod("acceptChannel", message.MsgOpenChannel.class); accept.setAccessible(true);
+            accept.invoke(left, left.getChannelsToAcceptQueue().poll());
+            accept.invoke(right, right.getChannelsToAcceptQueue().poll());
             for (UVNode node : List.of(left, right)) {
-                node.setP2PServices(true);
-                node.runServices();
-                node.setP2PServices(false);
-                check(node.areQueuesEmpty(), "Conflict queues should have drained");
-                check(node.getChannels().isEmpty(), "A rejected opening must not create a channel");
+                node.setP2PServices(true); node.runServices(); node.setP2PServices(false);
+                check(node.areQueuesEmpty() && node.getOnchainPending() == 0, "Rejected reservation was not released");
+                check(node.getOnChainBalance() == 100_000 && node.getChannels().isEmpty(), "Rejection changed funded state");
             }
-            check(left.getOnchainPending() == 10_000 && right.getOnchainPending() == 20_000, "Reproduce stranded reservations");
-            check(left.cancelUnacceptedOpeningsForJournal().equals(java.util.Map.of("right", 10_000)), "Exact left cancellation");
-            check(right.cancelUnacceptedOpeningsForJournal().equals(java.util.Map.of("left", 20_000)), "Exact right cancellation");
-            check(left.getOnchainPending() == 0 && right.getOnchainPending() == 0, "Reservation not released");
-            check(left.getOnChainBalance() == 100_000 && right.getOnChainBalance() == 100_000, "Cleanup altered on-chain balances");
-            check(left.getChannels().isEmpty() && right.getChannels().isEmpty(), "Cleanup altered topology");
-            check(left.cancelUnacceptedOpeningsForJournal().isEmpty(), "Cleanup must be idempotent");
             left.openChannel("right", 1000);
-            right.getChannelsToAcceptQueue().clear();
-            left.getSentChannelOpenings().clear();
-            rejected(left::cancelUnacceptedOpeningsForJournal, "do not reconcile");
-        } finally {
-            network.shutdown();
-        }
+            var stale = new message.MsgRejectChannel(oldProposal, "right");
+            network.deliverMessage(left, stale); network.deliverMessage(left, stale);
+            left.setP2PServices(true); left.runServices(); left.setP2PServices(false);
+            check(left.getOnchainPending() == 1000, "Stale rejection cancelled a newer proposal");
+            String current = left.getSentChannelOpenings().get("right").getTemporary_channel_id();
+            network.deliverMessage(left, new message.MsgRejectChannel(current, "right"));
+            network.deliverMessage(left, new message.MsgRejectChannel(current, "right"));
+            left.setP2PServices(true); left.runServices(); left.setP2PServices(false);
+            check(left.getOnchainPending() == 0, "Duplicate rejection double-released reservation");
+        } finally { network.shutdown(); }
     }
 
     public static void run(Path temporary) throws Exception {
@@ -99,7 +95,7 @@ public final class JournalCaptureTest {
             check(!records.channels().toJsonString().contains("funder"), "Public ID exposes funder naming");
             check(!records.channels().toJsonString().contains("balance"), "Public/oracle separation");
             check(channel.reservePending("a", 1), "Fixture pending reserve");
-            rejected(() -> JournalCaptureExporter.validateRecords(List.of(a, b)), "Pending channel");
+            rejected(() -> JournalCaptureExporter.validateRecords(List.of(a, b)), "Unsettled node");
             channel.removePending("a", 1);
             channel.setPolicy("b", null);
             rejected(() -> JournalCaptureExporter.validateRecords(List.of(a, b)), "Missing directional policy");

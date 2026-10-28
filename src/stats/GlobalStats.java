@@ -198,17 +198,17 @@ public class GlobalStats {
         private int expiry_too_soon = 0;
         private int temporary_channel_failure = 0;
 
-        public int getInvoiceProcessingSuccesses() { return invoice_processing_success; }
-        public int getInvoiceProcessingFailures() { return invoice_processing_failures; }
-        public int getForwarding_failures() { return forwarding_failures; }
-        public int getForwarding_successes() { return forwarding_successes; }
-        public int getForwarded_volume() { return forwarded_volume; }
-        public int getExpiryTooSoon() { return expiry_too_soon; }
-        public int getTemporaryChannelFailures() { return temporary_channel_failure; }
-        public ArrayList<InvoiceReport> getInvoiceReports() { return invoiceReports; }
-        public void incrementInvoiceProcessingSuccessses() { this.invoice_processing_success++; }
-        public int getInvoiceProcessingVolume() { return invoice_processing_volume; }
-        public void incrementInvoiceProcessingFailures(String reason) { this.invoice_processing_failures++; }
+        public int getInvoiceProcessingSuccesses() { synchronized (this) { return invoice_processing_success; } }
+        public int getInvoiceProcessingFailures() { synchronized (this) { return invoice_processing_failures; } }
+        public int getForwarding_failures() { synchronized (this) { return forwarding_failures; } }
+        public int getForwarding_successes() { synchronized (this) { return forwarding_successes; } }
+        public int getForwarded_volume() { synchronized (this) { return forwarded_volume; } }
+        public int getExpiryTooSoon() { synchronized (this) { return expiry_too_soon; } }
+        public int getTemporaryChannelFailures() { synchronized (this) { return temporary_channel_failure; } }
+        public ArrayList<InvoiceReport> getInvoiceReports() { synchronized (invoiceReports) { return new ArrayList<>(invoiceReports); } }
+        public void incrementInvoiceProcessingSuccessses() { synchronized (this) { this.invoice_processing_success++; } }
+        public int getInvoiceProcessingVolume() { synchronized (this) { return invoice_processing_volume; } }
+        public void incrementInvoiceProcessingFailures(String reason) { synchronized (this) { this.invoice_processing_failures++; } }
 
         public void incrementForwardingFailures(String reason) {
             switch (reason) {
@@ -223,9 +223,9 @@ public class GlobalStats {
             }
             this.forwarding_failures++;
         }
-        public void incrementForwardingSuccesses() { this.forwarding_successes++; }
-        public void incrementForwardeVolume(int amt) { this.forwarded_volume+=amt; }
-        public void incrementInvoiceProcessingVolume(int amt) { this.invoice_processing_volume+=amt; }
+        public void incrementForwardingSuccesses() { synchronized (this) { this.forwarding_successes++; } }
+        public void incrementForwardeVolume(int amt) { synchronized (this) { this.forwarded_volume+=amt; } }
+        public void incrementInvoiceProcessingVolume(int amt) { synchronized (this) { this.invoice_processing_volume+=amt; } }
 
         public String generateHTLCStatsCSV() {
             return invoice_processing_success + "," + invoice_processing_failures + "," + invoice_processing_volume + "," + forwarding_failures + "," + forwarding_successes + "," + forwarded_volume + "," + expiry_too_soon + "," + temporary_channel_failure;

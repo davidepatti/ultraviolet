@@ -79,6 +79,10 @@ public final class GraphJsonExporter {
     }
 
     public static JsonObject buildNodeGraph(UVNetwork network, UVNode observer) {
+        return network.withSettledState(() -> buildNodeGraphSnapshot(network, observer));
+    }
+
+    private static JsonObject buildNodeGraphSnapshot(UVNetwork network, UVNode observer) {
         ChannelGraph graph = observer.getChannelGraph();
         List<ChannelGraph.Edge> edges = sortedEdges(graph);
         Map<String, UVChannel> channelsById = indexChannels(network);
@@ -134,6 +138,10 @@ public final class GraphJsonExporter {
     }
 
     public static JsonObject buildOmniscientGraph(UVNetwork network) {
+        return network.withSettledState(() -> buildOmniscientGraphSnapshot(network));
+    }
+
+    private static JsonObject buildOmniscientGraphSnapshot(UVNetwork network) {
         List<ChannelRecord> channels = buildOmniscientChannels(network);
         List<String> pubKeys = sortedNetworkPubKeys(network, channels);
         Map<String, Integer> nodeIds = assignNodeIds(pubKeys);

@@ -44,6 +44,11 @@ public final class JournalTrafficRunner {
         Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE);
     }
 
+    private static JsonObject legacyBatch(JsonObject batch) {
+        batch.put("schema", "journal-ot-invoices-v1");
+        return batch;
+    }
+
     private static int integer(JsonObject object, String key) { return ((Number) object.get(key)).intValue(); }
 
     private static JsonObject checkpoint(UVNetwork network, Path output, String topology, String name,
@@ -61,8 +66,8 @@ public final class JournalTrafficRunner {
         JsonObject hashes = object("public.json", create(directory.resolve("public.json"), first.publicGraph()),
                 "truth.json", create(directory.resolve("truth.json"), first.truth()),
                 "private.json", create(directory.resolve("private.json"), first.privateState()));
-        if (network.getLastJournalBatch() != null) {
-            hashes.put("invoices.json", create(directory.resolve("invoices.json"), network.getLastJournalBatch().snapshot()));
+        if (network.getLastInvoiceBatch() != null) {
+            hashes.put("invoices.json", create(directory.resolve("invoices.json"), legacyBatch(network.getLastInvoiceBatch().snapshot())));
         }
         JsonObject receipt = object("schema", "journal-ot-checkpoint-v1", "topology_id", topology,
                 "checkpoint", name, "cumulative_requests", cumulative, "files_sha256", hashes,
@@ -102,15 +107,15 @@ public final class JournalTrafficRunner {
             UVNetwork.Log = ignored -> { };
             network = new UVNetwork(config);
             network.bootstrapNetwork();
-            network.stopForJournalCapture(drainMillis);
+            network.pauseAndDrain(drainMillis);
             JournalCaptureExporter.validateRecords(new ArrayList<>(network.getUVNodeList().values()));
             String cleanupHash = create(output.resolve("opening-cleanup.json"), object("schema", "journal-ot-opening-cleanup-v1",
-                    "cancelled_unaccepted_requests", network.getJournalOpeningCleanup(),
+                    "cancelled_unaccepted_requests", java.util.Map.of(),
                     "funded_channels_changed", false, "onchain_balances_changed", false));
             for (var node : network.getUVNodeList().values()) {
                 node.setPathFinder(PathFinderFactory.of(PathFinderFactory.Strategy.LND, config));
             }
-            network.beginJournalTraffic();
+
             Files.createDirectory(output.resolve("checkpoints"));
             JsonObject provenance = object("capture_id", UUID.randomUUID().toString(), "bootstrap_seed", config.getMasterSeed(),
                     "uv_commit", source.get("base_commit"), "source_tree_sha256", source.get("source_tree_sha256"),
@@ -127,8 +132,8 @@ public final class JournalTrafficRunner {
             for (Object entry : batches) {
                 JsonObject batch = (JsonObject) entry;
                 String name = (String) batch.get("id");
-                network.resumeJournalTraffic();
-                var result = network.generateJournalInvoiceBatch(name, ((Number) traffic.get("node_events_per_block")).doubleValue(),
+                network.resume();
+                var result = network.generateInvoiceBatch(name, ((Number) traffic.get("node_events_per_block")).doubleValue(),
                         integer(batch, "blocks"), integer(traffic, "min_amount_sat"), integer(traffic, "max_amount_sat"),
                         integer(traffic, "max_fees_sat"), drainMillis);
                 JsonObject summary = (JsonObject) result.snapshot().get("summary");
@@ -147,8 +152,8 @@ public final class JournalTrafficRunner {
             if (output != null && Files.isRegularFile(output.resolve("request.json"))) {
                 try {
                     create(output.resolve("failure.json"), object("schema", "journal-ot-failure-v1", "error", error.toString(),
-                            "unsettled_state", network == null ? null : network.journalUnsettledState(),
-                            "last_batch", network == null || network.getLastJournalBatch() == null ? null : network.getLastJournalBatch().snapshot()));
+                            "unsettled_state", network == null ? null : network.unsettledState(),
+                            "last_batch", network == null || network.getLastInvoiceBatch() == null ? null : legacyBatch(network.getLastInvoiceBatch().snapshot())));
                 } catch (Exception recordingError) { recordingError.printStackTrace(System.err); }
             }
         } finally {

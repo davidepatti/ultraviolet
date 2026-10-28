@@ -31,11 +31,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private long last_gossip_flush = 0;
     private long last_mempool_check = 0;
     private int channel_openings = 0;
+    private long openingSequence;
     private Random local_rnd_generator;
 
     transient private UVNetwork uvNetwork;
     transient private ChannelGraph channelGraph;
     transient private PathFinder pathFinder;
+    private PathFinderFactory.Strategy savedPathFinderStrategy = PathFinderFactory.Strategy.BFS;
     transient private ConcurrentHashMap<String, UVChannel> channels = new ConcurrentHashMap<>();
     transient private ConcurrentHashMap<String, UVNode> peers = new ConcurrentHashMap<>();
     transient private boolean p2pIsRunning = false;
@@ -46,6 +48,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<MsgRejectChannel> channelsRejectedQueue = new ConcurrentLinkedQueue<>();
+    transient private Queue<UVChannel> fundingLockedQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateAddHTLC> updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
@@ -81,6 +85,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
     public void setPathFinder(PathFinder pathFinder) {
         this.pathFinder = pathFinder;
+        this.savedPathFinderStrategy = PathFinderFactory.strategyOf(pathFinder);
     }
 
     public PathFinder.SearchResult findPaths(String start, String end, int topk) {
@@ -141,8 +146,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public ConcurrentHashMap<String, LNInvoice> getPendingInvoices() {
         return pendingInvoices;
     }
-    public HashMap<String, LNInvoice> getPayedInvoices() {
-        return payedInvoices;
+    public synchronized HashMap<String, LNInvoice> getPayedInvoices() {
+        return new HashMap<>(payedInvoices);
     }
     public ConcurrentHashMap<String, MsgUpdateAddHTLC> getPendingHTLC() {
         return pendingHTLC;
@@ -173,7 +178,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return pubkey;
     }
     public ArrayList<GlobalStats.NodeStats.InvoiceReport> getInvoiceReports() {
-        return nodeStats.invoiceReports;
+        synchronized (nodeStats.invoiceReports) { return new ArrayList<>(nodeStats.invoiceReports); }
     }
     @Override
     public String getAlias() {
@@ -209,35 +214,6 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     private synchronized void updateOnchainPending(int pending) {
         this.onchainPending = pending;
     }
-    /** Terminal journal cleanup only: all service queues and workers must already be stopped.
-     * Rejected simultaneous opening requests have no cancellation message in legacy UV.
-     * Release only their exact, still-unfunded reservations; never alter a funded channel.
-     */
-    public synchronized Map<String, Integer> cancelUnacceptedOpeningsForJournal() {
-        if (uvNetwork.getTimechain().getStatus() || uvNetwork.getTimechain().isThreadAlive()
-                || (p2pHandler != null && !p2pHandler.isDone()) || !areQueuesEmpty()) {
-            throw new IllegalStateException("Opening cleanup requires stopped services and empty queues");
-        }
-        Map<String, Integer> cancelled = new TreeMap<>();
-        long reserved = 0;
-        for (var entry : sentChannelOpenings.entrySet()) {
-            String peer = entry.getKey();
-            int funding = entry.getValue().getFunding();
-            if (funding <= 0 || hasChannelWith(peer) || hasPendingAcceptedChannelWith(peer)) {
-                throw new IllegalStateException("Cannot discard an accepted/funded or malformed opening: " + peer);
-            }
-            reserved += funding;
-            cancelled.put(peer, funding);
-        }
-        if (reserved != onchainPending) {
-            throw new IllegalStateException("Unaccepted opening reservations do not reconcile: " + reserved + " != " + onchainPending);
-        }
-        sentChannelOpenings.clear();
-        onchainPending = 0;
-        if (!cancelled.isEmpty()) log("Journal terminal cleanup of unaccepted opening reservations: " + cancelled);
-        return Collections.unmodifiableMap(cancelled);
-    }
-
     public synchronized int getOnchainLiquidity() {
         return getOnChainBalance() - getOnchainPending();
     }
@@ -283,49 +259,39 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     public void setUVM(UVNetwork uvm) {
         this.uvNetwork = uvm;
         if (pathFinder == null) {
-            pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS, uvm.getConfig());
+            pathFinder = PathFinderFactory.of(savedPathFinderStrategy == null ? PathFinderFactory.Strategy.BFS : savedPathFinderStrategy, uvm.getConfig());
         }
     }
 
+    /** The compatibility flag no longer derives identity from a message hash. Issuance order
+     * provides reproducible unique preimages without consuming the workload RNG. */
     @Override
-    public LNInvoice generateInvoice(int amount, String msg, boolean determininistic ) {
-        // determining secret based on message, useful for testing
-        // Must use properly generated msg, since same strings would lead to same invoice hash
-        byte[] R;
-        long secret;
-        if (determininistic) {
-            secret = msg.hashCode();
-        }
-        else {
-            secret = local_rnd_generator.nextInt();
-        }
-        R = BigInteger.valueOf(secret).toByteArray();
-        var H = CryptoKit.bytesToHexString(CryptoKit.sha256(R));
-        var invoice = new LNInvoice(H, amount, this.getPubKey(), msg);
-        if (generatedInvoices == null) generatedInvoices = new ConcurrentHashMap<>();
-        generatedInvoices.put(secret, invoice);
-        return invoice;
+    public LNInvoice generateInvoice(int amount, String message, boolean deterministic) {
+        return generateInvoice(amount, message);
     }
 
-    /** Journal identity is a trajectory-wide monotonic preimage, independent of the traffic RNG.
-     * Native generateInvoice hashes a 32-bit message hash, which aliases repeated requests.
-     */
-    public LNInvoice generateJournalInvoice(int amount, String message, long identity) {
-        if (!uvNetwork.isJournalTrafficRunning() || amount <= 0 || identity <= 0) {
-            throw new IllegalStateException("Invalid journal invoice identity/state");
+    public LNInvoice generateInvoice(int amount, String message) {
+        try (var mutation = uvNetwork.beginMutation()) {
+            return generateInvoiceWithIdentity(amount, message, uvNetwork.nextInvoiceIdentity());
         }
-        var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(identity).toByteArray()));
-        var invoice = new LNInvoice(hash, amount, pubkey, message);
-        if (generatedInvoices.putIfAbsent(identity, invoice) != null) {
-            throw new IllegalStateException("Duplicate journal invoice identity");
+    }
+
+    /** Explicit identities support replayed request schedules and are unique network-wide. */
+    public LNInvoice generateInvoiceWithIdentity(int amount, String message, long identity) {
+        try (var mutation = uvNetwork.beginMutation()) {
+            if (amount <= 0) throw new IllegalArgumentException("Positive invoice amount required");
+            uvNetwork.reserveInvoiceIdentity(identity);
+            var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(identity).toByteArray()));
+            var invoice = new LNInvoice(hash, amount, pubkey, message);
+            if (generatedInvoices.putIfAbsent(identity, invoice) != null) throw new IllegalStateException("Duplicate invoice identity");
+            return invoice;
         }
-        return invoice;
     }
 
     /** Snapshot under the same lock as forwarding/confirmation handlers. A joined-worker
      * recheck is still mandatory: an empty queue alone does not prove no handler is active.
      */
-    public synchronized Map<String, Integer> journalUnsettledState() {
+    public synchronized Map<String, Integer> unsettledState() {
         Map<String, Integer> state = new TreeMap<>();
         state.put("invoice", pendingInvoices.size());
         state.put("outgoing_htlc", pendingHTLC.size());
@@ -335,6 +301,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         state.put("confirmations", waitingTxConf.size());
         state.put("open_queue", channelsToAcceptQueue.size());
         state.put("accept_queue", channelsAcceptedQueue.size());
+        state.put("reject_queue", channelsRejectedQueue.size());
+        state.put("funding_locked_queue", fundingLockedQueue.size());
         state.put("add_queue", updateAddHTLCQueue.size());
         state.put("fulfill_queue", updateFulFillHTLCQueue.size());
         state.put("fail_queue", updateFailHTLCQueue.size());
@@ -409,14 +377,20 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      * @param max_fees The maximum limit of fees that can be utilized for invoice processing
      * @param showui A flag determining whether the routing details should be displayed in the console or not
      */
-    public void processInvoice(LNInvoice invoice, int max_fees, boolean showui) {
-        processInvoiceReport(invoice, max_fees, showui);
+    public GlobalStats.NodeStats.InvoiceReport processInvoice(LNInvoice invoice, int maxFees, boolean showUi) {
+        uvNetwork.beginPayment(invoice.getHash());
+        try {
+            var report = processInvoiceReport(invoice, maxFees, showUi);
+            uvNetwork.requireHealthy();
+            return report;
+        } catch (RuntimeException | Error error) {
+            uvNetwork.recordFailure("Payment processing failed for " + invoice.getHash(), error);
+            throw error;
+        } finally { uvNetwork.endPayment(); }
     }
 
-    /** Same routing path; returns this invocation's report rather than reading a shared list. */
-    public GlobalStats.NodeStats.InvoiceReport processInvoiceForJournal(LNInvoice invoice, int maxFees) {
-        if (!uvNetwork.isJournalTrafficRunning()) throw new IllegalStateException("Journal traffic is not running");
-        return processInvoiceReport(invoice, maxFees, false);
+    public GlobalStats.NodeStats.InvoiceReport processInvoice(LNInvoice invoice, int maxFees) {
+        return processInvoice(invoice, maxFees, false);
     }
 
     private GlobalStats.NodeStats.InvoiceReport processInvoiceReport(LNInvoice invoice, int max_fees, boolean showui) {
@@ -428,7 +402,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     + uvNetwork.getImportedRootNodeGraph();
             log(logMessage);
             if (showui) System.out.println(logMessage);
-            return null;
+            throw new IllegalStateException(logMessage);
         }
 
         // Keep post-search filtering separate from pathfinder-internal pruning stats.
@@ -521,17 +495,13 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     }
                 }
 
-                if (pendingHTLC.containsKey(hash)) {
-                    uvNetwork.noteJournalPaymentTimeout();
-                    var timedOut = pendingHTLC.remove(hash);
-                    if (timedOut != null) {
-                        var ch = channels.get(timedOut.getChannel_id());
-                        if (ch != null) {
-                            ch.removePending(this.getPubKey(), timedOut.getAmount());
-                        }
+                synchronized (this) {
+                    if (pendingHTLC.containsKey(hash)) {
+                        // A sender-side deadline is not end-to-end cancellation. Preserve all
+                        // reservations and stop retrying; no caller may export this as settled.
+                        uvNetwork.recordFailure("Unresolved payment timeout: " + hash, null);
+                        failure_reason.put(hash, "attempt_timeout");
                     }
-                    synchronized (this) { failure_reason.put(hash, "attempt_timeout"); }
-                    log("Timed out waiting HTLC completion for invoice " + hash + " on path #" + attempted_paths);
                 }
 
                 debug(()->"Cleared pending HTLC "+hash);
@@ -570,6 +540,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                             attempt_failed_unknown++;
                             break;
                     }
+                    if (!uvNetwork.isHealthy()) break;
                     logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
                     log(logMessage);
                     if (showui) System.out.println(logMessage);
@@ -586,8 +557,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         debug(()->"Removing pending invoice for "+invoice.getHash());
 
         // the invoice, success or not, is not useful anymore
-        pendingInvoices.remove(invoice.getHash());
-        synchronized (this) { failure_reason.remove(invoice.getHash()); }
+        if (uvNetwork.isHealthy()) {
+            pendingInvoices.remove(invoice.getHash());
+            synchronized (this) { failure_reason.remove(invoice.getHash()); }
+        }
 
         // The invoice CSV is stage-oriented: search, filtering, then actual routing attempts.
         var report = new GlobalStats.NodeStats.InvoiceReport(
@@ -948,7 +921,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     private String generateTempChannelId(String peerPubKey) {
-        return "tmp_" + getPubKey() + "_" + peerPubKey;
+        openingSequence = Math.incrementExact(openingSequence);
+        return pubkey + ":" + peerPubKey + ":" + openingSequence;
     }
 
     /**
@@ -956,7 +930,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      *
      * @param peerPubKey the target node partner to open the channel
      */
-    public synchronized boolean openChannel(String peerPubKey, int channel_size) {
+    public boolean openChannel(String peerPubKey, int channel_size) {
+        try (var mutation = uvNetwork.beginMutation()) {
+            synchronized (this) { return openChannelInternal(peerPubKey, channel_size); }
+        }
+    }
+
+    private boolean openChannelInternal(String peerPubKey, int channel_size) {
+        if (channel_size <= 0 || channel_size > getOnchainLiquidity()) return false;
         if (peerPubKey.equals(this.getPubKey())) {
             log("WARNING:Cancelling openChannel, the peer selected is the node itself!");
             return false;
@@ -975,6 +956,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         var peer = uvNetwork.getUVNode(peerPubKey);
+        if (peer == null) throw new IllegalArgumentException("Unknown channel peer: " + peerPubKey);
         peers.putIfAbsent(peer.getPubKey(),peer);
         var tempChannelId = generateTempChannelId(peerPubKey);
 
@@ -1001,16 +983,19 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         if (hasOpeningRequestWith(initiator_id)) {
             log("WARNING:Cannot accept channel, already opening request with "+initiator_id);
+            rejectOpening(openRequest);
             return;
         }
 
         if (hasPendingAcceptedChannelWith(initiator_id)) {
             log("WARNING:Cannot accept channel, already pending accepted channel with "+initiator_id);
+            rejectOpening(openRequest);
             return;
         }
         if (this.hasChannelWith(initiator_id)) {
             //throw  new IllegalStateException("Node "+this.getPubKey()+ " has already a channel with "+initiator_id);
             log("Warning: Cannot accept channel, already a channel with "+initiator_id);
+            rejectOpening(openRequest);
             return;
         }
 
@@ -1035,14 +1020,35 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
 
-    private void channelAccepted(MsgAcceptChannel acceptMessage) {
+    private void rejectOpening(MsgOpenChannel request) {
+        UVNode initiator = uvNetwork.getUVNode(request.getFunding_pubkey());
+        if (initiator == null) throw new IllegalStateException("Unknown opening initiator");
+        sendToPeer(initiator, new MsgRejectChannel(request.getTemporary_channel_id(), pubkey), uvNetwork);
+    }
+
+    private synchronized void channelRejected(MsgRejectChannel rejection) {
+        var request = sentChannelOpenings.get(rejection.getPeer());
+        if (request == null || !request.getTemporary_channel_id().equals(rejection.getTemporaryChannelId())) return;
+        // A matching terminal rejection is valid only before funding was broadcast.
+        if (waitingTxConf.keySet().stream().anyMatch(tx -> tx.getNode2Pub().equals(rejection.getPeer()))) {
+            throw new IllegalStateException("Opening rejected after funding broadcast");
+        }
+        if (onchainPending < request.getFunding()) throw new IllegalStateException("Opening reservation does not reconcile");
+        sentChannelOpenings.remove(rejection.getPeer());
+        onchainPending -= request.getFunding();
+    }
+
+    private synchronized void channelAccepted(MsgAcceptChannel acceptMessage) {
         // annotate the current height, so to facilitate search into a limite block set
         final int broadcast_timestamp = uvNetwork.getTimechain().getCurrentBlockHeight();
         var temp_channel_id = acceptMessage.getTemporary_channel_id();
         var peerPubKey = acceptMessage.getFundingPubkey();
 
 
-        var funding_amount = sentChannelOpenings.get(peerPubKey).getFunding();
+        var proposal = sentChannelOpenings.get(peerPubKey);
+        if (proposal == null || !proposal.getTemporary_channel_id().equals(temp_channel_id)) return;
+        if (waitingTxConf.keySet().stream().anyMatch(tx -> tx.getNode2Pub().equals(peerPubKey))) return;
+        var funding_amount = proposal.getFunding();
         // TODO: pubkeys should be lexically ordered, not based on initiator
         int fees_per_byte = 1;
         var funding_tx = UVTransaction.createTx(UVTransaction.Type.CHANNEL_FUNDING,funding_amount,getPubKey(),peerPubKey,fees_per_byte);
@@ -1098,7 +1104,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         broadcastToPeers(from,msg_update);
     }
 
-    public void fundingLocked(UVChannel newChannel) {
+    public void fundingLocked(UVChannel newChannel) { fundingLockedQueue.add(newChannel); }
+
+    private void applyFundingLocked(UVChannel newChannel) {
 
         log("Received funding_locked for "+newChannel.getChannelId());
 
@@ -1153,6 +1161,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 var request = (MsgOpenChannel)msg;
                 channelsToAcceptQueue.add(request);
             }
+            case REJECT_CHANNEL -> channelsRejectedQueue.add((MsgRejectChannel) msg);
             case ACCEPT_CHANNEL -> {
                 var acceptance = (MsgAcceptChannel)msg;
                 channelsAcceptedQueue.add(acceptance);
@@ -1258,8 +1267,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      * This includes only the p2p, gossip network, not the LN protocol actions like channel open, routing etc..
      * Starting from a base services_tick_period, different frequencies can be used
      */
-    public void runServices() {
-
+    public synchronized void runServices() {
+        if (!isP2PRunning() || !uvNetwork.isHealthy()) return;
         try {
 
             // handled as soon as possible, just check at very services tick
@@ -1281,7 +1290,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             }
         }
         catch (Exception e) {
-            uvNetwork.logException("runServices on node " + getPubKey(), e);
+            uvNetwork.recordFailure("runServices on node " + getPubKey(), e);
         }
     }
 
@@ -1317,6 +1326,10 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // TODO: this is enough for sure, but maybe move to some config constansts
         final int max = 20;
         int n = 0;
+        while (!fundingLockedQueue.isEmpty() && n++ < max) applyFundingLocked(fundingLockedQueue.poll());
+        n = 0;
+        while (!channelsRejectedQueue.isEmpty() && n++ < max) channelRejected(channelsRejectedQueue.poll());
+        n = 0;
 
         while (!channelsAcceptedQueue.isEmpty() && n++ < max) {
             var msg = channelsAcceptedQueue.poll();
@@ -1340,7 +1353,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             try {
                 processUpdateAddHTLC(msg);
             }
-            catch (Exception e) { uvNetwork.logException("processUpdateAddHTLC on node " + getPubKey(), e); }
+            catch (Exception e) { uvNetwork.recordFailure("processUpdateAddHTLC on node " + getPubKey(), e); }
         }
 
         n = 0;
@@ -1348,14 +1361,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             var msg = updateFulFillHTLCQueue.poll();
             try {
                 processUpdateFulfillHTLC(msg);
-            } catch (Exception e) { uvNetwork.logException("processUpdateFulfillHTLC on node " + getPubKey(), e); }
+            } catch (Exception e) { uvNetwork.recordFailure("processUpdateFulfillHTLC on node " + getPubKey(), e); }
         }
         n = 0;
         while (!updateFailHTLCQueue.isEmpty() && n++ < max ) {
             var msg = updateFailHTLCQueue.poll();
             try {
                 processUpdateFailHTLC(msg);
-            } catch (Exception e) { uvNetwork.logException("processUpdateFailHTLC on node " + getPubKey(), e); }
+            } catch (Exception e) { uvNetwork.recordFailure("processUpdateFailHTLC on node " + getPubKey(), e); }
         }
         // check for expired htlc
     }
@@ -1371,23 +1384,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         var channel = this.channels.get(channel_id);
         String peer_id = getChannelPeer(channel_id).getPubKey();
 
-        var outbound_liquidity = channel.getLiquidity(this.getPubKey());
-        var local_balance = channel.getBalance(this.getPubKey());
-        var remote_balance = channel.getBalance(peer_id);
-
-        // actually available outbound liquidity = local_balance - 1% channel_reserve - pending
-        if (outbound_liquidity>=amount) {
-            if (channel.getNode1PubKey().equals(this.getPubKey()))
-                channel.newCommitment(local_balance-amount,remote_balance+amount);
-            else
-                channel.newCommitment(remote_balance+amount,local_balance-amount);
+        synchronized (channel) {
+            if (amount < 0 || channel.getLiquidity(pubkey) < amount) return false;
+            int local = channel.getBalance(pubkey), remote = channel.getBalance(peer_id);
+            if (channel.getNode1PubKey().equals(pubkey)) channel.newCommitment(local - amount, remote + amount);
+            else channel.newCommitment(remote + amount, local - amount);
+            return true;
         }
-        else {
-            log("pushSats: Insufficient outbound liquidity in channel "+channel_id+" cannot push  "+amount+ " sats to "+peer_id);
-            return false;
-        }
-        return true;
     }
+
 
     public static String generateNodeLabelString() {
         return String.format("%-10s %-30s %-20s %-15s %-10s", "Pubkey", "Alias", "Node Capacity", "Channels", "Node Profile");
@@ -1511,8 +1516,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return queueSizeSum;
     }
 
-    public boolean areQueuesEmpty() {
+    public synchronized boolean areQueuesEmpty() {
         return pendingInvoices.isEmpty()
+                && fundingLockedQueue.isEmpty()
+                && channelsRejectedQueue.isEmpty()
+                && receivedHTLC.isEmpty()
+                && sentChannelOpenings.isEmpty()
+                && onchainPending == 0
+                && channels.values().stream().allMatch(channel -> channel.getPending(pubkey) == 0)
                 && channelsAcceptedQueue.isEmpty()
                 && channelsToAcceptQueue.isEmpty()
                 && updateAddHTLCQueue.isEmpty()
@@ -1606,6 +1617,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         this.updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
         this.channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
+        this.channelsRejectedQueue = new ConcurrentLinkedQueue<>();
+        this.fundingLockedQueue = new ConcurrentLinkedQueue<>();
         this.pendingAcceptedChannelPeers = ConcurrentHashMap.newKeySet();
         this.receivedHTLC = new HashMap<>();
         this.pendingHTLC = new ConcurrentHashMap<>();

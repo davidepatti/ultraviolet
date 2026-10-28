@@ -51,18 +51,27 @@ public final class ReportExporter {
             String timestamp,
             Set<ReportType> reportTypes
     ) throws IOException {
+        var contents = network.withSettledState(() -> {
+            var values = new java.util.EnumMap<ReportType, String>(ReportType.class);
+            for (ReportType type : reportTypes) values.put(type, generateReportSnapshot(network, type));
+            return values;
+        });
         Files.createDirectories(outputDir);
 
         ArrayList<WrittenReport> writtenReports = new ArrayList<>();
         for (ReportType type : reportTypes) {
             Path path = outputDir.resolve(buildFileName(prefix, timestamp, type));
-            Files.writeString(path, generateReport(network, type));
+            Files.writeString(path, contents.get(type));
             writtenReports.add(new WrittenReport(type, path));
         }
         return writtenReports;
     }
 
     public static String generateReport(UVNetwork network, ReportType type) {
+        return network.withSettledState(() -> generateReportSnapshot(network, type));
+    }
+
+    private static String generateReportSnapshot(UVNetwork network, ReportType type) {
         return switch (type) {
             case NETWORK -> network.getStats().generateNetworkReport();
             case INVOICE -> network.getStats().generateInvoiceReport();

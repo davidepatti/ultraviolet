@@ -136,7 +136,7 @@ public final class JournalCaptureExporter {
     }
 
     public static Capture build(UVNetwork network, String topologyId, JsonObject provenance) {
-        require(network.isStoppedForJournalCapture(), "Capture barrier not established");
+        require(network.isPaused(), "Capture barrier not established");
         require(network.getUVNodeList().size() == network.getConfig().bootstrap_nodes, "Bootstrap node count mismatch");
         Records records = validateRecords(new ArrayList<>(network.getUVNodeList().values()));
         JsonObject publicGraph = object("schema", "journal-a2-public-v1", "topology_id", topologyId,

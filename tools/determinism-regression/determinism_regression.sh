@@ -9,8 +9,8 @@ UltraViolet deterministic regression suite
 ==========================================
 
 This runner compiles the simulator and standalone regression harness into a
-temporary build directory. Static tests avoid threaded replay; journal O/T tests
-use small handcrafted live fixtures and assert invariants, not scheduling order.
+temporary build directory. Static tests avoid threaded replay; live consistency
+tests use small fixtures and assert invariants, not scheduling order.
 
 What is tested:
 - config include/override parsing and seeded profile selection;
@@ -19,7 +19,9 @@ What is tested:
 - pathfinding on a fixed graph for BFS, SHORTEST_HOP, MINI_DIJKSTRA, and LND;
 - save/load structural round trips from a frozen imported topology;
 - network report generation from frozen imported topology state;
-- journal O/T pause/resume, native sampling/accounting, retry/expiry and timeout rejection.
+- shared pause/resume, native sampling/accounting, retry/expiry and timeout rejection;
+- terminal and DSE execution, queued work, persistence and batch ownership;
+- optional research adapter contracts.
 
 What is intentionally not tested here:
 - byte-for-byte bootstrap logs;
@@ -33,11 +35,11 @@ trap 'rm -rf "$build_dir"' EXIT
 echo "Build directory: $build_dir"
 
 sources_file="$build_dir/sources.txt"
-find src tests -name '*.java' | sort > "$sources_file"
+find src tests tools/journal/java -name '*.java' | sort > "$sources_file"
 source_count="$(wc -l < "$sources_file" | tr -d ' ')"
 
 echo "Compiling $source_count Java source files..."
-javac -d "$build_dir" @"$sources_file"
+javac --release "${JAVA_RELEASE:-24}" -d "$build_dir" @"$sources_file"
 
 echo "Running tests.DeterminismRegressionTest..."
 echo

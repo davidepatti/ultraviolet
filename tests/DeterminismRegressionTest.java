@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 13;
+    private static final int TOTAL_TESTS = 19;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -124,11 +124,17 @@ public class DeterminismRegressionTest {
             );
 
             runCase("Journal capture contracts", "Checks resolved defaults, public/oracle separation, canonical IDs and rejection of unsettled/inconsistent opening fixtures.", () -> JournalCaptureTest.run(workDir));
-            runCase("Journal terminal opening cleanup", "Reproduces mutual opening rejection, verifies exact cancellation without changing topology/balances and rejects active or unreconciled state.", () -> JournalCaptureTest.assertTerminalUnacceptedOpeningCleanup(workDir));
+            runCase("Opening rejection and reservations", "Verifies protocol rejection releases exact reservations once and stale responses cannot cancel a new proposal.", () -> JournalCaptureTest.assertOpeningRejections(workDir));
             runCase("Journal O/T lifecycle and routed payments", "Handcrafted four-node network: retry, multihop settlement, unchanged public/profile state, pause/resume and native batch sampling/accounting.", () -> JournalTrafficTest.lifecycleAndPayments(workDir));
             runCase("Journal O/T failure boundaries", "Reject unresolved forwarded state and task/service exceptions; verify wide-integer amounts and duplicate outcome rejection.", () -> JournalTrafficTest.rejectionAndAccounting(workDir));
             runCase("Journal O/T queued invoice tasks", "Delayed task failures leave empty protocol queues; require completion and preserve all 16 exception receipts.", () -> JournalTrafficTest.queuedTaskExceptions(workDir));
             runCase("Journal O/T expiry and unsafe timeout", "Expiry releases reservations normally; a native sender timeout invalidates export without clearing unresolved messages.", () -> JournalTrafficTest.expiryAndTimeout(workDir));
+            runCase("Shared identities and persistence", "Ordinary invoice APIs, idempotent lifecycle, stable reports and identity/routing continuity after restore.", () -> SimulationConsistencyTest.identityAndPersistence(workDir));
+            runCase("Capture awaits submitted work", "A gated manual submission must finish before capture; live exports resume the same network.", () -> SimulationConsistencyTest.queuedCapture(workDir));
+            runCase("Concurrent batch lifecycle boundary", "Rejects capture and reload while a batch owns the lifecycle, then settles all requests.", () -> SimulationConsistencyTest.concurrentBatchBoundary(workDir));
+            runCase("Ordinary DSE commands", "Repeated route descriptions remain unique; standard inv waits for exact accounting and honors equal amount bounds.", () -> SimulationConsistencyTest.dseCommands(workDir));
+            runCase("Terminal command smoke", "A subprocess executes load/start/two routes/stop/export/save/quit and verifies both saved outcomes.", () -> SimulationConsistencyTest.terminalCommands(workDir));
+            runCase("Ordinary bootstrap completion", "A six-node DSE bootstrap drains all opening responses without terminal reservation cleanup.", () -> SimulationConsistencyTest.smallBootstrap(workDir));
             System.out.println("Determinism regression passed");
         } finally {
             deleteRecursively(workDir);

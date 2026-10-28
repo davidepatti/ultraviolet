@@ -49,11 +49,12 @@ def validate_request(request, b=B):
                    for row in read(b.parent / f'a2/preflight/{stage}-plan.json')['topologies']]
         require(o['seed'] not in planned, 'Acceptance seed overlaps A2 study')
     else:
-        # No pilot roster is created by implementation/acceptance. Future preparation must supply it.
+        # The exact predeclared roster and fixed operational worker limit are required.
         plan = b / 'configs/ot-pilot-plan.json'
         require(plan.is_file() and not plan.is_symlink(), 'O/T pilot roster has not been prepared')
         require(request in read(plan)['requests'], 'Unplanned O/T pilot request')
-        require(o['bootstrap_nodes'] == 500 and o['bootstrap_blocks'] == 100 and set(o) == {'bootstrap_nodes', 'bootstrap_blocks', 'seed'}, 'Pinned pilot opening settings required')
+        require(o['bootstrap_nodes'] == 500 and o['bootstrap_blocks'] == 100 and o.get('max_threads') == 128
+                and set(o) == {'bootstrap_nodes', 'bootstrap_blocks', 'seed', 'max_threads'}, 'Pinned pilot opening/worker settings required')
         require(t == {'node_events_per_block': 0.02, 'min_amount_sat': 1000, 'max_amount_sat': 100000,
                       'max_fees_sat': 1000, 'pathfinder': 'lnd', 'drain_timeout_ms': 120000,
                       'batches': [{'id': 't500', 'blocks': 50, 'requested': 500}, {'id': 't2500', 'blocks': 200, 'requested': 2000},

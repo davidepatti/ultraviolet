@@ -1,20 +1,14 @@
 # Journal O/T continuation and capture
 
-The dedicated `uv_journal_traffic.py` launcher runs one fresh profile-generated opening and continues the **same in-memory network** through native invoice batches. It writes only inside the adjacent journal `b` workspace. It cannot load a saved state, randomize balances, run a stage automatically or train a model. The original DSE sampler and static A2 exporter/launcher remain unchanged.
+The dedicated `uv_journal_traffic.py` launcher runs one fresh profile-generated opening and continues the **same in-memory network** through native invoice batches. It writes only inside the adjacent journal `b` workspace. It cannot load a saved state, randomize balances, run a stage automatically or train a model. The core sampler and lifecycle are shared with terminal and DSE execution; historical adapter schemas remain available.
 
 ## Lifecycle and accounting
 
-`JournalTrafficRunner` first uses the existing validated terminal opening boundary and its narrowly reconciled unaccepted-opening cleanup. It checks genuine one-sided O, selects LND explicitly, enters a journal pause and exports O. It then resumes the clock and creates P2P workers only after the previous executor has terminated. Neither profiles, graph objects, balances, RNG state nor invoice identities reset.
+`JournalTrafficRunner`, under `tools/journal/java/`, captures a settled opening using the ordinary core lifecycle, checks the experiment's one-sided O constraint, explicitly selects LND, and continues the same network. Profiles, graph objects, balances, RNG state and invoice identities are not reset. Rejected channel openings resolve through the normal protocol; the historical opening-cleanup receipt is empty.
 
-`generateJournalInvoiceBatch` follows the native uniform sender/distinct-recipient and inclusive integer-uniform amount law, rate rounding and block alignment. It tracks every submitted task and waits for executor termination while protocol services remain live. The completion deadline and subsequent drain share one budget after injection. Actual request counts must match the declared nominal exposure. Submission, injection and settled heights/timestamps are recorded separately; iterations are not exact elapsed blocks.
+`generateInvoiceBatch` supplies the native uniform sender/distinct-recipient law, inclusive integer amounts, rate rounding, per-request outcomes and shared drain boundary. Unique invoice identities, managed queued work, synchronized outcomes and conservative timeout rejection also apply to normal terminal and DSE execution. The adapter translates the generic `uv-invoice-batch-v1` receipt into the historical `journal-ot-invoices-v1` schema for its consumers.
 
-A journal-only monotonic 64-bit preimage supplies unique invoice hashes. The legacy generator uses the 32-bit hash of the payment description, so repeated descriptions can reuse an invoice identity. The new identity consumes no traffic RNG and does not alter sampled sender, recipient or amount. Ordinary routing remains shared; its existing report is returned directly to the requesting task. Shared report writes and cross-thread outcome-map accesses are synchronized. Wide integers aggregate invoice amounts.
-
-The barrier checks received-forwarding state, outgoing HTLCs, pending invoices, message queues, confirmations, opening state and channel reservations. It joins timechain/P2P workers, then checks again to detect a handler that had already dequeued work. Such transient work resumes ordinary processing within the deadline. Service exceptions, incomplete/exceptional task results and nonsettling state prevent a completed export. Payment state is never cleared to manufacture quiescence.
-
-**Native sender timeouts are conservatively rejected.** UV's existing timeout releases a sender reservation without proving end-to-end cancellation of forwarded work; a late downstream settlement can therefore be unsafe. A journal timeout marks the trajectory invalid even if queues subsequently empty. The multihop fixture retains the unresolved forwarding state and rejects export. Implementing a new cancellation protocol is outside this minimal change. The legacy non-journal timeout behavior is unchanged.
-
-This is a single-owner batch API, not a pause facility for concurrent UI, arbitrary external payments or topology mutations.
+See [shared simulation consistency](../../docs/simulation_consistency.md) for lifecycle ownership, snapshot compatibility and the remaining end-to-end timeout cancellation limitation. A timeout invalidates every caller's trajectory and preserves unresolved state; it is no longer a research-only check. New outcomes may differ from historical captures because the normal opening, identity and completion behavior has been corrected. Existing captures and provenance remain frozen.
 
 ## Export and provenance
 
@@ -26,7 +20,7 @@ The launcher archives the actual compiled sources/template/tools with hashes, ba
 
 ## Interface and execution boundaries
 
-Requests use `journal-ot-request-v1` with `purpose`, `topology_id`, integer opening `overrides` and `traffic`. Traffic declares the native rate, amount bounds, fees, explicit `lnd`, drain timeout and ordered `{id, blocks, requested}` batches. Acceptance is limited to 2–20 nodes, short bootstrap/traffic, at most 200 requests and an explicit bounded worker setting. Equal amount bounds are rejected because the legacy sampler changes that case's upper bound.
+Requests use `journal-ot-request-v1` with `purpose`, `topology_id`, integer opening `overrides` and `traffic`. Traffic declares the native rate, amount bounds, fees, explicit `lnd`, drain timeout and ordered `{id, blocks, requested}` batches. Acceptance is limited to 2–20 nodes, short bootstrap/traffic, at most 200 requests and an explicit bounded worker setting. This adapter retains its historical requirement for distinct amount bounds. The generic core supports equal bounds as an exact amount.
 
 Pilot execution additionally requires an exact request in `b/configs/ot-pilot-plan.json`, 500 nodes/100 bootstrap blocks and the planned 50/200/750 native iterations. **No pilot roster is created by this implementation.** The six-network pilot is not run.
 

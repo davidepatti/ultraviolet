@@ -89,7 +89,7 @@ public final class JournalTrafficExporter {
         for (UVNode node : nodeList) {
             require(node.getPubKey() != null && node.getPubKey().matches("[A-Za-z0-9_-]+"), "Noncanonical node ID");
             require(nodes.putIfAbsent(node.getPubKey(), node) == null, "Duplicate node ID");
-            require(node.journalUnsettledState().isEmpty(), "Unsettled node: " + node.getPubKey());
+            require(node.unsettledState().isEmpty(), "Unsettled node: " + node.getPubKey());
             for (var entry : node.getChannels().entrySet()) {
                 UVChannel channel = entry.getValue();
                 require(entry.getKey().equals(channel.getChannelId()), "Channel map key mismatch");
@@ -136,7 +136,7 @@ public final class JournalTrafficExporter {
     }
 
     public static Capture build(UVNetwork network, String topologyId, String checkpoint, JsonObject provenance) {
-        require(network.isPausedForJournalTraffic(), "Journal traffic capture barrier not established");
+        require(network.isPaused(), "Journal traffic capture barrier not established");
         require(network.getUVNodeList().size() == network.getConfig().bootstrap_nodes, "Bootstrap node count mismatch");
         Records records = validateRecords(new ArrayList<>(network.getUVNodeList().values()));
         Map<String, Object> profiles = new TreeMap<>();

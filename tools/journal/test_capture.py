@@ -170,7 +170,16 @@ class CaptureTests(unittest.TestCase):
             capture.validate_request(bad)
 
     def test_preview_has_no_build_or_capture(self):
-        with mock.patch.object(sys, "argv", ["capture", "--request", str(self.root / "request.json"), "--name", "preview-contract-test"]), \
+        a2 = self.root / "gnn-lightning-journal/a2"
+        (a2 / "configs").mkdir(parents=True)
+        (a2 / "preflight").mkdir()
+        put(a2 / "configs/study.json", {})
+        for stage in ("pilot", "main"):
+            put(a2 / f"preflight/{stage}-plan.json", {"topologies": []})
+        validate = capture.validate_request
+        with mock.patch.object(capture, "A2", a2), \
+                mock.patch.object(capture, "validate_request", side_effect=lambda request: validate(request, a2)), \
+                 mock.patch.object(sys, "argv", ["capture", "--request", str(self.root / "request.json"), "--name", "preview-contract-test"]), \
                 mock.patch.object(capture, "capture", side_effect=AssertionError("No execution during preview")), \
                 mock.patch("sys.stdout", new_callable=io.StringIO) as output:
             capture.main()

@@ -4,9 +4,9 @@ Fresh-bootstrap capture for the separate Lightning GNN journal workspace. This i
 
 ## Boundary and output
 
-`uv_journal_capture.py` compiles a frozen copy of the actual Java sources with existing Java 24 tooling, starts one fresh network in its own output directory, and runs `JournalCaptureRunner`. The runner waits for bootstrap workers to terminate, joins the timechain, terminates/awaits P2P services, then verifies empty node queues and zero pending amounts. This terminal barrier is for this single-owner batch process; it is not a general concurrent UI pause or a B traffic-drain implementation.
+`uv_journal_capture.py` compiles a frozen copy of core `src/` and the optional Java adapters under `tools/journal/java/` with Java 24 tooling. `JournalCaptureRunner` uses the same `pauseAndDrain` boundary as terminal, DSE, save and ordinary exports. See [shared simulation consistency](../../docs/simulation_consistency.md) for core behavior and limitations.
 
-At larger scale, legacy mutual channel-opening rejection can leave unaccepted proposals reserving on-chain funds after active queues drain. The journal terminal boundary now cancels only these unfunded proposals, requiring their amounts to reconcile exactly with the node's pending reservation. It changes neither funded channels nor on-chain balances and writes `opening-cleanup.json` with a hash in the capture provenance/receipt. Active, funded or unreconciled state still fails. The initial failed pilot attempt is retained separately.
+Rejected opening proposals are now resolved by the ordinary protocol. The adapter retains `opening-cleanup.json` as an empty compatibility receipt; it no longer releases reservations after stopping. Existing captures remain historical artifacts with their original source hashes and are not rewritten by this branch.
 
 The exporter checks both endpoints share each channel object, both endpoint graph views agree with capacities and directional policies, reserves equal integer capacity/100, and balances are untouched one-sided openings. Missing fees, duplicate IDs, pending amounts and inconsistent state fail. Public channel IDs are SHA-256-derived opaque identifiers; the original funder-bearing channel names are not exported. A future importer can compute the same IDs from UV's channel IDs.
 

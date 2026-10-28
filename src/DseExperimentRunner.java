@@ -83,6 +83,7 @@ public class DseExperimentRunner {
                 writeRunReport();
             }
 
+            network.pauseAndDrain();
             JsonArray reportResults = writeSelectedReports(network, experiment);
             runReport.put("reports", reportResults);
             runReport.put("status", "success");
@@ -113,7 +114,7 @@ public class DseExperimentRunner {
 
         try {
             switch (commandName) {
-                case "boot" -> executeBoot(network, result);
+                case "boot" -> executeBoot(network, command, result);
                 case "bal" -> executeBal(network, command, result);
                 case "rndbal" -> executeRndBal(network, command, result);
                 case "path" -> executePath(network, command, result);
@@ -134,11 +135,22 @@ public class DseExperimentRunner {
         return result;
     }
 
-    private void executeBoot(UVNetwork network, JsonObject result) {
+    private void executeBoot(UVNetwork network, JsonObject command, JsonObject result) {
         if (network.isBootstrapStarted() || network.isBootstrapCompleted()) {
             throw new IllegalStateException("Command 'boot' cannot run after the network has already been bootstrapped.");
         }
-        network.bootstrapNetwork();
+        String mode = getString(command, "mode", "scratch");
+        if (mode.equals("load") || mode.equals("snapshot") || mode.equals("dat")) {
+            String file = getString(command, "file", null);
+            if (file == null || file.isBlank()) throw new IllegalArgumentException("boot.mode=load requires file");
+            Path snapshot = Path.of(file);
+            if (!snapshot.isAbsolute()) snapshot = experimentPath.toAbsolutePath().getParent().resolve(snapshot);
+            if (!network.loadStatus(snapshot.normalize().toString())) throw new IllegalStateException(network.getLastLoadStatusError());
+            network.resume();
+        } else if (mode.equals("scratch") || mode.equals("fresh")) {
+            network.bootstrapNetwork();
+        } else throw new IllegalArgumentException("Unknown boot mode: " + mode);
+        result.put("mode", mode);
         result.put("nodes", network.getUVNodeList().size());
         result.put("channels", countUniqueChannels(network));
         result.put("current_block", network.getTimechain().getCurrentBlockHeight());
@@ -201,7 +213,8 @@ public class DseExperimentRunner {
         applyPathFinderStrategy(network, sender, strategy, amount);
 
         LNInvoice invoice = destination.generateInvoice(amount, message, true);
-        sender.processInvoice(invoice, maxFees, false);
+        var outcome = sender.processInvoice(invoice, maxFees, false);
+        network.requireHealthy();
 
         result.put("sender", senderId);
         result.put("destination", destinationId);
@@ -209,7 +222,7 @@ public class DseExperimentRunner {
         result.put("max_fees", maxFees);
         result.put("path_finder", strategy.name().toLowerCase(Locale.ROOT));
         result.put("invoice_hash", invoice.getHash());
-        result.put("success", sender.getPayedInvoices().containsKey(invoice.getHash()));
+        result.put("success", outcome.success());
     }
 
     private void executeInv(UVNetwork network, JsonObject command, JsonObject result) {
@@ -233,6 +246,7 @@ public class DseExperimentRunner {
         result.put("max_fees", maxFees);
         result.put("path_finder", strategy.name().toLowerCase(Locale.ROOT));
         result.put("invoice_report_rows", countInvoiceReports(network));
+        result.put("invoice_batch", network.getLastInvoiceBatch().snapshot());
     }
 
     private JsonObject runPathFinder(

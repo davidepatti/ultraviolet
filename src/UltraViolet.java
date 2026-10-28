@@ -405,6 +405,9 @@ public class UltraViolet {
         }
         finishBootstrapProgressOutput();
         bootstrapExec.shutdown();
+        try { bootstrapOutcome.get(); }
+        catch (java.util.concurrent.ExecutionException e) { throw new IllegalStateException("Bootstrap failed", e.getCause()); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException("Bootstrap interrupted", e); }
         System.out.println("Done!");
     }
     private void myMethod(Object x) {
@@ -424,12 +427,10 @@ public class UltraViolet {
         }
         if (!networkManager.getTimechainStatus()) {
             System.out.println("Starting Timechain, check " + networkManager.getConfig().logfile);
-            networkManager.setTimechainStatus(true);
-            networkManager.startP2PNetwork();
+            networkManager.resume();
         } else {
             System.out.print("Waiting for Timechain services to stop...");
-            networkManager.setTimechainStatus(false);
-            networkManager.stopP2PNetwork();
+            networkManager.pauseAndDrain();
         }
     }
 
@@ -954,7 +955,7 @@ public class UltraViolet {
         var invoice = dest.generateInvoice(amount,msg,true);
         System.out.println("Generated Invoice: "+invoice);
 
-        new Thread(()->sender.processInvoice(invoice, fees,true)).start();
+        networkManager.submitInvoice(sender, invoice, fees, true);
     }
 
     /**

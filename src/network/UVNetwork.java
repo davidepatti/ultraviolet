@@ -9,12 +9,17 @@ import stats.*;
 import protocol.*;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -28,7 +33,7 @@ public class UVNetwork implements LNetwork {
 
     private UVConfig uvConfig;
     private CountDownLatch bootstrap_latch;
-    private final HashMap<String, UVNode> uvnodes;
+    private final Map<String, UVNode> uvnodes;
 
     private List<String> pubkeys_list;
     private String imported_rootnode_graph;
@@ -36,19 +41,30 @@ public class UVNetwork implements LNetwork {
 
     private UVTimechain uvTimechain;
 
-    private boolean bootstrap_started = false;
-    private boolean bootstrap_completed = false;
-    private boolean bootstrapWorkersTerminated = false;
-    private boolean journalCaptureStopped = false;
-    private volatile boolean journalTrafficEnabled = false;
-    private volatile boolean journalTrafficPaused = false;
-    private volatile boolean journalTrafficFailed = false;
-    private final java.util.concurrent.atomic.AtomicBoolean journalBatchActive = new java.util.concurrent.atomic.AtomicBoolean();
-    private final AtomicInteger journalErrors = new AtomicInteger();
-    private long journalInvoiceIdentity = 0;
-    private JournalInvoiceBatch lastJournalBatch;
-    private final Set<String> journalBatchIds = new HashSet<>();
-    private Map<String, Map<String, Integer>> journalOpeningCleanup = Map.of();
+    private volatile boolean bootstrap_started = false;
+    private volatile boolean bootstrap_completed = false;
+    public static final long DEFAULT_DRAIN_TIMEOUT_MS = 120_000;
+    private volatile boolean bootstrapWorkersTerminated;
+    private final Object admission = new Object();
+    private final ReentrantLock lifecycle = new ReentrantLock();
+    private final AtomicReference<String> integrityFailure = new AtomicReference<>();
+    private final ThreadLocal<Integer> mutationDepth = ThreadLocal.withInitial(() -> 0);
+    private final ThreadLocal<Boolean> admittedTask = ThreadLocal.withInitial(() -> false);
+    private boolean draining;
+    private volatile boolean closed;
+    private int activeMutations;
+    private int activePayments;
+    private int activeInvoiceTasks;
+    private long invoiceIdentity;
+    private final Set<Long> issuedIdentities = new HashSet<>();
+    private final Set<String> processedInvoices = new HashSet<>();
+    private ExecutorService invoiceExecutor;
+    private volatile ExecutorService bootstrapExecutor;
+    private final java.util.concurrent.atomic.AtomicBoolean batchActive = new java.util.concurrent.atomic.AtomicBoolean();
+    private final Set<String> batchIds = new HashSet<>();
+    private volatile InvoiceBatch lastInvoiceBatch;
+    private long batchSequence;
+    private volatile Thread batchOwner;
     public static Consumer<String> Log = System.out::println;
     private static final int LOG_QUEUE_CAPACITY = 131072;
     private static final int LOG_BATCH_SIZE = 256;
@@ -86,7 +102,7 @@ public class UVNetwork implements LNetwork {
     private Thread logWorkerThread;
     private BufferedWriter logfile;
 
-    private ScheduledExecutorService p2pExecutor;
+    private volatile ScheduledExecutorService p2pExecutor;
 
     private int invoice_thread_pool_size;
     private int bootstrap_thread_pool_size;
@@ -125,6 +141,8 @@ public class UVNetwork implements LNetwork {
         private final Random random;
         private final TopologyMode topologyMode;
         private final String importedRootNodeGraph;
+        private long invoiceIdentity;
+        private Set<String> processedInvoices = Set.of();
 
         private LoadedStatus(
                 UVConfig config,
@@ -149,10 +167,14 @@ public class UVNetwork implements LNetwork {
 
         private final TopologyMode topologyMode;
         private final String importedRootNodeGraph;
+        private final long invoiceIdentity;
+        private final Set<String> processedInvoices;
 
-        private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph) {
+        private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph, long invoiceIdentity, Set<String> processedInvoices) {
             this.topologyMode = topologyMode;
             this.importedRootNodeGraph = importedRootNodeGraph;
+            this.invoiceIdentity = invoiceIdentity;
+            this.processedInvoices = new HashSet<>(processedInvoices);
         }
     }
 
@@ -160,6 +182,7 @@ public class UVNetwork implements LNetwork {
     private void adjustThreadPoolSizes() {
         // get it from ulimit -a
         int max_threads = uvConfig.max_threads;
+        if (max_threads < 2) throw new IllegalArgumentException("max_threads must be at least 2");
 
         log("Determing appropriate pool sizes... (max threads " + max_threads + ")");
 
@@ -216,6 +239,9 @@ public class UVNetwork implements LNetwork {
      * Constructor
      */
     public UVNetwork(UVConfig config) {
+        if (config.max_threads < 2 || config.bootstrap_nodes < 1 || config.blocktime_ms <= 0 || config.node_services_tick_ms <= 0) {
+            throw new IllegalArgumentException("Positive node/timing settings and at least two worker threads required");
+        }
         this.uvConfig = config;
         masterSeed = config.getMasterSeed();
         this.random = new Random(masterSeed);
@@ -237,7 +263,7 @@ public class UVNetwork implements LNetwork {
         startLogWorker();
 
         // Keep insertion order so imported topologies can be displayed as loaded.
-        this.uvnodes = new LinkedHashMap<>();
+        this.uvnodes = Collections.synchronizedMap(new LinkedHashMap<>());
         uvTimechain = new UVTimechain(uvConfig.blocktime_ms,this);
 
         log(new Date() +":Initializing UVManager...");
@@ -255,8 +281,13 @@ public class UVNetwork implements LNetwork {
      */
     public void bootstrapNetwork() {
 
-        bootstrapWorkersTerminated = false;
-        journalCaptureStopped = false;
+        synchronized (admission) {
+            requireHealthy();
+            if (closed || draining || bootstrap_started || !uvnodes.isEmpty()) throw new IllegalStateException("Bootstrap requires a fresh network");
+            bootstrap_started = true;
+            bootstrapWorkersTerminated = false;
+        }
+
         Thread.currentThread().setName("Bootstrap");
         var startTime = new Date();
         bootstrapSessionId = new SimpleDateFormat("yyyyMMddHHmmss").format(startTime);
@@ -264,7 +295,6 @@ public class UVNetwork implements LNetwork {
 
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
 
-        bootstrap_started = true;
         topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
         imported_rootnode_graph = null;
         bootstrap_latch = new CountDownLatch(uvConfig.bootstrap_nodes);
@@ -289,13 +319,16 @@ public class UVNetwork implements LNetwork {
 
         Arrays.sort(boot_times);
 
-        ExecutorService bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
+        synchronized (admission) {
+            if (closed) throw new IllegalStateException("Simulation is closed");
+            bootstrapExecutor = Executors.newFixedThreadPool(bootstrap_thread_pool_size, new ThreadFactory() {
             private final AtomicInteger counter = new AtomicInteger(0);
             @Override
             public Thread newThread(Runnable r) {
                 return new Thread(r, "Bootstrap-" + counter.incrementAndGet());
             }
         });
+        }
 
 
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
@@ -327,11 +360,16 @@ public class UVNetwork implements LNetwork {
             }
 
             print_log("BOOTSTRAP: Launch complete, waiting for "+bootstrap_latch.getCount()+" threads to finish...");
-            bootstrap_latch.await();
+            while (!bootstrap_latch.await(100, TimeUnit.MILLISECONDS)) {
+                requireHealthy();
+                if (closed) throw new IllegalStateException("Simulation closed during bootstrap");
+            }
 
         } catch (InterruptedException e) {
-            print_log("Interrupted bootstrap exception");
-            Thread.currentThread().interrupt(); // handle interruption
+            bootstrapExecutor.shutdownNow();
+            recordFailure("Bootstrap interrupted", e);
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Bootstrap interrupted", e);
         }
         finally {
             print_log("BOOTSTRAP: shutting down threads...");
@@ -339,18 +377,26 @@ public class UVNetwork implements LNetwork {
             try {
                 var timeout = bootstrapExecutor.awaitTermination(60, TimeUnit.SECONDS);
                 bootstrapWorkersTerminated = timeout;
-                if (!timeout)
-                    print_log("BOOTSTRAP: timeout! terminating threads...");
+                if (!timeout) {
+                    bootstrapExecutor.shutdownNow();
+                    recordFailure("Bootstrap workers did not terminate", null);
+                    throw new IllegalStateException("Bootstrap worker termination deadline exceeded");
+                }
             }
             catch (InterruptedException e) {
+                bootstrapExecutor.shutdownNow();
+                recordFailure("Bootstrap termination interrupted", e);
                 Thread.currentThread().interrupt();
+                throw new IllegalStateException("Bootstrap termination interrupted", e);
             }
 
+            requireHealthy();
             print_log("Waiting "+uvConfig.p2p_max_age+" blocks as p2p messages expire time... ");
             waitForBlocks(uvConfig.p2p_max_age+1);
 
             print_log("Waiting for message queue to empty....");
-            waitForEmptyQueues(100);
+            requireHealthy();
+            pauseAndDrain();
 
             print_log("Pruning empty policies from graphs...");
             int pruned = 0;
@@ -359,6 +405,8 @@ public class UVNetwork implements LNetwork {
             }
             print_log("(Pruned null entries: "+pruned+") DONE!");
 
+            bootstrap_completed = true;
+            resume();
             closeCriticalLog();
             var after = new Date();
             var d = after.getTime()-startTime.getTime();
@@ -368,282 +416,348 @@ public class UVNetwork implements LNetwork {
     }
 
 
-   private void waitForEmptyQueues(int check_period) {
+    /** Mutation admission is shared by direct node calls, terminal commands and scripts. */
+    public final class Mutation implements AutoCloseable {
+        private boolean released;
+        private Mutation() {}
+        @Override public void close() {
+            synchronized (admission) {
+                if (!released) { activeMutations--; mutationDepth.set(mutationDepth.get() - 1); released = true; admission.notifyAll(); }
+            }
+        }
+    }
 
-        int warning_timeout = 10000; // 10 sec
-        boolean enable_warning = false;
-        boolean queues_empty = false;
+    public Mutation beginMutation() {
+        synchronized (admission) {
+            requireHealthy();
+            if (closed || (draining && mutationDepth.get() == 0)) throw new IllegalStateException("Simulation is closed or draining");
+            activeMutations++;
+            mutationDepth.set(mutationDepth.get() + 1);
+            return new Mutation();
+        }
+    }
 
-        while (!queues_empty) {
-            queues_empty = true;
+    public void requireHealthy() {
+        String failure = integrityFailure.get();
+        if (failure != null) throw new IllegalStateException("Simulation integrity failure: " + failure);
+    }
 
-            for (UVNode node : getUVNodeList().values()) {
-                if (!node.areQueuesEmpty())  {
-                    print_log("** Waiting to empty queues on "+node.getPubKey());
-                    if (enable_warning)  {
-                        print_log("-->");
-                        node.showQueuesStatus();
-                        print_log("------------------------------------------");
-                    }
-                    queues_empty = false;
+    public boolean isDraining() { synchronized (admission) { return draining; } }
+
+    public boolean isHealthy() { return integrityFailure.get() == null; }
+    public String getIntegrityFailure() { return integrityFailure.get(); }
+
+    public void recordFailure(String context, Throwable error) {
+        integrityFailure.compareAndSet(null, context + (error == null ? "" : ": " + error));
+        if (error != null) logException(context, error);
+        else log("INTEGRITY FAILURE: " + context);
+    }
+
+    public long nextInvoiceIdentity() {
+        synchronized (admission) {
+            requireHealthy();
+            if (closed || (draining && mutationDepth.get() == 0)) throw new IllegalStateException("Simulation is closed or draining");
+            invoiceIdentity = Math.incrementExact(invoiceIdentity);
+            return invoiceIdentity;
+        }
+    }
+
+    public void reserveInvoiceIdentity(long identity) {
+        synchronized (admission) {
+            if (identity <= 0 || !issuedIdentities.add(identity)) throw new IllegalStateException("Duplicate or invalid invoice identity");
+            invoiceIdentity = Math.max(invoiceIdentity, identity);
+        }
+    }
+
+    void beginPayment(String hash) {
+        synchronized (admission) {
+            requireHealthy();
+            if (!isRunning() || !isBootstrapCompleted() || (draining && !admittedTask.get())) throw new IllegalStateException("Simulation is not accepting payments");
+            if (!processedInvoices.add(hash)) throw new IllegalStateException("Invoice already submitted: " + hash);
+            activePayments++;
+        }
+    }
+
+    void endPayment() {
+        synchronized (admission) { activePayments--; admission.notifyAll(); }
+    }
+
+    public Future<GlobalStats.NodeStats.InvoiceReport> submitInvoice(UVNode sender, LNInvoice invoice, int maxFees, boolean showUi) {
+        return submitInvoice(sender, invoice, maxFees, showUi, report -> {}, error -> {});
+    }
+
+    private Future<GlobalStats.NodeStats.InvoiceReport> submitInvoice(UVNode sender, LNInvoice invoice, int maxFees,
+            boolean showUi, Consumer<GlobalStats.NodeStats.InvoiceReport> completed, Consumer<Throwable> failed) {
+        synchronized (admission) {
+            requireHealthy();
+            if (!isRunning() || !isBootstrapCompleted() || (draining && mutationDepth.get() == 0)) throw new IllegalStateException("Simulation is not accepting payments");
+            if (getUVNode(sender.getPubKey()) != sender) throw new IllegalArgumentException("Sender belongs to another network");
+            if (invoiceExecutor == null) invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size);
+            activeInvoiceTasks++;
+            var task = new FutureTask<GlobalStats.NodeStats.InvoiceReport>(() -> {
+                admittedTask.set(true);
+                try {
+                    var report = sender.processInvoice(invoice, maxFees, showUi);
+                    completed.accept(report);
+                    return report;
+                } catch (Throwable error) {
+                    failed.accept(error);
+                    if (showUi) System.out.println("Payment execution failed: " + error.getMessage());
+                    recordFailure("Invoice task failed", error);
+                    throw error;
+                } finally { admittedTask.remove(); }
+            }) {
+                @Override protected void done() {
+                    synchronized (admission) { activeInvoiceTasks--; admission.notifyAll(); }
                 }
-            }
-            try {
-                Thread.sleep(check_period);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            if (warning_timeout>0) {
-                warning_timeout -= check_period;
-            }
-            else {
-                check_period = 1000;
-                enable_warning = true;
-            }
+            };
+            try { invoiceExecutor.execute(task); }
+            catch (RuntimeException error) { task.cancel(false); throw error; }
+            return task;
         }
     }
 
-    /**
-     * If not yet started, schedule the p2p threads to be executed periodically for each node
-     */
-    public void startP2PNetwork() {
-        print_log("Launching p2p node service threads ...");
-        // start p2p actions around every block
-        if (p2pExecutor==null) {
-            log("Initializing p2p scheduled executor...");
-            p2pExecutor = Executors.newScheduledThreadPool(p2p_thread_pool_size, new ThreadFactory() {
-                private final AtomicInteger counter = new AtomicInteger(0);
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "p2p_service-" + counter.incrementAndGet());
-                }
-            });
-        }
-        for (UVNode n : uvnodes.values()) {
-            n.setP2PServices(true);
-            n.p2pHandler = p2pExecutor.scheduleAtFixedRate(n::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
-        }
-    }
-    /** Terminal barrier for the single-owner, fresh-bootstrap journal batch process.
-     * No routing/invoice/import API may run concurrently. This is not a general UI pause.
-     */
-    public void stopForJournalCapture(long timeoutMillis) throws InterruptedException {
-        if (timeoutMillis <= 0 || !isBootstrapCompleted() || !bootstrapWorkersTerminated
-                || getTopologyMode() != TopologyMode.SIMULATED_DISTRIBUTED) {
-            throw new IllegalStateException("Capture requires a completed fresh bootstrap with terminated workers");
-        }
-        uvTimechain.stopAndAwait(timeoutMillis);
-        stopP2PNetwork();
-        if (p2pExecutor != null) {
-            p2pExecutor.shutdown();
-            if (!p2pExecutor.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS)) {
-                throw new IllegalStateException("P2P capture barrier timed out");
-            }
-        }
-        // Validate the whole network before cancelling any request. Empty queues include
-        // waiting funding confirmations and accepted peers, so these are unaccepted proposals.
-        for (UVNode node : uvnodes.values()) {
-            if (!node.areQueuesEmpty()) {
-                throw new IllegalStateException("Unsettled queues after capture barrier: " + node.getPubKey());
-            }
-        }
-        Map<String, Map<String, Integer>> cancelled = new TreeMap<>();
-        for (UVNode node : uvnodes.values()) {
-            var reservations = node.cancelUnacceptedOpeningsForJournal();
-            if (!reservations.isEmpty()) cancelled.put(node.getPubKey(), reservations);
-        }
-        journalOpeningCleanup = Collections.unmodifiableMap(cancelled);
-        journalCaptureStopped = true;
+    public boolean isRunning() {
+        return !closed && isHealthy() && uvTimechain.getStatus()
+                && p2pExecutor != null && !p2pExecutor.isShutdown();
     }
 
-    public Map<String, Map<String, Integer>> getJournalOpeningCleanup() {
-        if (!isStoppedForJournalCapture()) throw new IllegalStateException("Capture barrier not established");
-        return journalOpeningCleanup;
-    }
-
-    public boolean isStoppedForJournalCapture() {
-        return journalCaptureStopped && bootstrapWorkersTerminated
-                && !uvTimechain.getStatus() && !uvTimechain.isThreadAlive()
-                && (p2pExecutor == null || p2pExecutor.isTerminated());
-    }
-
-    /** Single-owner journal lifecycle, entered only from the validated fresh opening barrier. */
-    public void beginJournalTraffic() {
-        if (journalTrafficEnabled || !isStoppedForJournalCapture() || journalErrors.get() != 0) {
-            throw new IllegalStateException("Journal traffic requires a clean stopped opening");
+    public boolean isPaused() {
+        synchronized (admission) {
+            return !closed && isHealthy() && isBootstrapCompleted() && !draining
+                    && activeInvoiceTasks == 0 && activePayments == 0 && activeMutations == 0
+                    && !uvTimechain.getStatus() && !uvTimechain.isThreadAlive()
+                    && (p2pExecutor == null || p2pExecutor.isTerminated());
         }
-        if (!journalUnsettledState().isEmpty()) throw new IllegalStateException("Unsettled opening");
-        journalTrafficEnabled = true;
-        journalTrafficPaused = true;
     }
 
-    public boolean isJournalTrafficRunning() {
-        return journalTrafficEnabled && !journalTrafficPaused && !journalTrafficFailed
-                && uvTimechain.getStatus() && p2pExecutor != null && !p2pExecutor.isShutdown();
-    }
-
-    public boolean isPausedForJournalTraffic() {
-        return journalTrafficEnabled && journalTrafficPaused && !journalTrafficFailed
-                && !journalBatchActive.get() && !uvTimechain.getStatus() && !uvTimechain.isThreadAlive()
-                && p2pExecutor != null && p2pExecutor.isTerminated() && journalErrors.get() == 0;
-    }
-
-    public Map<String, Map<String, Integer>> journalUnsettledState() {
+    public Map<String, Map<String, Integer>> unsettledState() {
         Map<String, Map<String, Integer>> state = new TreeMap<>();
-        for (UVNode node : uvnodes.values()) {
-            var pending = node.journalUnsettledState();
+        for (UVNode node : getUVNodeList().values()) {
+            var pending = node.unsettledState();
             if (!pending.isEmpty()) state.put(node.getPubKey(), pending);
         }
         return state;
     }
 
-    public void resumeJournalTraffic() {
-        if (!isPausedForJournalTraffic() || !journalUnsettledState().isEmpty()) {
-            throw new IllegalStateException("Resume requires a settled journal pause");
-        }
-        // Old scheduled tasks have terminated; only now may a new executor be created.
-        p2pExecutor = null;
-        journalCaptureStopped = false;
-        journalTrafficPaused = false;
-        uvTimechain.setStatus(true);
-        startP2PNetwork();
+    private boolean hasActiveWork() {
+        synchronized (admission) { return activeInvoiceTasks != 0 || activePayments != 0 || activeMutations != 0; }
     }
 
     private static long remainingMillis(long deadline) {
         long remaining = deadline - System.nanoTime();
-        if (remaining <= 0) throw new IllegalStateException("Journal drain deadline exceeded");
+        if (remaining <= 0) throw new IllegalStateException("Simulation drain deadline exceeded");
         return Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining));
     }
 
-    /** Drain with services live, then join and recheck to catch dequeued/in-flight handlers.
-     * No payment state is cancelled or repaired to make a checkpoint pass.
-     */
-    public void pauseForJournalTraffic(long timeoutMillis) throws InterruptedException {
-        if (timeoutMillis <= 0 || !isJournalTrafficRunning() || journalBatchActive.get()) {
-            throw new IllegalStateException("Pause requires running journal with no active invoice batch");
-        }
-        long started = System.nanoTime();
-        long deadline = started + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+    public void resume() {
+        lifecycle.lock();
         try {
+            synchronized (admission) {
+                requireHealthy();
+                if (closed || (draining && mutationDepth.get() == 0)) throw new IllegalStateException("Simulation is closed or draining");
+                if (isRunning()) return;
+                if (batchActive.get() && batchOwner != Thread.currentThread()) throw new IllegalStateException("Invoice batch owns the lifecycle");
+                if (hasActiveWork()) throw new IllegalStateException("Cannot resume during active work");
+                uvTimechain.setStatus(true);
+                startP2PWorkers();
+            }
+        } finally { lifecycle.unlock(); }
+    }
+
+    /** Stop admission, finish queued/direct payments, drain protocol state, join and recheck. */
+    public void pauseAndDrain(long timeoutMillis) throws InterruptedException {
+        if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive timeout required");
+        lifecycle.lockInterruptibly();
+        try {
+            synchronized (admission) {
+                requireHealthy();
+                if (closed || (bootstrap_started && !bootstrap_completed && !bootstrapWorkersTerminated)) {
+                    throw new IllegalStateException("Cannot pause during bootstrap or after shutdown");
+                }
+                if (batchActive.get() && batchOwner != Thread.currentThread()) throw new IllegalStateException("Invoice batch owns the lifecycle");
+                draining = true;
+            }
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             while (true) {
-                if (journalErrors.get() != 0) throw new IllegalStateException("Journal protocol service exception");
-                if (!journalUnsettledState().isEmpty()) {
+                requireHealthy();
+                if (hasActiveWork() || !unsettledState().isEmpty()) {
                     Thread.sleep(Math.min(10, remainingMillis(deadline)));
                     continue;
                 }
                 uvTimechain.stopAndAwait(remainingMillis(deadline));
-                stopP2PNetwork();
-                p2pExecutor.shutdown();
-                if (!p2pExecutor.awaitTermination(remainingMillis(deadline), TimeUnit.MILLISECONDS)) {
-                    throw new IllegalStateException("Journal P2P join deadline exceeded");
-                }
-                if (journalErrors.get() != 0) throw new IllegalStateException("Journal protocol service exception");
-                if (journalUnsettledState().isEmpty()) {
-                    journalTrafficPaused = true;
-                    if (lastJournalBatch != null) lastJournalBatch.markSettled(
-                            uvTimechain.getCurrentBlockHeight(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
-                    return;
-                }
-                // A handler was active while its queue appeared empty. Continue ordinary processing.
+                stopP2PWorkers(remainingMillis(deadline));
+                requireHealthy();
+                if (!hasActiveWork() && unsettledState().isEmpty()) return;
                 remainingMillis(deadline);
-                p2pExecutor = null;
                 uvTimechain.setStatus(true);
-                startP2PNetwork();
+                startP2PWorkers();
             }
-        } catch (Exception error) {
-            journalTrafficFailed = true;
-            throw error;
-        }
-    }
-
-    /** Native sender timeout can leave a forwarded contract alive. Never export such a trajectory. */
-    public void noteJournalPaymentTimeout() {
-        if (journalTrafficEnabled) journalTrafficFailed = true;
-    }
-
-    public JournalInvoiceBatch getLastJournalBatch() { return lastJournalBatch; }
-
-    private void waitJournalBlock(long timeoutMillis) throws InterruptedException {
-        if (!uvTimechain.getWaitBlocksLatch(1).await(timeoutMillis, TimeUnit.MILLISECONDS)) {
-            throw new IllegalStateException("Journal timechain progress deadline exceeded");
-        }
-    }
-
-    /** Native uniform sender/recipient/amount law and rate rounding, with explicit lifecycle/accounting.
-     * The caller owns this trajectory; legacy UI/DSE mutation APIs must not run concurrently.
-     */
-    public JournalInvoiceBatch generateJournalInvoiceBatch(String batchId, double rate, int blocks,
-            int minAmount, int maxAmount, int maxFees, long drainMillis) throws InterruptedException {
-        if (!isJournalTrafficRunning() || uvnodes.size() < 2 || !Double.isFinite(rate) || rate <= 0
-                || rate * uvnodes.size() > 100000 || blocks <= 0 || minAmount <= 0 || minAmount >= maxAmount
-                || maxAmount == Integer.MAX_VALUE || maxFees < 0 || drainMillis <= 0
-                || batchId == null || !batchId.matches("[a-z0-9][a-z0-9-]{0,79}")
-                || journalBatchIds.contains(batchId) || !journalBatchActive.compareAndSet(false, true)) {
-            throw new IllegalArgumentException("Invalid journal batch/state or duplicate batch ID");
-        }
-        journalBatchIds.add(batchId);
-        var batch = new JournalInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees,
-                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight());
-        lastJournalBatch = batch;
-        var executor = Executors.newFixedThreadPool(invoice_thread_pool_size);
-        try {
-            waitJournalBlock(drainMillis);
-            double events = pubkeys_list.size() * rate;
-            for (int block = 0; block < blocks; block++) {
-                int height = uvTimechain.getCurrentBlockHeight();
-                int count = events < 1.0 ? (random.nextDouble(1) <= events ? 1 : 0)
-                        : (int) events + (random.nextDouble(1) <= events - (int) events ? 1 : 0);
-                for (int event = 0; event < count; event++) {
-                    UVNode sender = getRandomNode(), destination;
-                    do { destination = getRandomNode(); } while (destination.equals(sender));
-                    int amount = random.nextInt(maxAmount + 1 - minAmount) + minAmount;
-                    long identity = Math.incrementExact(journalInvoiceIdentity);
-                    journalInvoiceIdentity = identity;
-                    var invoice = destination.generateJournalInvoice(amount, amount + " " + sender.getPubKey()
-                            + " to " + destination.getPubKey(), identity);
-                    batch.request(identity, sender.getPubKey(), invoice, uvTimechain.getCurrentBlockHeight());
-                    executor.submit(() -> {
-                        try {
-                            var report = sender.processInvoiceForJournal(invoice, maxFees);
-                            batch.complete(identity, report, uvTimechain.getCurrentBlockHeight());
-                        } catch (Throwable error) {
-                            batch.exception(identity, error, uvTimechain.getCurrentBlockHeight());
-                        }
-                    });
-                }
-                if (uvTimechain.getCurrentBlockHeight() == height) waitJournalBlock(drainMillis);
-            }
-            batch.injectionStopped(uvTimechain.getCurrentBlockHeight());
-            executor.shutdown();
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
-            if (!executor.awaitTermination(remainingMillis(deadline), TimeUnit.MILLISECONDS)) {
-                throw new IllegalStateException("Journal invoice completion deadline exceeded");
-            }
-            batch.requireCompleted();
-            journalBatchActive.set(false);
-            pauseForJournalTraffic(remainingMillis(deadline));
-            return batch;
-        } catch (Exception error) {
-            journalTrafficFailed = true;
-            batch.fail(error);
+        } catch (RuntimeException | InterruptedException error) {
+            if (draining) recordFailure("Could not establish a settled pause", error);
             throw error;
         } finally {
-            executor.shutdownNow();
-            journalBatchActive.set(false);
+            synchronized (admission) { draining = false; }
+            lifecycle.unlock();
         }
     }
 
-    public void stopP2PNetwork() {
-        print_log("Stopping p2p nodes services...");
+    public void pauseAndDrain() {
+        try { pauseAndDrain(DEFAULT_DRAIN_TIMEOUT_MS); }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted draining simulation", e);
+        }
+    }
 
-        for (UVNode n : uvnodes.values()) {
-            n.setP2PServices(false);
-            if (n.p2pHandler != null) {
-                n.p2pHandler.cancel(false);
+    /** Capture/export/save all use this exclusive boundary, including terminal callers. */
+    public <T> T withSettledState(Supplier<T> capture) {
+        lifecycle.lock();
+        boolean running = isRunning();
+        boolean capturedBoundary = false;
+        try {
+            pauseAndDrain();
+            capturedBoundary = true;
+            synchronized (admission) {
+                draining = true;
+                try { validateSettledState(); return capture.get(); }
+                finally { draining = false; }
+            }
+        } finally {
+            try { if (capturedBoundary && running && isHealthy() && !closed) resume(); }
+            finally { lifecycle.unlock(); }
+        }
+    }
+
+    private void validateSettledState() {
+        requireHealthy();
+        if (!unsettledState().isEmpty()) throw new IllegalStateException("Unsettled simulation state");
+        var nodes = getUVNodeList();
+        for (UVNode node : nodes.values()) {
+            for (UVChannel channel : node.getChannels().values()) {
+                String a = channel.getNode1PubKey(), b = channel.getNode2PubKey();
+                if (!nodes.containsKey(a) || !nodes.containsKey(b)
+                        || nodes.get(a).getChannels().get(channel.getChannelId()) != channel
+                        || nodes.get(b).getChannels().get(channel.getChannelId()) != channel) {
+                    throw new IllegalStateException("Inconsistent channel endpoints: " + channel.getChannelId());
+                }
+                int left = channel.getBalance(a), right = channel.getBalance(b);
+                if (left < 0 || right < 0 || (long) left + right != channel.getCapacity()) {
+                    throw new IllegalStateException("Channel balance conservation violation: " + channel.getChannelId());
+                }
             }
         }
+    }
 
-        print_log("P2P Services stopped");
+    private void startP2PWorkers() {
+        if (p2pExecutor == null || p2pExecutor.isTerminated()) {
+            p2pExecutor = Executors.newScheduledThreadPool(p2p_thread_pool_size);
+        }
+        if (p2pExecutor.isShutdown()) throw new IllegalStateException("Previous P2P executor has not terminated");
+        for (UVNode node : getUVNodeList().values()) startNodeServices(node);
+    }
+
+    private void startNodeServices(UVNode node) {
+        synchronized (node) {
+            if (node.p2pHandler != null && !node.p2pHandler.isDone()) return;
+            node.setP2PServices(true);
+            node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices, 0, uvConfig.node_services_tick_ms, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void stopP2PWorkers(long timeoutMillis) throws InterruptedException {
+        for (UVNode node : getUVNodeList().values()) {
+            node.setP2PServices(false);
+            if (node.p2pHandler != null) node.p2pHandler.cancel(false);
+        }
+        if (p2pExecutor != null) {
+            p2pExecutor.shutdown();
+            if (!p2pExecutor.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS)) throw new IllegalStateException("P2P termination deadline exceeded");
+        }
+    }
+
+    /** Legacy entry points now obey the same lifecycle as all other callers. */
+    public void startP2PNetwork() { resume(); }
+    public void stopP2PNetwork() { pauseAndDrain(); }
+
+    public InvoiceBatch getLastInvoiceBatch() { return lastInvoiceBatch; }
+
+    private void waitBlock(long timeoutMillis) throws InterruptedException {
+        var latch = uvTimechain.getWaitBlocksLatch(1);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        try {
+            while (!latch.await(Math.min(100, remainingMillis(deadline)), TimeUnit.MILLISECONDS)) {
+                requireHealthy();
+                if (closed) throw new IllegalStateException("Simulation closed while waiting for blocks");
+            }
+        } finally { uvTimechain.cancelWait(latch); }
+    }
+
+    public InvoiceBatch generateInvoiceBatch(String batchId, double rate, int blocks,
+            int minAmount, int maxAmount, int maxFees, long drainMillis) throws InterruptedException {
+        return generateInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees, drainMillis, null);
+    }
+
+    private InvoiceBatch generateInvoiceBatch(String batchId, double rate, int blocks,
+            int minAmount, int maxAmount, int maxFees, long drainMillis, UVNode fixedSender) throws InterruptedException {
+        if (!isRunning() || getUVNodeList().size() < 2 || !Double.isFinite(rate) || rate <= 0
+                || (fixedSender == null ? rate * getUVNodeList().size() : rate) >= Integer.MAX_VALUE
+                || blocks <= 0 || minAmount <= 0 || minAmount > maxAmount
+                || maxFees < 0 || drainMillis <= 0 || batchId == null || batchId.isBlank()) {
+            throw new IllegalArgumentException("Invalid invoice batch/state");
+        }
+        synchronized (admission) {
+            if (closed || draining || !batchActive.compareAndSet(false, true)) throw new IllegalStateException("Another operation owns the lifecycle");
+            batchOwner = Thread.currentThread();
+            if (!batchIds.add(batchId)) { batchOwner = null; batchActive.set(false); throw new IllegalArgumentException("duplicate batch ID"); }
+        }
+        var batch = new InvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees,
+                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight());
+        lastInvoiceBatch = batch;
+        var futures = new ArrayList<Future<GlobalStats.NodeStats.InvoiceReport>>();
+        // Injection and every submitted task remain accounted for, even if injection fails.
+        Exception injectionFailure = null;
+        try (var injection = beginMutation()) {
+            waitBlock(drainMillis);
+            double events = fixedSender == null ? getUVNodeList().size() * rate : rate;
+            for (int block = 0; block < blocks; block++) {
+                requireHealthy();
+                int height = uvTimechain.getCurrentBlockHeight();
+                int count = (int) events + (random.nextDouble(1) < events - (int) events ? 1 : 0);
+                for (int event = 0; event < count; event++) {
+                    UVNode sender = fixedSender == null ? getRandomNode() : fixedSender, destination;
+                    do { destination = getRandomNode(); } while (destination.equals(sender));
+                    int amount = minAmount == maxAmount ? minAmount : random.nextInt(maxAmount - minAmount + 1) + minAmount;
+                    long identity = nextInvoiceIdentity();
+                    var invoice = destination.generateInvoiceWithIdentity(amount, amount + " " + sender.getPubKey() + " to " + destination.getPubKey(), identity);
+                    batch.request(identity, sender.getPubKey(), invoice, uvTimechain.getCurrentBlockHeight());
+                    futures.add(submitInvoice(sender, invoice, maxFees, false,
+                            report -> batch.complete(identity, report, uvTimechain.getCurrentBlockHeight()),
+                            error -> batch.exception(identity, error, uvTimechain.getCurrentBlockHeight())));
+                }
+                if (uvTimechain.getCurrentBlockHeight() == height) waitBlock(drainMillis);
+            }
+        } catch (Exception error) {
+            injectionFailure = error;
+            batch.fail(error); recordFailure("Invoice injection failed", error);
+        } finally { batch.injectionStopped(uvTimechain.getCurrentBlockHeight()); }
+        try {
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
+            for (var future : futures) {
+                try { future.get(remainingMillis(deadline), TimeUnit.MILLISECONDS); }
+                catch (ExecutionException error) { /* outcome recorded; account for remaining tasks too */ }
+                catch (TimeoutException error) { throw new IllegalStateException("Invoice completion deadline exceeded", error); }
+            }
+            if (injectionFailure instanceof InterruptedException interrupted) throw interrupted;
+            if (injectionFailure != null) throw new IllegalStateException("Invoice injection failed", injectionFailure);
+            batch.requireCompleted();
+            long started = System.nanoTime();
+            pauseAndDrain(remainingMillis(deadline));
+            batch.markSettled(uvTimechain.getCurrentBlockHeight(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+            return batch;
+        } catch (Exception error) {
+            batch.fail(error); recordFailure("Invoice batch failed", error); throw error;
+        } finally { batchOwner = null; batchActive.set(false); }
     }
 
     /**
@@ -651,9 +765,16 @@ public class UVNetwork implements LNetwork {
      * @return a network.UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
-        var n = random.nextInt(pubkeys_list.size());
-        var some_random_key = pubkeys_list.get(n);
-        return uvnodes.get(some_random_key);
+        var nodes = new ArrayList<>(getUVNodeList().values());
+        return nodes.get(random.nextInt(nodes.size()));
+    }
+
+    /** Register before starting services; callers cannot mutate the internal registry map. */
+    public void registerNode(UVNode node) {
+        try (var mutation = beginMutation()) {
+            if (uvnodes.putIfAbsent(node.getPubKey(), node) != null) throw new IllegalArgumentException("Duplicate node");
+            refreshPubkeyList();
+        }
     }
 
     /**
@@ -692,6 +813,10 @@ public class UVNetwork implements LNetwork {
      * @param n number of events to be generated
      */
     public void generateRandomPushEvents(int n) {
+        withSettledState(() -> { generateRandomPushEventsInternal(n); return null; });
+    }
+
+    private void generateRandomPushEventsInternal(int n) {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
@@ -705,6 +830,10 @@ public class UVNetwork implements LNetwork {
 
 
     public void importTopology(String json_file, String root_node) {
+        withSettledState(() -> { importTopologyInternal(json_file, root_node); return null; });
+    }
+
+    private void importTopologyInternal(String json_file, String root_node) {
         print_log("Beginning importing file " + json_file);
 
         try {
@@ -878,16 +1007,7 @@ public class UVNetwork implements LNetwork {
      * Getters/Setters/Helpers
      */
 
-    public synchronized boolean isBootstrapCompleted() {
-        if (bootstrap_completed) return true;
-        if (bootstrap_latch==null) return false;
-
-        if (bootstrap_latch.getCount()==0) {
-            bootstrap_completed = true;
-            return true;
-        }
-        return false;
-    }
+    public boolean isBootstrapCompleted() { return bootstrap_completed; }
 
     public synchronized boolean isBootstrapStarted() {
         return bootstrap_started;
@@ -895,12 +1015,12 @@ public class UVNetwork implements LNetwork {
 
 
     public HashMap<String, UVNode> getUVNodeList(){
-        return this.uvnodes;
+        synchronized (uvnodes) { return new LinkedHashMap<>(uvnodes); }
     }
 
 
     public List<UVNode> getSortedNodeListByPubkey() {
-        var nodes = new ArrayList<>(this.uvnodes.values());
+        var nodes = new ArrayList<>(getUVNodeList().values());
         boolean allSyntheticPubkeys = nodes.stream()
                 .map(UVNode::getPubKey)
                 .allMatch(pubkey -> pubkey != null && SYNTHETIC_PUBKEY_PATTERN.matcher(pubkey).matches());
@@ -947,7 +1067,7 @@ public class UVNetwork implements LNetwork {
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
         else
             pubkeys_list.clear();
-        pubkeys_list.addAll(uvnodes.keySet());
+        pubkeys_list.addAll(getUVNodeList().keySet());
     }
 
     public GlobalStats getStats() {
@@ -1064,7 +1184,6 @@ public class UVNetwork implements LNetwork {
         if (t == null) {
             return;
         }
-        journalErrors.incrementAndGet();
         String prefix = context == null || context.isBlank() ? "ERROR" : "ERROR: " + context;
         log(prefix + " -> " + t);
         StringWriter sw = new StringWriter();
@@ -1076,36 +1195,37 @@ public class UVNetwork implements LNetwork {
         }
     }
 
-    public synchronized void shutdown() {
+    public void shutdown() {
+        lifecycle.lock();
         try {
-            if (getTimechainStatus()) {
-                setTimechainStatus(false);
-            }
-        } catch (Exception e) {
-            logException("Error while stopping timechain during shutdown", e);
-        }
-        try {
-            if (p2pExecutor != null) {
-                stopP2PNetwork();
-                p2pExecutor.shutdown();
-                try {
-                    if (!p2pExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                        p2pExecutor.shutdownNow();
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                p2pExecutor = null;
-            }
-        } catch (Exception e) {
-            logException("Error while stopping p2p during shutdown", e);
-        }
-        try {
+            synchronized (admission) { closed = true; draining = true; }
+            stopWorkers();
             closeCriticalLog();
-        } catch (Exception e) {
-            logException("Error while closing critical log during shutdown", e);
+            shutdownLogging();
+        } finally { lifecycle.unlock(); }
+    }
+
+    private void stopWorkers() {
+        try {
+            if (bootstrapExecutor != null) {
+                bootstrapExecutor.shutdownNow();
+                if (!bootstrapExecutor.awaitTermination(30, TimeUnit.SECONDS)) throw new IllegalStateException("Bootstrap workers did not stop");
+            }
+            if (invoiceExecutor != null) {
+                for (Runnable queued : invoiceExecutor.shutdownNow()) {
+                    if (queued instanceof Future<?> future) future.cancel(false);
+                }
+                if (!invoiceExecutor.awaitTermination(30, TimeUnit.SECONDS)) throw new IllegalStateException("Invoice workers did not stop");
+                invoiceExecutor = null;
+            }
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (hasActiveWork()) Thread.sleep(Math.min(10, remainingMillis(deadline)));
+            stopP2PWorkers(remainingMillis(deadline));
+            uvTimechain.stopAndAwait(remainingMillis(deadline));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted terminating simulation workers", e);
         }
-        shutdownLogging();
     }
 
     private synchronized void shutdownLogging() {
@@ -1178,6 +1298,7 @@ public class UVNetwork implements LNetwork {
      * The file is created lazily only when this method is first invoked.
      */
     public void reportCritical(String message) {
+        recordFailure(message, null);
         if (message == null) {
             return;
         }
@@ -1204,52 +1325,32 @@ public class UVNetwork implements LNetwork {
     }
 
     public void saveStatus(String filename) {
-        if (isBootstrapStarted() && !isBootstrapCompleted())  {
-            print_log("Bootstrap incomplete, cannot save");
-            return;
-        }
-
-        print_log("Checking queues before saving...");
-        waitForEmptyQueues(1000);
-        print_log("Stopping timechain...");
-        setTimechainStatus(false);
-
-        // when stopping the timechain, the while loop could still be completing
-        // another final iteration, triggering tictocNextBlock that generates
-        // a concurrent modification exception when saving the object
-
-        while (getTimechain().isThreadAlive()) {
-            print_log("Waiting timchain thread to stop...");
+        withSettledState(() -> {
+            if (!isBootstrapCompleted()) throw new IllegalStateException("Network is not initialized");
+            Path target = Path.of(filename).toAbsolutePath();
+            Path temporary = null;
             try {
-                Thread.sleep(uvConfig.blocktime_ms);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                temporary = Files.createTempFile(target.getParent(), ".uv-snapshot-", ".tmp");
+                try (var output = new ObjectOutputStream(Files.newOutputStream(temporary))) {
+                    output.writeObject(uvConfig);
+                    output.writeObject(uvTimechain);
+                    var nodes = getUVNodeList();
+                    output.writeInt(nodes.size());
+                    for (UVNode node : nodes.values()) output.writeObject(node);
+                    output.writeObject(random);
+                    output.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph, invoiceIdentity, processedInvoices));
+                }
+                try { Files.move(temporary, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+                catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                    Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) { throw new UncheckedIOException(e); }
+            finally {
+                if (temporary != null) try { Files.deleteIfExists(temporary); }
+                catch (IOException e) { logException("Cannot remove temporary snapshot", e); }
             }
-        }
-
-        stopP2PNetwork();
-
-        var file = new File(filename);
-        print_log("Saving status to "+file.getAbsolutePath());
-
-        try (var f = new ObjectOutputStream(new FileOutputStream(file))){
-
-            print_log("Saving config...");
-            f.writeObject(uvConfig);
-            print_log("Saving timechain...");
-            f.writeObject(uvTimechain);
-            print_log("Saving UVNodes...");
-            f.writeInt(uvnodes.size());
-
-            for (UVNode n: uvnodes.values()) f.writeObject(n);
-            print_log("Saving random generator...");
-            f.writeObject(random);
-            print_log("Saving topology metadata...");
-            f.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        print_log("Saving complete!");
+            return null;
+        });
     }
 
     public boolean loadStatus(String file) {
@@ -1265,12 +1366,37 @@ public class UVNetwork implements LNetwork {
             return false;
         }
 
-        if (getTimechainStatus()) {
-            setTimechainStatus(false);
-            stopP2PNetwork();
+        lifecycle.lock();
+        try {
+            if (batchActive.get()) { lastLoadStatusError = "Cannot load during an invoice batch"; return false; }
+            if (isHealthy()) pauseAndDrain();
+            synchronized (admission) { draining = true; }
+            stopWorkers();
+            applyLoadedStatus(loadedStatus);
+            integrityFailure.set(null);
+            closed = false;
+            batchActive.set(false);
+            batchIds.clear();
+            lastInvoiceBatch = null;
+            issuedIdentities.clear();
+            invoiceIdentity = 0;
+            processedInvoices.clear();
+            for (UVNode node : getUVNodeList().values()) {
+                issuedIdentities.addAll(node.getGeneratedInvoices().keySet());
+                for (long identity : node.getGeneratedInvoices().keySet()) invoiceIdentity = Math.max(invoiceIdentity, identity);
+                processedInvoices.addAll(node.getPayedInvoices().keySet());
+            }
+            invoiceIdentity = Math.max(invoiceIdentity, loadedStatus.invoiceIdentity);
+            processedInvoices.addAll(loadedStatus.processedInvoices);
+            validateSettledState();
+        } catch (RuntimeException error) {
+            recordFailure("Snapshot restore failed", error);
+            lastLoadStatusError = error.toString();
+            return false;
+        } finally {
+            synchronized (admission) { draining = false; }
+            lifecycle.unlock();
         }
-
-        applyLoadedStatus(loadedStatus);
         print_log("Loading Ended (please notice: the timechain is currently stopped)");
         return true;
     }
@@ -1300,9 +1426,11 @@ public class UVNetwork implements LNetwork {
             TopologyMode loadedTopologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
             String loadedImportedRootNodeGraph = null;
 
+            TopologySnapshotMetadata snapshotMetadata = null;
             try {
                 Object metadata = s.readObject();
                 if (metadata instanceof TopologySnapshotMetadata topologyMetadata) {
+                    snapshotMetadata = topologyMetadata;
                     loadedTopologyMode = topologyMetadata.topologyMode == null
                             ? TopologyMode.SIMULATED_DISTRIBUTED
                             : topologyMetadata.topologyMode;
@@ -1316,7 +1444,7 @@ public class UVNetwork implements LNetwork {
                 throw new InvalidObjectException("snapshot is missing required serialized fields");
             }
 
-            return new LoadedStatus(
+            var loaded = new LoadedStatus(
                     loadedConfig,
                     loadedTimechain,
                     loadedNodes,
@@ -1324,6 +1452,11 @@ public class UVNetwork implements LNetwork {
                     loadedTopologyMode,
                     loadedImportedRootNodeGraph
             );
+            if (snapshotMetadata != null) {
+                loaded.invoiceIdentity = snapshotMetadata.invoiceIdentity;
+                loaded.processedInvoices = snapshotMetadata.processedInvoices == null ? Set.of() : snapshotMetadata.processedInvoices;
+            }
+            return loaded;
         }
     }
 
@@ -1347,7 +1480,7 @@ public class UVNetwork implements LNetwork {
             uvnodes.put(node.getPubKey(), node);
         }
 
-        for (UVNode node : uvnodes.values()) {
+        for (UVNode node : getUVNodeList().values()) {
             node.restorePersistentData();
         }
 
@@ -1426,48 +1559,25 @@ public class UVNetwork implements LNetwork {
         return getTimechain().getStatus();
     }
 
-    public synchronized void setTimechainStatus(boolean status) {
-        if (getTimechainStatus()==status) {
-            print_log("Warning: status of timechain is already "+status);
-            return;
-        }
-
-        getTimechain().setStatus(status);
-
-        final long timeoutMs = 10_000L;
-        final long sleepMs = 25L;
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        long nextLogAt = System.currentTimeMillis();
-        while (getTimechainStatus()!=status) {
-            long now = System.currentTimeMillis();
-            if (now >= deadline) {
-                throw new IllegalStateException("Timeout waiting UVTimechain to update status to " + status);
-            }
-            if (now >= nextLogAt) {
-                print_log("Waiting protocol.UVTimechain to update status to " + status);
-                nextLogAt = now + 1_000L;
-            }
-            try {
-                Thread.sleep(sleepMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while waiting UVTimechain status update", e);
-            }
-        }
-
-        if (status) print_log("Timechain set to start!");
-        else
-            print_log("Timechain set to stop!");
+    public void setTimechainStatus(boolean status) {
+        if (status) resume();
+        else pauseAndDrain();
     }
 
     private void waitForBlocks(int blocks) {
-        if (blocks==0) return;
-        var ready_to_go = getTimechain().getWaitBlocksLatch(blocks);
+        if (blocks <= 0) return;
+        var latch = uvTimechain.getWaitBlocksLatch(blocks);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+                Math.addExact(Math.multiplyExact((long) blocks, uvConfig.blocktime_ms), DEFAULT_DRAIN_TIMEOUT_MS));
         try {
-            ready_to_go.await();
+            while (!latch.await(Math.min(100, remainingMillis(deadline)), TimeUnit.MILLISECONDS)) {
+                requireHealthy();
+                if (closed) throw new IllegalStateException("Simulation closed while waiting for blocks");
+            }
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for blocks", e);
+        } finally { uvTimechain.cancelWait(latch); }
     }
 
     public void bootstrapNode(UVNode node) {
@@ -1486,8 +1596,7 @@ public class UVNetwork implements LNetwork {
 
             log("BOOTSTRAP: Starting on "+node.getPubKey()+", target channel openings: "+target_channel_openings);
 
-            node.setP2PServices(true);
-            node.p2pHandler = p2pExecutor.scheduleAtFixedRate(node::runServices,0, uvConfig.node_services_tick_ms,TimeUnit.MILLISECONDS);
+            startNodeServices(node);
 
             final int min_ch_size = profile.getIntAttribute("min_channel_size");
             // we don't want granularity in channel sizes to be less than 100k
@@ -1550,7 +1659,7 @@ public class UVNetwork implements LNetwork {
             log("BOOTSTRAP: Completed on "+node.getPubKey());
             decreaseBootStrapCount();
         } catch (Throwable t) {
-            logException("BOOTSTRAP ERROR on "+node.getPubKey(), t);
+            recordFailure("BOOTSTRAP ERROR on "+node.getPubKey(), t);
             decreaseBootStrapCount();
         } finally {
             log("BOOTSTRAP: Completed on "+node.getPubKey()+" (finally block)");
@@ -1564,177 +1673,36 @@ public class UVNetwork implements LNetwork {
     }
 
 
-    public void generateInvoiceEvents(double node_events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
-        if (!isBootstrapCompleted()) {
-            print_log("ERROR: must execute bootstrap or load/import a network!");
-            return;
-        }
-        if (isImportedObserverView()) {
-            print_log("ERROR: normal invoice event generation is disabled in imported observer-view mode; use root-origin invoice generation");
-            return;
-        }
-
-        // node_events_per_block = 0.01 -> each node has (on average) one event every 100 blocks
-        // so, if there are 1000 nodes, 10 node events will happen globally at each block
-        double events_per_block = pubkeys_list.size()*node_events_per_block;
-        int expected_total_events = (int)(events_per_block*blocks_duration);
-
-        print_log("Generating " +expected_total_events + " invoice events " + "(min/max amt:" + min_amt+","+ max_amt + ", max_fees" + max_fees + ")");
-
-        int end = getTimechain().getCurrentBlockHeight()+blocks_duration;
-
-        print_log("Expected end after block "+end);
-
-
-        print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
-        ThreadFactory namedThreadFactory = new ThreadFactory() {
-            private final AtomicInteger count = new AtomicInteger(0);
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread thread = new Thread(r);
-                thread.setName("InvoiceProcess-" + count.incrementAndGet());
-                return thread;
-            }
-        };
-
-        var invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
-
-        // so to be sure to align to a just found block timing
-        waitForBlocks(1);
-        Instant start_gen = Instant.now();
-
-        for (int nb = 0; nb < blocks_duration; nb++) {
-            int current_block = getTimechain().getCurrentBlockHeight();
-            int eventsThisBlock;
-
-            // Keep configured rate immutable and derive per-block event count.
-            if (events_per_block < 1.0) {
-                eventsThisBlock = random.nextDouble(1) <= events_per_block ? 1 : 0;
-            } else {
-                int baseEvents = (int) events_per_block;
-                double fractional = events_per_block - baseEvents;
-                eventsThisBlock = baseEvents + (random.nextDouble(1) <= fractional ? 1 : 0);
-            }
-
-            for (int eb = 0; eb < eventsThisBlock; eb++ ) {
-                var sender = getRandomNode();
-                UVNode dest;
-                do {
-                    dest = getRandomNode();
-                }
-                while (dest.equals(sender));
-
-                if (max_amt==min_amt) max_amt++;
-                int amount = random.nextInt(max_amt+1-min_amt)+min_amt;
-                var invoice = dest.generateInvoice(amount,amount+ " "+ sender.getPubKey()+" to "+dest.getPubKey(),true);
-                invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
-            }
-            // we are still in the same block after all traffic has been generated
-            // not sure if this check is required, but doing it for sanity check
-            int current_block2 = getTimechain().getCurrentBlockHeight();
-            if (current_block2==current_block)
-                waitForBlocks(1);
-            //else print_log("Warning: skipping waiting for next block, starting: "+current_block+" current: "+current_block2);
-        }
-        print_log("Completed events generation");
-        print_log("Waiting for queues to flush...");
-        // the wait interval is just a reasonable value of ms between checks
-        waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
-        Instant end_gen = Instant.now();
-        Duration timeElapsed = Duration.between(start_gen, end_gen);
-        print_log("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
-        invoiceExecutor.shutdown();
+    public void generateInvoiceEvents(double rate, int blocks, int minAmount, int maxAmount, int maxFees) {
+        if (isImportedObserverView()) throw new IllegalStateException("Use root-origin traffic in observer-view mode");
+        runStandardBatch(rate, blocks, minAmount, maxAmount, maxFees, null);
     }
 
-    public void generateRootInvoiceEvents(double events_per_block, int blocks_duration, int min_amt, int max_amt, int max_fees) {
-        if (!isBootstrapCompleted()) {
-            print_log("ERROR: must execute bootstrap or load/import a network!");
-            return;
-        }
-        if (!isImportedObserverView()) {
-            print_log("ERROR: root invoice generation is available only in imported observer-view mode");
-            return;
-        }
-        if (uvnodes.size() < 2) {
-            print_log("ERROR: root invoice generation requires at least two nodes");
-            return;
-        }
-
-        UVNode sender = getUVNode(imported_rootnode_graph);
-        if (sender == null) {
-            print_log("ERROR: imported observer root " + imported_rootnode_graph + " not found");
-            return;
-        }
-
-        int expected_total_events = (int)(events_per_block*blocks_duration);
-
-        print_log("Generating " + expected_total_events + " root-origin invoice events from " + sender.getPubKey()
-                + " (min/max amt:" + min_amt + "," + max_amt + ", max_fees" + max_fees + ")");
-
-        int end = getTimechain().getCurrentBlockHeight()+blocks_duration;
-
-        print_log("Expected end after block "+end);
-
-        print_log("Instatianting new executor with "+invoice_thread_pool_size+ " threads...");
-        ThreadFactory namedThreadFactory = new ThreadFactory() {
-            private final AtomicInteger count = new AtomicInteger(0);
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread thread = new Thread(r);
-                thread.setName("RootInvoiceProcess-" + count.incrementAndGet());
-                return thread;
-            }
-        };
-
-        var invoiceExecutor = Executors.newFixedThreadPool(invoice_thread_pool_size, namedThreadFactory);
-
-        waitForBlocks(1);
-        Instant start_gen = Instant.now();
-
-        for (int nb = 0; nb < blocks_duration; nb++) {
-            int current_block = getTimechain().getCurrentBlockHeight();
-            int eventsThisBlock;
-
-            if (events_per_block < 1.0) {
-                eventsThisBlock = random.nextDouble(1) <= events_per_block ? 1 : 0;
-            } else {
-                int baseEvents = (int) events_per_block;
-                double fractional = events_per_block - baseEvents;
-                eventsThisBlock = baseEvents + (random.nextDouble(1) <= fractional ? 1 : 0);
-            }
-
-            for (int eb = 0; eb < eventsThisBlock; eb++ ) {
-                UVNode dest;
-                do {
-                    dest = getRandomNode();
-                }
-                while (dest.equals(sender));
-
-                if (max_amt==min_amt) max_amt++;
-                int amount = random.nextInt(max_amt+1-min_amt)+min_amt;
-                var invoice = dest.generateInvoice(amount,amount+ " "+ sender.getPubKey()+" to "+dest.getPubKey(),true);
-                invoiceExecutor.submit(()->sender.processInvoice(invoice, max_fees,false));
-            }
-
-            int current_block2 = getTimechain().getCurrentBlockHeight();
-            if (current_block2==current_block)
-                waitForBlocks(1);
-        }
-        print_log("Completed root-origin events generation");
-        print_log("Waiting for queues to flush...");
-        waitForEmptyQueues(uvConfig.bootstrap_nodes*5);
-        Instant end_gen = Instant.now();
-        Duration timeElapsed = Duration.between(start_gen, end_gen);
-        print_log("Time elapsed: " + timeElapsed.toMillis()/1000 + " seconds");
-        invoiceExecutor.shutdown();
+    public void generateRootInvoiceEvents(double rate, int blocks, int minAmount, int maxAmount, int maxFees) {
+        if (!isImportedObserverView()) throw new IllegalStateException("Root traffic requires observer-view mode");
+        runStandardBatch(rate, blocks, minAmount, maxAmount, maxFees, getUVNode(imported_rootnode_graph));
     }
 
+    private void runStandardBatch(double rate, int blocks, int minAmount, int maxAmount, int maxFees, UVNode sender) {
+        if (!isBootstrapCompleted()) throw new IllegalStateException("Initialize the network before traffic");
+        try {
+            generateInvoiceBatch("batch-" + (++batchSequence), rate, blocks, minAmount, maxAmount, maxFees, DEFAULT_DRAIN_TIMEOUT_MS, sender);
+            resume();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted invoice batch", e);
+        }
+    }
 
     /* set the channel balances of each node to the level
      Notice: for each channel only the initiators modify the balance
      */
 
     public void setLocalBalances(double local_level, int min_delta) {
+        withSettledState(() -> { setLocalBalancesInternal(local_level, min_delta); return null; });
+    }
+
+    private void setLocalBalancesInternal(double local_level, int min_delta) {
 
         for (UVNode node : this.getUVNodeList().values()) {
             for (UVChannel channel: node.getChannels().values()) {
@@ -1759,6 +1727,10 @@ public class UVNetwork implements LNetwork {
     }
 
     public void setRandomLiquidity(int min_delta) {
+        withSettledState(() -> { setRandomLiquidityInternal(min_delta); return null; });
+    }
+
+    private void setRandomLiquidityInternal(int min_delta) {
 
         // for each node, scan each channel
         // if the node is the initiator of the channel, compute a random local balance

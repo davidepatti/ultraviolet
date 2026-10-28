@@ -52,6 +52,9 @@ public class UVTimechain implements Runnable, Serializable {
 
     public void initialize(UVNetwork uvm) {
         this.uvm = uvm;
+        status = false;
+        threadAlive = false;
+        timechainThread = null;
         if (wait_blocks_latch == null) wait_blocks_latch = new HashSet<>();
     }
 
@@ -196,30 +199,43 @@ public class UVTimechain implements Runnable, Serializable {
         return new_latch;
     }
 
-    public synchronized void setStatus(boolean status) {
-        // not running --> running, must start the thread
-        if (status && !getStatus()) {
-            this.status = true;
+    public void cancelWait(CountDownLatch latch) {
+        synchronized (wait_blocks_latch) { wait_blocks_latch.remove(latch); }
+    }
+
+    public void setStatus(boolean running) {
+        if (!running) {
+            try { stopAndAwait(30_000); }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted stopping timechain", e);
+            }
+            return;
+        }
+        synchronized (this) {
+            if (status && timechainThread != null && timechainThread.isAlive()) return;
+            if (timechainThread != null && timechainThread.isAlive()) {
+                throw new IllegalStateException("Previous timechain worker has not terminated");
+            }
+            status = true;
             timechainThread = new Thread(this, "Timechain");
             timechainThread.start();
         }
-        else  // just update the status if required
-            this.status = status;
     }
 
-    /** Join, rather than just request a stop: no final block can race a capture. */
+    /** A successful return guarantees that the old worker has terminated. */
     public void stopAndAwait(long timeoutMillis) throws InterruptedException {
         if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive timeout required");
         Thread worker;
         synchronized (this) {
             status = false;
             worker = timechainThread;
+            if (worker != null) worker.interrupt();
         }
-        if (worker != null) {
+        if (worker != null && worker != Thread.currentThread()) {
             worker.join(timeoutMillis);
             if (worker.isAlive()) throw new IllegalStateException("Timechain stop timed out");
         }
-        if (threadAlive) throw new IllegalStateException("Untracked live timechain worker");
     }
 
     public synchronized boolean getStatus() {
@@ -231,24 +247,28 @@ public class UVTimechain implements Runnable, Serializable {
     }
 
     @Override
-    public void run(){
+    public void run() {
         threadAlive = true;
-        log("Starting timechain thread...");
-        while (getStatus()) {
-            try {
+        try {
+            while (getStatus()) {
                 Thread.sleep(blocktime);
-                synchronized (wait_blocks_latch) {
-                    for (CountDownLatch t: wait_blocks_latch)  t.countDown();
-                    wait_blocks_latch.removeIf(t -> t.getCount() == 0);
+                synchronized (this) {
+                    if (!status) break;
+                    tictocNextBlock();
+                    synchronized (wait_blocks_latch) {
+                        for (CountDownLatch latch : wait_blocks_latch) latch.countDown();
+                        wait_blocks_latch.removeIf(latch -> latch.getCount() == 0);
+                    }
                 }
-            } catch (InterruptedException e) {
-                threadAlive = false;
-                throw new RuntimeException(e);
             }
-            tictocNextBlock();
+        } catch (InterruptedException e) {
+            if (getStatus()) uvm.recordFailure("Timechain interrupted while running", e);
+            Thread.currentThread().interrupt();
+        } catch (Throwable error) {
+            uvm.recordFailure("Timechain worker failed", error);
+        } finally {
+            synchronized (this) { status = false; threadAlive = false; }
         }
-        threadAlive = false;
-        log("Exiting timechain thread...");
     }
 
     @Override
