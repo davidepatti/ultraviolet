@@ -525,8 +525,34 @@ public class UVNetwork implements LNetwork {
                     throw error;
                 } finally { admittedTask.remove(); }
             }) {
+                private boolean started;
+                private boolean accountingReleased;
+
+                private void releaseAccounting() {
+                    synchronized (admission) {
+                        if (!accountingReleased) {
+                            accountingReleased = true;
+                            activeInvoiceTasks--;
+                            admission.notifyAll();
+                        }
+                    }
+                }
+
+                @Override public void run() {
+                    synchronized (admission) {
+                        if (started || isCancelled()) return;
+                        started = true;
+                    }
+                    try { super.run(); }
+                    finally { releaseAccounting(); }
+                }
+
                 @Override protected void done() {
-                    synchronized (admission) { activeInvoiceTasks--; admission.notifyAll(); }
+                    // Cancellation completes a Future before its running callable exits.
+                    // Only never-started tasks can release their accounting here.
+                    synchronized (admission) {
+                        if (!started) releaseAccounting();
+                    }
                 }
             };
             try { invoiceExecutor.execute(task); }
@@ -587,8 +613,16 @@ public class UVNetwork implements LNetwork {
 
     /** Stop admission, finish queued/direct payments, drain protocol state, join and recheck. */
     public void pauseAndDrain(long timeoutMillis) throws InterruptedException {
+        pauseAndDrain(timeoutMillis, false);
+    }
+
+    /** Captures/restores retain admission until their enclosing lifecycle operation exits. */
+    private void pauseAndDrain(long timeoutMillis, boolean keepAdmissionClosed) throws InterruptedException {
         if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive timeout required");
         lifecycle.lockInterruptibly();
+        boolean previousDraining = false;
+        boolean admissionClosed = false;
+        boolean settled = false;
         try {
             synchronized (admission) {
                 requireHealthy();
@@ -596,7 +630,9 @@ public class UVNetwork implements LNetwork {
                     throw new IllegalStateException("Cannot pause during bootstrap or after shutdown");
                 }
                 if (batchActive.get() && batchOwner != Thread.currentThread()) throw new IllegalStateException("Invoice batch owns the lifecycle");
+                previousDraining = draining;
                 draining = true;
+                admissionClosed = true;
             }
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             while (true) {
@@ -608,16 +644,21 @@ public class UVNetwork implements LNetwork {
                 uvTimechain.stopAndAwait(remainingMillis(deadline));
                 stopP2PWorkers(remainingMillis(deadline));
                 requireHealthy();
-                if (!hasActiveWork() && unsettledState().isEmpty()) return;
+                if (!hasActiveWork() && unsettledState().isEmpty()) {
+                    settled = true;
+                    return;
+                }
                 remainingMillis(deadline);
                 uvTimechain.setStatus(true);
                 startP2PWorkers();
             }
         } catch (RuntimeException | InterruptedException error) {
-            if (draining) recordFailure("Could not establish a settled pause", error);
+            if (admissionClosed) recordFailure("Could not establish a settled pause", error);
             throw error;
         } finally {
-            synchronized (admission) { draining = false; }
+            if (admissionClosed && !(settled && keepAdmissionClosed)) {
+                synchronized (admission) { draining = previousDraining; }
+            }
             lifecycle.unlock();
         }
     }
@@ -635,22 +676,36 @@ public class UVNetwork implements LNetwork {
         lifecycle.lock();
         boolean running = isRunning();
         boolean capturedBoundary = false;
+        boolean previousDraining;
+        synchronized (admission) { previousDraining = draining; }
         try {
-            pauseAndDrain();
+            try { pauseAndDrain(DEFAULT_DRAIN_TIMEOUT_MS, true); }
+            catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted draining simulation", error);
+            }
             capturedBoundary = true;
             synchronized (admission) {
-                draining = true;
-                try { validateSettledState(); return capture.get(); }
-                finally { draining = false; }
+                validateSettledState();
+                return capture.get();
             }
         } finally {
-            try { if (capturedBoundary && running && isHealthy() && !closed) resume(); }
-            finally { lifecycle.unlock(); }
+            try {
+                if (capturedBoundary) {
+                    synchronized (admission) {
+                        draining = previousDraining;
+                        if (running && isHealthy() && !closed) resume();
+                    }
+                }
+            } finally {
+                lifecycle.unlock();
+            }
         }
     }
 
     private void validateSettledState() {
         requireHealthy();
+        if (hasActiveWork()) throw new IllegalStateException("Active work at settled boundary");
         if (!unsettledState().isEmpty()) throw new IllegalStateException("Unsettled simulation state");
         var nodes = getUVNodeList();
         for (UVNode node : nodes.values()) {
@@ -1410,7 +1465,13 @@ public class UVNetwork implements LNetwork {
                 selected.processedInvoices = loadedStatus.processedInvoices;
                 loadedStatus = selected;
             }
-            if (isHealthy()) pauseAndDrain();
+            if (isHealthy()) {
+                try { pauseAndDrain(DEFAULT_DRAIN_TIMEOUT_MS, true); }
+                catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted draining before restore", error);
+                }
+            }
             synchronized (admission) { draining = true; }
             stopWorkers();
             applyLoadedStatus(loadedStatus);

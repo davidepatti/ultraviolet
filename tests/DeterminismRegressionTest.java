@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 27;
+    private static final int TOTAL_TESTS = 30;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -137,6 +137,9 @@ public class DeterminismRegressionTest {
             runCase("Batch expiry accounting", "Managed batches accept resolved protocol timeouts as complete outcomes and drain all state.", () -> network.HTLCResolutionTest.batchExpiry(workDir));
             runCase("Shared identities and persistence", "Ordinary invoice APIs, idempotent lifecycle, stable reports and identity/routing continuity after restore.", () -> SimulationConsistencyTest.identityAndPersistence(workDir));
             runCase("Capture awaits submitted work", "A gated manual submission must finish before capture; live exports resume the same network.", () -> SimulationConsistencyTest.queuedCapture(workDir));
+            runCase("Capture retains mutation admission", "Capture uses one closed boundary; nested capture/pause and callback errors preserve admission ownership.", () -> LifecycleConcurrencyTest.captureAdmission(workDir));
+            runCase("Running invoice cancellation", "Both interrupt modes retain task accounting until the callable exits; pause awaits the cancelled body.", () -> LifecycleConcurrencyTest.runningCancellation(workDir));
+            runCase("Queued invoice cancellation", "Both interrupt modes release never-started work exactly once without interrupting another task or executing cancelled invoices.", () -> LifecycleConcurrencyTest.queuedCancellation(workDir));
             runCase("Concurrent batch lifecycle boundary", "Rejects capture and reload while a batch owns the lifecycle, then settles all requests.", () -> SimulationConsistencyTest.concurrentBatchBoundary(workDir));
             runCase("Ordinary DSE commands", "Repeated route descriptions remain unique; standard inv waits for exact accounting and honors equal amount bounds.", () -> SimulationConsistencyTest.dseCommands(workDir));
             runCase("DSE snapshot runtime settings", "Real DSE processes honor runtime sweeps, reject snapshot-owned conflicts, and preserve ordinary restore behavior.", () -> DseSnapshotTest.settings(workDir));
