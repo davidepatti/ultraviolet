@@ -46,6 +46,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private ArrayList<String> saved_peers_id;
     transient public ScheduledFuture<?> p2pHandler;
     transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
+    // messages currently in GossipMessageQueue, to reject duplicates without scanning it
+    transient private Set<GossipMsg> queuedGossip = ConcurrentHashMap.newKeySet();
     transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgRejectChannel> channelsRejectedQueue = new ConcurrentLinkedQueue<>();
@@ -1096,7 +1098,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // assuming all the other message type are gossip
             default ->  {
                 var message = (GossipMsg) msg;
-                if (!GossipMessageQueue.contains(message)) {
+                if (queuedGossip.add(message)) {
                     GossipMessageQueue.add(message);
                 }
             }
@@ -1127,6 +1129,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
             GossipMsg msg = GossipMessageQueue.poll();
+            queuedGossip.remove(msg);
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
@@ -1146,20 +1149,27 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     var updater_id = message.getSignerId();
                     var channel_id = message.getChannelId();
 
+                    // an echo of this node's own update carries nothing new
+                    if (updater_id.equals(this.getPubKey())) break;
+
+                    // Updates that are not newer than the one already held are ignored and
+                    // not forwarded (BOLT 7); see ChannelGraph.updateChannel.
                     // sent from my channel partners, update related data
                     if (channels.containsKey(channel_id)) {
-                        channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
-                        getChannelGraph().updateChannel(message);
-                        var next = message.nextMsgToForward(this.getPubKey());
-                        broadcastToPeers(message.getSender(),next);
+                        if (getChannelGraph().updateChannel(message)) {
+                            channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
+                            var next = message.nextMsgToForward(this.getPubKey());
+                            broadcastToPeers(message.getSender(),next);
+                        }
                     } // not my local channel, but I have an entry to be updated...
                     else {
                         //debug("Received update for non local channel ");
                         if (getChannelGraph().hasChannel(channel_id)) {
                             //debug("GOSSIP: Updating non-local channel "+channel_id);
-                            getChannelGraph().updateChannel(message);
-                            var next = message.nextMsgToForward(this.getPubKey());
-                            broadcastToPeers(message.getSender(),next);
+                            if (getChannelGraph().updateChannel(message)) {
+                                var next = message.nextMsgToForward(this.getPubKey());
+                                broadcastToPeers(message.getSender(),next);
+                            }
                         }
                         else {
                             //debug("GOSSIP: Skipping update for unknown channel "+channel_id);
@@ -1545,6 +1555,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
         this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
         this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
+        this.queuedGossip = ConcurrentHashMap.newKeySet();
         this.waitingTxConf = new HashMap<>();
     }
 

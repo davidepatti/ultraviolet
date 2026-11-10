@@ -49,4 +49,9 @@ public class GossipMsgChannelAnnouncement extends GossipMsg {
 
         return short_channel_id.equals(that.short_channel_id) && timestamp == that.timestamp;
     }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(short_channel_id, timestamp);
+    }
 }

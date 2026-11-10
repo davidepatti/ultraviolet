@@ -20,7 +20,19 @@ public class ChannelGraph implements Serializable  {
         return adj_map;
     }
 
-    public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
+    /** Value of {@code policyHops} for a policy that was not learned through gossip. */
+    public static final int LOCAL_POLICY = Integer.MAX_VALUE;
+
+    /**
+     * A directed view of a channel. {@code policyTimestamp} and {@code policyHops} describe the
+     * channel_update the policy came from: its timestamp and how many times it had been
+     * forwarded when it was accepted (-1 and {@link #LOCAL_POLICY} when not learned by gossip).
+     */
+    public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy,
+                       int policyTimestamp, int policyHops) implements Serializable {
+        public Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) {
+            this(id, source, destination, capacity, policy, -1, LOCAL_POLICY);
+        }
         @Override
         public String toString() {
             return "("+source + "->"+ destination + ")["+capacity +"]("+policy+")";
@@ -134,27 +146,47 @@ public class ChannelGraph implements Serializable  {
     }
 
 
-    public synchronized void updateChannel(String updater, LNChannel.Policy new_policy, String channel_id) {
+    /**
+     * Set a policy that was not learned through gossip (the node's own, or test fixtures).
+     * @return false when this graph has no edge of {@code updater} for the channel
+     */
+    public synchronized boolean updateChannel(String updater, LNChannel.Policy new_policy, String channel_id) {
+        return replaceEdge(updater, channel_id, new_policy, -1, LOCAL_POLICY, true);
+    }
+
+    /**
+     * Apply a gossiped channel_update following BOLT 7: an update that is not newer than the one
+     * already held for the same channel and direction is ignored. The same update received with
+     * fewer forwardings than the accepted copy is recorded and reported as accepted, so that the
+     * caller forwards it again with the larger remaining hop budget; this keeps the reach of an
+     * update equal to the hop limit whatever the order of arrival.
+     * @return true when the update was accepted and should be forwarded
+     */
+    public synchronized boolean updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {
+        return replaceEdge(msgChannelUpdate.getSignerId(), msgChannelUpdate.getChannelId(),
+                msgChannelUpdate.getUpdatedPolicy(), msgChannelUpdate.getTimeStamp(), msgChannelUpdate.getForwardings(), false);
+    }
+
+    private boolean replaceEdge(String updater, String channel_id, LNChannel.Policy new_policy, int timestamp, int hops, boolean local) {
         var edges = adj_map.get(updater);
+        // The edge can be absent when the channel is unknown or this direction has been purged.
+        if (edges == null) return false;
         for (Edge e:edges) {
             if (e.id().equals(channel_id)) {
-                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,new_policy);
+                if (!local && e.policy != null) {
+                    boolean sameUpdate = e.policy == new_policy || timestamp == e.policyTimestamp;
+                    if (sameUpdate && hops >= e.policyHops) return false;
+                    if (!sameUpdate && timestamp < e.policyTimestamp) return false;
+                }
+                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,new_policy,timestamp,hops);
                 if (!edges.remove(e)) {
                     throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
                 }
                 edges.add(new_edge);
-                return;
+                return true;
             }
         }
-        throw new IllegalStateException("Cannot updateChannel "+channel_id+" in "+root_node+" updater:"+updater+" policy:"+new_policy);
-    }
-
-    public synchronized void updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {
-        var updater = msgChannelUpdate.getSignerId();
-        var new_policy = msgChannelUpdate.getUpdatedPolicy();
-        var channel_id = msgChannelUpdate.getChannelId();
-
-        updateChannel(updater,new_policy,channel_id);
+        return false;
     }
 
     public synchronized boolean hasChannel(String channelId) {
@@ -166,9 +198,10 @@ public class ChannelGraph implements Serializable  {
         addNode(root_node);
     }
 
-    public int purgeNullPolicyChannels() {
+    public synchronized int purgeNullPolicyChannels() {
         Iterator<String> nodeIterator = adj_map.keySet().iterator();
         int purged = 0;
+        var surviving = new HashSet<String>();
         while (nodeIterator.hasNext()) {
             var node = nodeIterator.next();
             Collection<Edge> edges = adj_map.get(node);
@@ -177,8 +210,13 @@ public class ChannelGraph implements Serializable  {
             if (edges.isEmpty()) {
                 purged++;
                 nodeIterator.remove();
+            } else {
+                for (Edge edge : edges) surviving.add(edge.id);
             }
         }
+        // A channel with no remaining direction is unknown again, so that a later
+        // announcement can add it back instead of being taken for a duplicate.
+        channelSet.retainAll(surviving);
         return purged;
     }
 
