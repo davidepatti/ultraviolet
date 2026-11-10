@@ -16,6 +16,12 @@ public class ChannelGraph implements Serializable  {
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
     transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
+    /**
+     * Path finders iterate this map without taking the graph lock. That is safe only while no
+     * gossip is being processed for this node, which holds today because routing runs after
+     * gossip has drained. If policies are ever updated during traffic, searches must be
+     * protected (for example with a read/write lock taken once per search).
+     */
     public Map<String, Set<Edge>> getAdjMap() {
         return adj_map;
     }
