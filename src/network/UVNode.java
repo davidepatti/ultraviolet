@@ -292,7 +292,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             if (amount <= 0) throw new IllegalArgumentException("Positive invoice amount required");
             uvNetwork.reserveInvoiceIdentity(identity);
             var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(identity).toByteArray()));
-            var invoice = new LNInvoice(hash, amount, pubkey, message);
+            var invoice = new LNInvoice(hash, amount, pubkey, message, uvNetwork.getConfig().getMinFinalCltvExpiry());
             if (generatedInvoices.putIfAbsent(identity, invoice) != null) throw new IllegalStateException("Duplicate invoice identity");
             invoiceIdentityByHash.put(hash, identity);
             return invoice;

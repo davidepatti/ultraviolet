@@ -5,6 +5,11 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class LNInvoice implements Serializable {
+    // Pinned to the value the class had before min_cltv_expiry became configurable,
+    // so that existing snapshots keep loading.
+    @java.io.Serial
+    private static final long serialVersionUID = -8909898530012650530L;
+    public static final int DEFAULT_MIN_FINAL_CLTV_EXPIRY = 9; // antonop 339
     // antonop 339
     private final String H;
     private final int amount;
@@ -15,14 +20,19 @@ public class LNInvoice implements Serializable {
     //  and communicated via invoice to each node in the path
     //  The sender constructs the payment route, they use the min_final_cltv_expiry_delta
     //  to calculate the CLTV expiry for the final hop.
-    private final int min_cltv_expiry = 9; // antonop 339
+    private final int min_cltv_expiry;
 
     public LNInvoice(String paymentHash, int amount, String recipient, String message) {
+        this(paymentHash, amount, recipient, message, DEFAULT_MIN_FINAL_CLTV_EXPIRY);
+    }
+
+    public LNInvoice(String paymentHash, int amount, String recipient, String message, int minFinalCltvExpiry) {
+        if (minFinalCltvExpiry <= 0) throw new IllegalArgumentException("Positive min_final_cltv_expiry required");
         this.H = paymentHash;
         this.amount = amount;
         this.destination = recipient;
         this.message = message;
-
+        this.min_cltv_expiry = minFinalCltvExpiry;
     }
 
     public String getHash() {
