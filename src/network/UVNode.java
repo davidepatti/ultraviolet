@@ -547,6 +547,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         if (!success_htlc) {
+            nodeStats.incrementInvoiceProcessingFailures("routing_failed");
             logMessage = "Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash();
             log(logMessage);
             if (showui) System.out.println(logMessage);

@@ -184,16 +184,25 @@ public class GlobalStats {
     public static class NodeStats implements Serializable{
 
         // this refers to the invoices processed
+        // Pinned to the value the class had before the volume counters were widened,
+        // so that existing snapshots keep loading.
+        @java.io.Serial
+        private static final long serialVersionUID = 5138926363382495025L;
+
         public final ArrayList<InvoiceReport> invoiceReports = new ArrayList<>();
         // these refer to partecipation in HTLC routings
         private int invoice_processing_success = 0;
         private int invoice_processing_failures = 0;
+        // Legacy 32-bit counter: read from old snapshots only, see readObject.
         private int invoice_processing_volume = 0;
+        private long invoice_processing_volume_sat = 0;
         // local forwarding events outcome.
         // For example, the local forwarding event can be a success, while eventually the HTLC routing could still fail
         private int forwarding_failures = 0;
         private int forwarding_successes = 0;
+        // Legacy 32-bit counter: read from old snapshots only, see readObject.
         private int forwarded_volume = 0;
+        private long forwarded_volume_sat = 0;
 
         private int expiry_too_soon = 0;
         private int temporary_channel_failure = 0;
@@ -202,15 +211,15 @@ public class GlobalStats {
         public int getInvoiceProcessingFailures() { synchronized (this) { return invoice_processing_failures; } }
         public int getForwarding_failures() { synchronized (this) { return forwarding_failures; } }
         public int getForwarding_successes() { synchronized (this) { return forwarding_successes; } }
-        public int getForwarded_volume() { synchronized (this) { return forwarded_volume; } }
+        public long getForwarded_volume() { synchronized (this) { return forwarded_volume_sat; } }
         public int getExpiryTooSoon() { synchronized (this) { return expiry_too_soon; } }
         public int getTemporaryChannelFailures() { synchronized (this) { return temporary_channel_failure; } }
         public ArrayList<InvoiceReport> getInvoiceReports() { synchronized (invoiceReports) { return new ArrayList<>(invoiceReports); } }
         public void incrementInvoiceProcessingSuccessses() { synchronized (this) { this.invoice_processing_success++; } }
-        public int getInvoiceProcessingVolume() { synchronized (this) { return invoice_processing_volume; } }
+        public long getInvoiceProcessingVolume() { synchronized (this) { return invoice_processing_volume_sat; } }
         public void incrementInvoiceProcessingFailures(String reason) { synchronized (this) { this.invoice_processing_failures++; } }
 
-        public void incrementForwardingFailures(String reason) {
+        public synchronized void incrementForwardingFailures(String reason) {
             switch (reason) {
                 case "expiry_too_soon":
                     expiry_too_soon++;
@@ -224,11 +233,21 @@ public class GlobalStats {
             this.forwarding_failures++;
         }
         public void incrementForwardingSuccesses() { synchronized (this) { this.forwarding_successes++; } }
-        public void incrementForwardeVolume(int amt) { synchronized (this) { this.forwarded_volume+=amt; } }
-        public void incrementInvoiceProcessingVolume(int amt) { synchronized (this) { this.invoice_processing_volume+=amt; } }
+        public void incrementForwardeVolume(int amt) { synchronized (this) { this.forwarded_volume_sat+=amt; } }
+        public void incrementInvoiceProcessingVolume(int amt) { synchronized (this) { this.invoice_processing_volume_sat+=amt; } }
+
+        /** Snapshots written before the counters were widened carry only the 32-bit values. */
+        @java.io.Serial
+        private void readObject(java.io.ObjectInputStream input) throws java.io.IOException, ClassNotFoundException {
+            input.defaultReadObject();
+            if (forwarded_volume_sat == 0 && forwarded_volume != 0) forwarded_volume_sat = forwarded_volume;
+            if (invoice_processing_volume_sat == 0 && invoice_processing_volume != 0) invoice_processing_volume_sat = invoice_processing_volume;
+            forwarded_volume = 0;
+            invoice_processing_volume = 0;
+        }
 
         public String generateHTLCStatsCSV() {
-            return invoice_processing_success + "," + invoice_processing_failures + "," + invoice_processing_volume + "," + forwarding_failures + "," + forwarding_successes + "," + forwarded_volume + "," + expiry_too_soon + "," + temporary_channel_failure;
+            return invoice_processing_success + "," + invoice_processing_failures + "," + invoice_processing_volume_sat + "," + forwarding_failures + "," + forwarding_successes + "," + forwarded_volume_sat + "," + expiry_too_soon + "," + temporary_channel_failure;
         }
         public static String generateHTLCStatsHeader() {
             return "invoice_processing_success, invoice_processing_failures, invoice_processing_volume, forwarding_failures, forwarding_successes, forwarded_volume, expiry_too_soon, temporary_channel_failure";
