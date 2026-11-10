@@ -165,6 +165,12 @@ public class UVNetwork implements LNetwork {
     private boolean exactS50Completed;
     private Map<String, Object> exactS50Receipt;
     public static final String INITIAL_BRANCH_VERSION = "journal-initial-s50-branch-v2";
+    public static final String INITIAL_O_BRANCH_VERSION = "journal-initial-o-branch-v1";
+    private volatile PaymentRoles paymentRoles;           // bootstrap-time only; not persisted in snapshots
+    private boolean feePoliciesReassigned;                // initial-only, process-local (set after branch restore)
+    private Map<String, Object> feePolicyReceipt;
+    private final java.util.concurrent.ConcurrentLinkedQueue<Map<String, Object>> settledRoutes = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private volatile boolean routeLogEnabled;
     private Random random;
     private long masterSeed;  // e.g. passed in via misc.UVConfig
     private String bootstrapSessionId;
@@ -232,13 +238,13 @@ public class UVNetwork implements LNetwork {
         private final Map<String, Object> exactS50Receipt;
 
         private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph, long invoiceIdentity, Set<String> processedInvoices,
-                UVNetwork network, String branchSource, String branchState) {
+                UVNetwork network, String branchSource, String branchState, String branchVersion) {
             this.allocationVersion = INITIAL_BRANCH_VERSION;
             this.allocationHistoryKnown = network.allocationHistoryKnown;
             this.exactS50Attempted = network.exactS50Attempted;
             this.exactS50Completed = network.exactS50Completed;
             this.exactS50Receipt = copyS50Receipt(network.exactS50Receipt);
-            this.branchVersion = branchSource == null ? null : INITIAL_BRANCH_VERSION;
+            this.branchVersion = branchSource == null ? null : Objects.requireNonNull(branchVersion, "branch version");
             this.branchSource = branchSource;
             this.branchState = branchState;
             this.topologyMode = topologyMode;
@@ -364,6 +370,7 @@ public class UVNetwork implements LNetwork {
         print_log(startTime +": Bootstrapping network from scratch...");
 
         if (pubkeys_list==null) pubkeys_list = new ArrayList<>(uvConfig.bootstrap_nodes);
+        paymentRoles = PaymentRoles.fromConfig(uvConfig); // null unless journal.roles.enabled=true
 
         topologyMode = TopologyMode.SIMULATED_DISTRIBUTED;
         imported_rootnode_graph = null;
@@ -414,6 +421,7 @@ public class UVNetwork implements LNetwork {
                 int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
 
                 var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
+                if (paymentRoles != null) paymentRoles.assign(node.getPubKey(), profile); // own seed: network RNG untouched
 
                 synchronized (pubkeys_list) {
                     uvnodes.put(node.getPubKey(),node);
@@ -833,7 +841,12 @@ public class UVNetwork implements LNetwork {
         return generateInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees, drainMillis, null);
     }
 
-    public record ScheduledInvoice(long position, int relativeBlock, String sender, String destination, int amountSat) {}
+    /** maxFeeSat < 0 means the batch-wide fee cap (mixed-pilot behaviour); otherwise a per-invoice cap. */
+    public record ScheduledInvoice(long position, int relativeBlock, String sender, String destination, int amountSat, int maxFeeSat) {
+        public ScheduledInvoice(long position, int relativeBlock, String sender, String destination, int amountSat) {
+            this(position, relativeBlock, sender, destination, amountSat, -1);
+        }
+    }
 
     public InvoiceBatch generateScheduledInvoiceBatch(String batchId, double rate, int blocks,
             List<ScheduledInvoice> schedule, int maxFees, long drainMillis) throws InterruptedException {
@@ -849,7 +862,7 @@ public class UVNetwork implements LNetwork {
         for (int i = 0; i < rows.size(); i++) {
             var row = rows.get(i);
             if (row.position() != first + i || row.relativeBlock() != i / (int) events || row.amountSat() <= 0
-                    || row.sender() == null || row.sender().equals(row.destination())
+                    || row.sender() == null || row.sender().equals(row.destination()) || row.maxFeeSat() < -1
                     || getUVNode(row.sender()) == null || getUVNode(row.destination()) == null) throw new IllegalArgumentException("Invalid scheduled request " + i);
         }
         int min = rows.stream().mapToInt(ScheduledInvoice::amountSat).min().orElseThrow();
@@ -928,7 +941,8 @@ public class UVNetwork implements LNetwork {
                     int submittedHeight = uvTimechain.getCurrentBlockHeight();
                     if (planned != null && submittedHeight != replayOriginHeight + planned.relativeBlock()) throw new IllegalStateException("Scheduled request block overrun before submission");
                     batch.request(identity, sender.getPubKey(), invoice, submittedHeight);
-                    futures.add(submitInvoice(sender, invoice, maxFees, false,
+                    int invoiceMaxFees = planned != null && planned.maxFeeSat() >= 0 ? planned.maxFeeSat() : maxFees;
+                    futures.add(submitInvoice(sender, invoice, invoiceMaxFees, false,
                             report -> batch.complete(identity, report, uvTimechain.getCurrentBlockHeight()),
                             error -> batch.exception(identity, error, uvTimechain.getCurrentBlockHeight())));
                 }
@@ -1548,6 +1562,47 @@ public class UVNetwork implements LNetwork {
         return loadStatus(filename, SnapshotConfigPolicy.RESTORE_SAVED, sourceSha256);
     }
 
+    /** Settled, zero-invoice genuine opening state (no allocation, no fee reassignment): the common
+     * parent of the O and S50 branches of the traffic-role study. */
+    public void saveInitialOBranch(String filename, String sourceSha256) {
+        if (sourceSha256 == null || !sourceSha256.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Producer SHA256 required");
+        withSettledState(() -> {
+            requireInitialOBranch();
+            saveStatus(filename, sourceSha256, initialOFingerprint(), INITIAL_O_BRANCH_VERSION);
+            return null;
+        });
+    }
+
+    public boolean loadInitialOBranch(String filename, String sourceSha256) {
+        if (sourceSha256 == null || !sourceSha256.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Producer SHA256 required");
+        return loadStatus(filename, SnapshotConfigPolicy.RESTORE_SAVED, sourceSha256, INITIAL_O_BRANCH_VERSION);
+    }
+
+    public String initialOFingerprint() {
+        requireInitialOBranch();
+        return InitialS50State.fingerprint(uvConfig, uvTimechain, getUVNodeList(), random,
+                getTopologyMode().name(), imported_rootnode_graph, null);
+    }
+
+    public Map<String, Object> initialODescription() {
+        requireInitialOBranch();
+        return InitialS50State.describe(uvConfig, uvTimechain, getUVNodeList(), random,
+                getTopologyMode().name(), imported_rootnode_graph, null);
+    }
+
+    private void requireInitialOBranch() {
+        validateSettledState();
+        if (!isBootstrapCompleted() || getTopologyMode() != TopologyMode.SIMULATED_DISTRIBUTED
+                || !allocationHistoryKnown || exactS50Attempted || exactS50Completed || exactS50Receipt != null || feePoliciesReassigned
+                || invoiceIdentity != 0 || !issuedIdentities.isEmpty() || !processedInvoices.isEmpty()
+                || lastInvoiceBatch != null || !batchIds.isEmpty() || batchSequence != 0 || scheduledAdmission != null) {
+            throw new IllegalStateException("Supported O branch requires a settled genuine opening with zero invoice history");
+        }
+        InitialOState.validate(uvConfig, uvTimechain, getUVNodeList(), false);
+    }
+
+    public PaymentRoles getPaymentRoles() { return paymentRoles; }
+
     private static Map<String, Object> copyS50Receipt(Map<String, Object> source) {
         if (source == null) return null;
         Map<String, Object> result = new TreeMap<>(source);
@@ -1586,6 +1641,10 @@ public class UVNetwork implements LNetwork {
     }
 
     private void saveStatus(String filename, String branchSource, String branchState) {
+        saveStatus(filename, branchSource, branchState, INITIAL_BRANCH_VERSION);
+    }
+
+    private void saveStatus(String filename, String branchSource, String branchState, String branchVersion) {
         withSettledState(() -> {
             if (!isBootstrapCompleted()) throw new IllegalStateException("Network is not initialized");
             Path target = Path.of(filename).toAbsolutePath();
@@ -1599,7 +1658,7 @@ public class UVNetwork implements LNetwork {
                     output.writeInt(nodes.size());
                     for (UVNode node : nodes.values()) output.writeObject(node);
                     output.writeObject(random);
-                    output.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph, invoiceIdentity, processedInvoices, this, branchSource, branchState));
+                    output.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph, invoiceIdentity, processedInvoices, this, branchSource, branchState, branchVersion));
                 }
                 try { Files.move(temporary, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
                 catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
@@ -1623,13 +1682,29 @@ public class UVNetwork implements LNetwork {
     public boolean loadStatus(String file, SnapshotConfigPolicy configPolicy) { return loadStatus(file, configPolicy, null); }
 
     private boolean loadStatus(String file, SnapshotConfigPolicy configPolicy, String expectedBranchSource) {
+        return loadStatus(file, configPolicy, expectedBranchSource, INITIAL_BRANCH_VERSION);
+    }
+
+    private boolean loadStatus(String file, SnapshotConfigPolicy configPolicy, String expectedBranchSource, String expectedBranchVersion) {
         Objects.requireNonNull(configPolicy, "Snapshot config policy");
         lastLoadStatusError = null;
 
         LoadedStatus loadedStatus;
         try {
             loadedStatus = readStatusSnapshot(file);
-            if (expectedBranchSource != null) {
+            if (expectedBranchSource != null && INITIAL_O_BRANCH_VERSION.equals(expectedBranchVersion)) {
+                if (!INITIAL_O_BRANCH_VERSION.equals(loadedStatus.branchVersion) || !expectedBranchSource.equals(loadedStatus.branchSource)
+                        || !loadedStatus.allocationHistoryKnown || loadedStatus.exactS50Attempted || loadedStatus.exactS50Completed
+                        || loadedStatus.exactS50Receipt != null || loadedStatus.invoiceIdentity != 0 || !loadedStatus.processedInvoices.isEmpty()
+                        || loadedStatus.topologyMode != TopologyMode.SIMULATED_DISTRIBUTED || loadedStatus.importedRootNodeGraph != null) {
+                    throw new InvalidObjectException("Unsupported initial O branch metadata/source/history");
+                }
+                InitialOState.validate(loadedStatus.config, loadedStatus.timechain, loadedStatus.nodes, true);
+                String state = InitialS50State.fingerprint(loadedStatus.config, loadedStatus.timechain, loadedStatus.nodes,
+                        loadedStatus.random, loadedStatus.topologyMode.name(), loadedStatus.importedRootNodeGraph, null);
+                if (!state.equals(loadedStatus.branchState)) throw new InvalidObjectException("Initial O branch state/order fingerprint mismatch");
+            } else if (expectedBranchSource != null) {
+                if (!INITIAL_BRANCH_VERSION.equals(expectedBranchVersion)) throw new InvalidObjectException("Unknown branch version");
                 if (!INITIAL_BRANCH_VERSION.equals(loadedStatus.branchVersion) || !expectedBranchSource.equals(loadedStatus.branchSource)
                         || !loadedStatus.allocationHistoryKnown || !loadedStatus.exactS50Attempted || !loadedStatus.exactS50Completed
                         || loadedStatus.invoiceIdentity != 0 || !loadedStatus.processedInvoices.isEmpty()
@@ -1699,7 +1774,8 @@ public class UVNetwork implements LNetwork {
             invoiceIdentity = Math.max(invoiceIdentity, loadedStatus.invoiceIdentity);
             processedInvoices.addAll(loadedStatus.processedInvoices);
             validateSettledState();
-            if (expectedBranchSource != null && !initialS50Fingerprint().equals(loadedStatus.branchState)) {
+            feePoliciesReassigned = false; feePolicyReceipt = null; settledRoutes.clear();
+            if (expectedBranchSource != null && !(INITIAL_O_BRANCH_VERSION.equals(expectedBranchVersion) ? initialOFingerprint() : initialS50Fingerprint()).equals(loadedStatus.branchState)) {
                 throw new IllegalStateException("Bound branch differs after restoration");
             }
         } catch (Error error) {
@@ -1949,7 +2025,9 @@ public class UVNetwork implements LNetwork {
                 }
 
                 boolean opened = false;
-                int peer_retries = 50;
+                final var roles = paymentRoles;
+                // Role-weighted acceptance thins profile matches; scale retries to keep match counts comparable.
+                int peer_retries = roles == null ? 50 : 50 * roles.retryMultiplier();
                 var target_profile = uvConfig.selectProfileBy(thread_rng,"hubness");
 
                 // once the channel and target profiles are defined, try to open a channel...
@@ -1975,6 +2053,7 @@ public class UVNetwork implements LNetwork {
                     }
 
                     if (some_node.getProfile().equals(target_profile) && !some_random_key.equals(node.getPubKey())) {
+                        if (roles != null && thread_rng.nextDouble() >= roles.openAcceptance(some_random_key)) continue;
                         opened = node.openChannel(some_random_key,newChannelSize);
                     }
                 }
@@ -2021,6 +2100,105 @@ public class UVNetwork implements LNetwork {
     /* set the channel balances of each node to the level
      Notice: for each channel only the initiators modify the balance
      */
+
+    /**
+     * Initial-only directed fee-policy reassignment at a settled, zero-invoice boundary of a restored branch.
+     * Updates both shared channel endpoints and every node's gossip graph in place (routing iteration order
+     * preserved), i.e. instantaneous complete gossip. Not an operational fee update: no message traffic.
+     */
+    public Map<String, Object> reassignInitialFeePolicies(FeePolicyLaw.Spec spec, Map<String, String> roles) {
+        Objects.requireNonNull(spec, "fee spec");
+        lifecycle.lock();
+        try {
+            synchronized (admission) {
+                if (!isPaused() || hasActiveWork() || batchActive.get() || !unsettledState().isEmpty())
+                    throw new IllegalStateException("Fee reassignment requires an already settled pause");
+                if (feePoliciesReassigned || !isBootstrapCompleted() || getTopologyMode() != TopologyMode.SIMULATED_DISTRIBUTED
+                        || invoiceIdentity != 0 || lastInvoiceBatch != null || !issuedIdentities.isEmpty() || !processedInvoices.isEmpty())
+                    throw new IllegalStateException("Fee reassignment is initial-only");
+            }
+            return withSettledState(() -> {
+                if (feePoliciesReassigned || invoiceIdentity != 0 || lastInvoiceBatch != null)
+                    throw new IllegalStateException("Fee reassignment is initial-only at the closed boundary");
+                Map<String, String> profiles = new TreeMap<>();
+                Map<String, UVChannel> physical = new TreeMap<>();
+                for (var node : getUVNodeList().values()) {
+                    profiles.put(node.getPubKey(), node.getProfile().getName());
+                    for (var ch : node.getChannels().values()) physical.putIfAbsent(ch.getChannelId(), ch);
+                }
+                if (roles != null && !roles.keySet().equals(profiles.keySet())) throw new IllegalArgumentException("Role map does not cover exactly the network nodes");
+                Map<String, String[]> rows = new TreeMap<>();
+                physical.forEach((id, ch) -> rows.put(id, new String[]{ch.getNode1PubKey(), ch.getNode2PubKey(),
+                        Integer.toString(ch.getPolicy(ch.getNode1PubKey()).getCLTVDelta()), Integer.toString(ch.getPolicy(ch.getNode2PubKey()).getCLTVDelta())}));
+                // Draw everything before the first mutation; any failure after it is permanent.
+                var result = FeePolicyLaw.draw(spec, uvConfig, profiles, roles, rows);
+                // Preflight every graph before mutating anything. A view may hold zero or one edge per
+                // (source, channel): partial gossip views are kept partial, never completed here.
+                record ViewEdge(topology.ChannelGraph graph, String source, String channel, LNChannel.Policy policy) {}
+                var replacements = new ArrayList<ViewEdge>();
+                long absentDirections = 0;
+                for (var node : getUVNodeList().values()) {
+                    var graph = node.getChannelGraph();
+                    for (var edges : graph.getAdjMap().values())
+                        if (!(edges instanceof LinkedHashSet<?>)) throw new IllegalStateException("Fee reassignment requires restored (order-preserving) graphs");
+                    for (var e : result.directed().entrySet())
+                        for (var side : e.getValue().entrySet()) {
+                            int present = graph.countDirectedEdges(side.getKey(), e.getKey());
+                            if (present > 1) throw new IllegalStateException("Duplicate directed edge " + e.getKey() + " in " + node.getPubKey());
+                            if (present == 1) replacements.add(new ViewEdge(graph, side.getKey(), e.getKey(), side.getValue()));
+                            else if (graph.hasChannel(e.getKey())) absentDirections++;
+                        }
+                }
+                feePoliciesReassigned = true;
+                boolean completed = false;
+                try {
+                    long graphEdges = 0;
+                    for (var e : result.directed().entrySet()) {
+                        var ch = physical.get(e.getKey());
+                        for (var side : e.getValue().entrySet()) ch.setPolicy(side.getKey(), side.getValue());
+                    }
+                    for (var r : replacements) { r.graph().replacePolicyPreservingOrder(r.source(), r.channel(), r.policy()); graphEdges++; }
+                    validateSettledState();
+                    var table = new TreeMap<String, Object>();
+                    result.directed().forEach((id, sides) -> {
+                        var r = new TreeMap<String, Object>();
+                        sides.forEach((src, pol) -> r.put(src, List.of(pol.getBaseFee(), pol.getFeePpm(), pol.getCLTVDelta())));
+                        table.put(id, r);
+                    });
+                    var receipt = new TreeMap<String, Object>();
+                    receipt.put("version", FeePolicyLaw.VERSION);
+                    receipt.put("mode", spec.mode());
+                    receipt.put("seed", spec.seed());
+                    receipt.put("jitter_sigma", spec.jitterSigma());
+                    receipt.put("calibration_id", spec.calibrationId());
+                    receipt.put("channels", result.directed().size());
+                    receipt.put("graph_edges_replaced", graphEdges);
+                    receipt.put("known_channel_directions_absent_from_views", absentDirections);
+                    receipt.put("directed_policy_table_sha256", JournalCaptureExporter.sha256(JournalCaptureExporter.canonical(table).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    receipt.put("node_policies", result.nodePolicies());
+                    receipt.put("invoice_requests", 0);
+                    feePolicyReceipt = Collections.unmodifiableMap(receipt);
+                    completed = true;
+                    return feePolicyReceipt;
+                } finally {
+                    if (!completed) integrityFailure.compareAndSet(null, "Fee policy reassignment failed");
+                }
+            });
+        } finally { lifecycle.unlock(); }
+    }
+
+    public Map<String, Object> getFeePolicyReceipt() { return feePolicyReceipt; }
+
+    /** Successful settled routes (sender view: planned path and fee), recorded only when enabled. */
+    public void enableRouteLog() { routeLogEnabled = true; }
+    void recordSettledRoute(Map<String, Object> route) { if (routeLogEnabled) settledRoutes.add(route); }
+    public List<Map<String, Object>> drainSettledRoutes() {
+        if (!isPaused()) throw new IllegalStateException("Route log is drained only at a paused boundary");
+        var out = new ArrayList<Map<String, Object>>();
+        Map<String, Object> r;
+        while ((r = settledRoutes.poll()) != null) out.add(r);
+        return out;
+    }
 
     /** Initial allocation only: no invoices or repeated intervention; versioned eligibility is persisted. */
     public Map<String, Object> initializeExactS50(long trafficSeed) {
