@@ -644,6 +644,7 @@ public class UVNetwork implements LNetwork {
                 requireHealthy();
                 if (!hasActiveWork() && unsettledState().isEmpty()) {
                     settled = true;
+                    htlcResolution.discardResolvedAtSettledBoundary();
                     return;
                 }
                 remainingMillis(deadline);

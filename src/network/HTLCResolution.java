@@ -191,5 +191,15 @@ final class HTLCResolution {
     }
 
     synchronized int pendingCount() { return pending.size(); }
+
+    /**
+     * Drop terminal records at a settled boundary. With no pending contract, no queued message
+     * and all workers joined, nothing can refer to them any more; channel HTLC counters keep
+     * later IDs unique. This is the same argument that lets a snapshot load start from an
+     * empty ledger.
+     */
+    synchronized void discardResolvedAtSettledBoundary() {
+        if (pending.isEmpty()) contracts.clear();
+    }
     synchronized void reset() { contracts.clear(); pending.clear(); }
 }
