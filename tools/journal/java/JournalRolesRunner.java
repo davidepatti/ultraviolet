@@ -172,6 +172,7 @@ public final class JournalRolesRunner {
                 Map<String, String> roles = new TreeMap<>();
                 for (var e : ((Map<?, ?>) rolesFile.get("nodes")).entrySet()) roles.put((String) e.getKey(), (String) ((Map<?, ?>) e.getValue()).get("role"));
                 var spec = (JsonObject) request.get("fee_spec");
+                check(!String.valueOf(spec.get("calibration_id")).startsWith("UNCALIBRATED"), "Fee template placeholder: record the D5 calibration first");
                 var feeReceipt = n.reassignInitialFeePolicies(feeSpec(spec), roles);
                 provenance.put("fee_spec_sha256", sha256(JournalCaptureExporter.canonical(spec).getBytes(StandardCharsets.UTF_8)));
                 create(out.resolve("branch-initialization.json"), object("schema", "traffic-roles-branch-init-v1",
