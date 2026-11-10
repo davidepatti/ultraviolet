@@ -85,14 +85,17 @@ public class MiniDijkstra extends PathFinder {
         while (!queue.isEmpty() && paths.size() < topk) {
             var currentCandidate = queue.poll();
             stats.investigatedStates++;
-            if (currentCandidate.hops>maxHops) {
-                stats.excludedByMaxHops++;
-                continue;
-            }
-
             if (currentCandidate.vertex.equals(end)) {            // found one of the k best
                 paths.add(currentCandidate.toPath());
                 continue;                              // do not expand it further
+            }
+
+            // A path already at the hop limit cannot be extended. Rejecting it here, before
+            // its successors are costed, keeps over-length arrivals out of the per-vertex
+            // best-cost slots, where they could displace valid shorter routes.
+            if (currentCandidate.hops>=maxHops) {
+                stats.excludedByMaxHops++;
+                continue;
             }
 
             /* expand search frontier */
