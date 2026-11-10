@@ -373,7 +373,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int fees = 0;
 
         for (ChannelGraph.Edge e : path.forwardingEdges()) {
-            fees += computeFees(amount, e.policy().getBaseFee(), e.policy().getFeePpm());
+            // each hop charges on the amount it forwards, which includes the fees of the hops after it
+            fees += computeFees(amount + fees, e.policy().getBaseFee(), e.policy().getFeePpm());
         }
         return fees;
     }
@@ -635,25 +636,20 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // Carol will take the forwarding fees specified in the payload for Bob, which will instruct Bob about the HTLC to be sent to Carol
         // don't need to create the last path segment onion for local node htlc
         for (int n=0;n<path.edges().size()-1;n++) {
-            var source = path.edges().get(n).source();
-            var dest = path.edges().get(n).destination();
+            // The sender builds the route from what its own graph says about each hop: the same
+            // policies used to filter the path by fees. A forwarder rejects the HTLC if they are stale.
+            var edge = path.edges().get(n);
+            var policy = edge.policy();
+            if (policy == null) throw new IllegalStateException("ERROR: No policy for "+edge);
 
-            // TODO UVMODEL: used only by node, should be a service from the node itself ?
-            // point to clarify: it is used for searching own nodes or in general ?
-            var path_channel = uvNetwork.getChannelFromNodes(source,dest);
-            if (path_channel.isPresent()) {
-                var channel = path_channel.get();
-                var hopPayload = new OnionLayer.Payload(channel.getChannelId(),amount+cumulatedFees,out_cltv,null);
-                onionLayer = new OnionLayer(hopPayload,onionLayer);
+            var hopPayload = new OnionLayer.Payload(edge.id(),amount+cumulatedFees,out_cltv,null);
+            onionLayer = new OnionLayer(hopPayload,onionLayer);
 
-                // the fees in the carol->dina channel will be put in the Bob payload in the next loop
-                // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
-                cumulatedFees += computeFees(amount,channel.getPolicy(source).getBaseFee(),channel.getPolicy(source).getFeePpm());
-                out_cltv += channel.getPolicy(source).getCLTVDelta();
-            }
-            else {
-                throw new IllegalStateException("ERROR: No channel from "+source+ " to "+dest);
-            }
+            // the fees in the carol->dina channel will be put in the Bob payload in the next loop
+            // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
+            // BOLT 7: the fee is charged on the amount the hop forwards, fees of later hops included
+            cumulatedFees += computeFees(amount+cumulatedFees,policy.getBaseFee(),policy.getFeePpm());
+            out_cltv += policy.getCLTVDelta();
         }
 
         var first_hop = path.getEnd();
@@ -694,9 +690,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     private void failHTLC(MsgUpdateAddHTLC message, String reason) {
+        failHTLC(message, reason, true);
+    }
+
+    /** @param forwarding false when this node is the final recipient, which is not a forwarding event */
+    private void failHTLC(MsgUpdateAddHTLC message, String reason, boolean forwarding) {
         var before = uvNetwork.htlcResolution().receive(pubkey, message);
         var outcome = uvNetwork.htlcResolution().fail(pubkey, message, reason);
-        if (before.state() == HTLCResolution.State.PENDING && outcome.state() == HTLCResolution.State.FAILED) {
+        if (forwarding && before.state() == HTLCResolution.State.PENDING && outcome.state() == HTLCResolution.State.FAILED) {
             nodeStats.incrementForwardingFailures(reason);
         }
         sendHTLCOutcome(message, outcome);
@@ -750,7 +751,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             if (identity != null && message.getPayment_hash().equals(payload.getPayment_secret().orElse(null))) {
                 var invoice = generatedInvoices.get(identity);
                 if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
-                    failHTLC(message, "temporary_channel_failure"); return;
+                    failHTLC(message, "incorrect_or_unknown_payment_details", false); return;
                 }
                 var outcome = resolver.fulfill(pubkey, message, identity);
                 sendHTLCOutcome(message, outcome);
@@ -765,11 +766,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 || payload.getAmtToForward() > message.getAmount() || channel.getPolicy(pubkey) == null) {
             failHTLC(message, "temporary_channel_failure"); return;
         }
-        int delta = channel.getPolicy(pubkey).getCLTVDelta();
-        if (payload.getOutgoingCLTV() <= currentBlock
-                || (long) message.getCLTVExpiry() - payload.getOutgoingCLTV() < delta
-                || message.getCLTVExpiry() <= payload.getOutgoingCLTV()) {
+        var policy = channel.getPolicy(pubkey);
+        if (payload.getOutgoingCLTV() <= currentBlock) {
             failHTLC(message, "expiry_too_soon"); return;
+        }
+        if ((long) message.getCLTVExpiry() - payload.getOutgoingCLTV() < policy.getCLTVDelta()
+                || message.getCLTVExpiry() <= payload.getOutgoingCLTV()) {
+            failHTLC(message, "incorrect_cltv_expiry"); return;
+        }
+        // BOLT 7: the difference between incoming and outgoing amount must cover this node's fee
+        if (message.getAmount() - payload.getAmtToForward()
+                < computeFees(payload.getAmtToForward(), policy.getBaseFee(), policy.getFeePpm())) {
+            failHTLC(message, "fee_insufficient"); return;
         }
         var outgoing = new MsgUpdateAddHTLC(channel.getChannelId(), channel.getNextHTLCid(), payload.getAmtToForward(),
                 message.getPayment_hash(), payload.getOutgoingCLTV(), inner.get());

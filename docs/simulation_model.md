@@ -97,6 +97,14 @@ Invoice routing has three stages:
 
 The invoice report keeps counters from these stages separate.
 
+### Fees and failure reasons
+
+Each forwarding hop charges `base + amount_forwarded × ppm / 10^6` on the amount it forwards, which includes the fees of the hops after it (BOLT 7). The sender builds the route from the policies in its own graph, the same ones used for the `max_fees` filter, and every forwarder checks the fee and CLTV delta it is offered against its own policy.
+
+A forwarder can fail an HTLC with `temporary_channel_failure`, `expiry_too_soon`, `incorrect_cltv_expiry` or `fee_insufficient`; the recipient fails an amount mismatch with `incorrect_or_unknown_payment_details`, which is not counted as a forwarding failure. The last three cannot occur while the sender's graph matches the real policies. The invoice report has no dedicated columns for them: they are counted in `attempt_failed_unknown` and named in the log.
+
+Builds before this change computed every hop's fee on the invoice amount and did not check fees at forwarders, so paid fees on multi-hop routes are slightly higher now.
+
 ## Determinism Boundary
 
 Stable deterministic tests are feasible when:

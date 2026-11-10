@@ -228,7 +228,8 @@ public class GlobalStats {
                     temporary_channel_failure++;
                     break;
                 default:
-                    throw new IllegalArgumentException("Invalid reason for forwarding failure");
+                    // fee_insufficient, incorrect_cltv_expiry: counted in the total only
+                    break;
             }
             this.forwarding_failures++;
         }
