@@ -80,10 +80,20 @@ public final class JournalRolesRunner {
         Map<String, FeePolicyLaw.Group> groups = new TreeMap<>();
         var g = (Map<?, ?>) spec.getOrDefault("groups", new JsonObject());
         for (var e : g.entrySet()) {
-            var row = (Map<?, ?>) e.getValue(); var ppm = (Map<?, ?>) row.get("ppm");
-            var base = new ArrayList<Integer>(); for (Object b : (List<?>) row.get("base_msat_set")) base.add(((Number) b).intValue());
-            groups.put((String) e.getKey(), new FeePolicyLaw.Group(new FeePolicyLaw.Distribution(integer(ppm, "min"), integer(ppm, "max"),
-                    ((Number) ppm.get("median")).doubleValue(), ((Number) ppm.get("mean")).doubleValue()), base));
+            var row = (Map<?, ?>) e.getValue();
+            FeePolicyLaw.Distribution dist = null; FeePolicyLaw.QuantileTable table = null;
+            if (row.get("ppm") instanceof Map<?, ?> ppm)
+                dist = new FeePolicyLaw.Distribution(integer(ppm, "min"), integer(ppm, "max"), ((Number) ppm.get("median")).doubleValue(), ((Number) ppm.get("mean")).doubleValue());
+            if (row.get("ppm_quantiles") instanceof List<?> knots) {
+                var list = new ArrayList<double[]>();
+                for (Object k : knots) { var kv = (List<?>) k; list.add(new double[]{((Number) kv.get(0)).doubleValue(), ((Number) kv.get(1)).doubleValue()}); }
+                table = new FeePolicyLaw.QuantileTable(list);
+            }
+            List<Integer> base = null; SortedMap<Integer, Double> weights = null;
+            if (row.get("base_msat_set") instanceof List<?> set) { base = new ArrayList<>(); for (Object b : set) base.add(((Number) b).intValue()); }
+            if (row.get("base_msat_weights") instanceof Map<?, ?> w) { weights = new TreeMap<>(); for (var x : w.entrySet()) weights.put(Integer.parseInt((String) x.getKey()), ((Number) x.getValue()).doubleValue()); }
+            Double sigma = row.get("jitter_sigma") == null ? null : ((Number) row.get("jitter_sigma")).doubleValue();
+            groups.put((String) e.getKey(), new FeePolicyLaw.Group(dist, table, base, weights, sigma));
         }
         Object sigma = spec.get("jitter_sigma");
         return new FeePolicyLaw.Spec((String) spec.get("mode"), longValue(spec, "seed"), groups,

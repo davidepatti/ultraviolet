@@ -85,16 +85,34 @@ public final class TrafficRolesTest {
         }
         check((int) flat.nodePolicies().get("c").get("base_msat") == 1000 && (int) flat.nodePolicies().get("c").get("ppm") >= 100, "role group used before default");
         var jit = FeePolicyLaw.draw(new FeePolicyLaw.Spec("node_policy", 9, groups, 0.2, "test-cal"), cfg, profiles, roles, ch);
-        check(jit.nodePolicies().equals(flat.nodePolicies()), "jitter draws after node policies: same node draws");
+        java.util.function.Function<Map<String, Map<String, Object>>, Map<String, String>> draws0 = t -> { var m = new TreeMap<String, String>(); t.forEach((k, v) -> m.put(k, v.get("base_msat") + ":" + v.get("ppm"))); return m; };
+        check(draws0.apply(jit.nodePolicies()).equals(draws0.apply(flat.nodePolicies())), "jitter draws after node policies: same node draws");
         for (var e : jit.directed().entrySet()) for (var side : e.getValue().entrySet()) {
             int ppm = side.getValue().getFeePpm(), base = (int) jit.nodePolicies().get(side.getKey()).get("ppm");
-            check(ppm >= 0 && ppm <= 3000 && (base == 0 || Math.abs(Math.log((ppm + 0.5) / (base + 0.5))) < 1.2), "jitter is multiplicative and bounded");
+            check(ppm >= 0 && ppm <= 3000 && Math.abs(Math.log1p(ppm) - Math.log1p(base)) < 0.2 * 6 + 0.7, "jitter acts on log1p(ppm) and is bounded");
         }
         rejects("node_policy needs calibration id", () -> new FeePolicyLaw.Spec("node_policy", 9, groups, 0.2, ""));
         rejects("node_policy needs roles", () -> FeePolicyLaw.draw(new FeePolicyLaw.Spec("node_policy", 9, groups, 0.2, "c"), cfg, profiles, null, ch));
         rejects("unknown mode", () -> new FeePolicyLaw.Spec("dynamic", 9, groups, 0.2, "c"));
         rejects("missing group", () -> FeePolicyLaw.draw(new FeePolicyLaw.Spec("node_policy", 9, Map.of("router", groups.get("router")), 0.2, "c"), cfg, profiles, roles, ch));
         rejects("bad distribution", () -> new FeePolicyLaw.Distribution(10, 5, 7, 7));
+        // Empirical quantile groups, weighted base fees, per-group sigma.
+        var table = new FeePolicyLaw.QuantileTable(List.of(new double[]{0, 0}, new double[]{0.5, 1}, new double[]{0.9, 450}, new double[]{1, 10000}));
+        var rngT = new Random(3); int[] draws = new int[20000];
+        for (int i = 0; i < draws.length; i++) draws[i] = table.sample(rngT);
+        Arrays.sort(draws);
+        check(draws[0] >= 0 && draws[draws.length - 1] <= 10000 && Math.abs(draws[10000] - 1) <= 1 && Math.abs(draws[18000] - 450) <= 25, "quantile table reproduces its knots");
+        var weighted = new FeePolicyLaw.Group(null, table, null, new TreeMap<>(Map.of(0, 0.25, 1000, 0.75)), 0.0);
+        var wspec = new FeePolicyLaw.Spec("node_policy", 9, Map.of("default", weighted), 1.0, "test-cal");
+        Map<String, String> big = new TreeMap<>(), bigRoles = new TreeMap<>();
+        for (int i = 0; i < 4000; i++) { big.put("n" + i, "small"); bigRoles.put("n" + i, "payer"); }
+        var wres = FeePolicyLaw.draw(wspec, cfg, big, bigRoles, Map.of());
+        long zeros = wres.nodePolicies().values().stream().filter(r -> (int) r.get("base_msat") == 0).count();
+        check(Math.abs(zeros / 4000.0 - 0.25) < 0.03, "weighted base law");
+        check(wres.nodePolicies().values().stream().allMatch(r -> (double) r.get("jitter_sigma") == 0.0), "group sigma overrides spec sigma");
+        rejects("two ppm laws", () -> new FeePolicyLaw.Group(dist, table, List.of(0), null, null));
+        rejects("weights not summing to 1", () -> new FeePolicyLaw.Group(null, table, null, new TreeMap<>(Map.of(0, 0.5)), null));
+        rejects("decreasing knots", () -> new FeePolicyLaw.QuantileTable(List.of(new double[]{0, 5}, new double[]{1, 1})));
     }
 
     static Map<String, String> table(FeePolicyLaw.Result r) {
