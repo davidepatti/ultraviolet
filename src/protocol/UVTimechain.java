@@ -15,7 +15,8 @@ public class UVTimechain implements Runnable, Serializable {
     private static final int BLOCK_VSIZE_LIMIT = 1_000_000;
     // Defines fee-per-byte bands (inclusive upper bounds) for congestion tracking: 0-5, 5-15, 15-35, 35-100, 100-200, 200-500, 500-1000, 1000-2000
     private static final int[] FEE_BYTE_BANDS = {5, 15, 35, 100, 200, 500, 1000, 2000};
-    private int current_height;
+    // Written only under the timechain lock; volatile so that readers do not need it.
+    private volatile int current_height;
     private final int blocktime;
     private final PriorityQueue<UVTransaction> mempoolQueue = new PriorityQueue<>(new FeeComparator());
     private final List<Block>  blockChain = new ArrayList<>();
@@ -183,7 +184,7 @@ public class UVTimechain implements Runnable, Serializable {
         return Optional.empty();
     }
 
-    public synchronized int getCurrentBlockHeight() {
+    public int getCurrentBlockHeight() {
         return current_height;
     }
 
