@@ -77,6 +77,43 @@ public class UVNetwork implements LNetwork {
     private final Set<String> batchIds = new HashSet<>();
     private volatile InvoiceBatch lastInvoiceBatch;
     private long batchSequence;
+    private volatile ScheduledBlockAdmission scheduledAdmission;
+    private volatile Map<String, Object> lastScheduledTiming = Map.of();
+
+    /** Coordinates logical-block admission only; never waits under clock/node/admission locks. */
+    private final class ScheduledBlockAdmission {
+        final int startHeight;
+        final CountDownLatch firstBlock;
+        private int permittedHeight;
+        private boolean released;
+        private long waits, totalWaitNanos, maxWaitNanos;
+        ScheduledBlockAdmission(int startHeight) {
+            this.startHeight = startHeight;
+            permittedHeight = startHeight + 1;
+            firstBlock = uvTimechain.getWaitBlocksLatch(1);
+        }
+        synchronized void await(int nextHeight) throws InterruptedException {
+            long began = 0;
+            while (!released && nextHeight > permittedHeight) {
+                requireHealthy();
+                if (began == 0) { began = System.nanoTime(); waits++; }
+                wait(100);
+            }
+            if (began != 0) { long elapsed = System.nanoTime() - began; totalWaitNanos += elapsed; maxWaitNanos = Math.max(maxWaitNanos, elapsed); }
+        }
+        synchronized void permit(int height) { permittedHeight = Math.max(permittedHeight, height); notifyAll(); }
+        synchronized void release() { released = true; notifyAll(); }
+        synchronized Map<String, Object> metrics() {
+            return Map.of("mode", "logical-block-admission-v3", "blocked_advances", waits,
+                    "total_wait_ms", totalWaitNanos / 1e6, "max_wait_ms", maxWaitNanos / 1e6);
+        }
+    }
+
+    public void awaitScheduledBlockAdmission() throws InterruptedException {
+        var pacing = scheduledAdmission;
+        if (pacing != null) pacing.await(uvTimechain.getCurrentBlockHeight() + 1);
+    }
+    public Map<String, Object> getLastScheduledTiming() { return new TreeMap<>(lastScheduledTiming); }
     private volatile Thread batchOwner;
     public static Consumer<String> Log = System.out::println;
     private static final int LOG_QUEUE_CAPACITY = 131072;
@@ -123,6 +160,11 @@ public class UVNetwork implements LNetwork {
     private int bootstraps_running;
     private int bootstraps_ended;
 
+    private boolean allocationHistoryKnown = true;
+    private boolean exactS50Attempted;
+    private boolean exactS50Completed;
+    private Map<String, Object> exactS50Receipt;
+    public static final String INITIAL_BRANCH_VERSION = "journal-initial-s50-branch-v2";
     private Random random;
     private long masterSeed;  // e.g. passed in via misc.UVConfig
     private String bootstrapSessionId;
@@ -156,6 +198,9 @@ public class UVNetwork implements LNetwork {
         private final String importedRootNodeGraph;
         private long invoiceIdentity;
         private Set<String> processedInvoices = Set.of();
+        private boolean allocationHistoryKnown, exactS50Attempted, exactS50Completed;
+        private Map<String, Object> exactS50Receipt;
+        private String branchVersion, branchSource, branchState;
 
         private LoadedStatus(
                 UVConfig config,
@@ -182,8 +227,20 @@ public class UVNetwork implements LNetwork {
         private final String importedRootNodeGraph;
         private final long invoiceIdentity;
         private final Set<String> processedInvoices;
+        private final String allocationVersion, branchVersion, branchSource, branchState;
+        private final boolean allocationHistoryKnown, exactS50Attempted, exactS50Completed;
+        private final Map<String, Object> exactS50Receipt;
 
-        private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph, long invoiceIdentity, Set<String> processedInvoices) {
+        private TopologySnapshotMetadata(TopologyMode topologyMode, String importedRootNodeGraph, long invoiceIdentity, Set<String> processedInvoices,
+                UVNetwork network, String branchSource, String branchState) {
+            this.allocationVersion = INITIAL_BRANCH_VERSION;
+            this.allocationHistoryKnown = network.allocationHistoryKnown;
+            this.exactS50Attempted = network.exactS50Attempted;
+            this.exactS50Completed = network.exactS50Completed;
+            this.exactS50Receipt = copyS50Receipt(network.exactS50Receipt);
+            this.branchVersion = branchSource == null ? null : INITIAL_BRANCH_VERSION;
+            this.branchSource = branchSource;
+            this.branchState = branchState;
             this.topologyMode = topologyMode;
             this.importedRootNodeGraph = importedRootNodeGraph;
             this.invoiceIdentity = invoiceIdentity;
@@ -758,7 +815,10 @@ public class UVNetwork implements LNetwork {
     public InvoiceBatch getLastInvoiceBatch() { return lastInvoiceBatch; }
 
     private void waitBlock(long timeoutMillis) throws InterruptedException {
-        var latch = uvTimechain.getWaitBlocksLatch(1);
+        waitRegisteredBlock(uvTimechain.getWaitBlocksLatch(1), timeoutMillis);
+    }
+
+    private void waitRegisteredBlock(CountDownLatch latch, long timeoutMillis) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         try {
             while (!latch.await(Math.min(100, remainingMillis(deadline)), TimeUnit.MILLISECONDS)) {
@@ -773,8 +833,56 @@ public class UVNetwork implements LNetwork {
         return generateInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees, drainMillis, null);
     }
 
+    public record ScheduledInvoice(long position, int relativeBlock, String sender, String destination, int amountSat) {}
+
+    public InvoiceBatch generateScheduledInvoiceBatch(String batchId, double rate, int blocks,
+            List<ScheduledInvoice> schedule, int maxFees, long drainMillis) throws InterruptedException {
+        lifecycle.lock();
+        try {
+        if (!isPaused() || batchId == null || batchId.isBlank() || batchIds.contains(batchId) || maxFees < 0 || drainMillis <= 0)
+            throw new IllegalArgumentException("Scheduled replay requires paused state and valid new batch");
+        var rows = List.copyOf(schedule);
+        double events = getUVNodeList().size() * rate;
+        if (!Double.isFinite(events) || events <= 0 || events != Math.rint(events) || events >= Integer.MAX_VALUE
+                || blocks <= 0 || rows.size() != Math.multiplyExact((int) events, blocks)) throw new IllegalArgumentException("Invalid scheduled exposure");
+        long first = invoiceIdentity + 1;
+        for (int i = 0; i < rows.size(); i++) {
+            var row = rows.get(i);
+            if (row.position() != first + i || row.relativeBlock() != i / (int) events || row.amountSat() <= 0
+                    || row.sender() == null || row.sender().equals(row.destination())
+                    || getUVNode(row.sender()) == null || getUVNode(row.destination()) == null) throw new IllegalArgumentException("Invalid scheduled request " + i);
+        }
+        int min = rows.stream().mapToInt(ScheduledInvoice::amountSat).min().orElseThrow();
+        int max = rows.stream().mapToInt(ScheduledInvoice::amountSat).max().orElseThrow();
+        var pacing = new ScheduledBlockAdmission(uvTimechain.getCurrentBlockHeight());
+        synchronized (admission) {
+            if (scheduledAdmission != null || batchActive.get()) throw new IllegalStateException("Scheduled admission already active");
+            scheduledAdmission = pacing;
+        }
+        try {
+            resume();
+            return generateInvoiceBatch(batchId, rate, blocks, min, max, maxFees, drainMillis, null, rows, pacing);
+        }
+        catch (Error error) {
+            integrityFailure.compareAndSet(null, "Scheduled invoice injection failed");
+            if (batchOwner == Thread.currentThread()) { batchOwner = null; batchActive.set(false); }
+            throw error;
+        } finally {
+            pacing.release(); uvTimechain.cancelWait(pacing.firstBlock);
+            if (scheduledAdmission == pacing) scheduledAdmission = null;
+            lastScheduledTiming = pacing.metrics();
+        }
+        } finally { lifecycle.unlock(); }
+    }
+
     private InvoiceBatch generateInvoiceBatch(String batchId, double rate, int blocks,
             int minAmount, int maxAmount, int maxFees, long drainMillis, UVNode fixedSender) throws InterruptedException {
+        return generateInvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees, drainMillis, fixedSender, null, null);
+    }
+
+    private InvoiceBatch generateInvoiceBatch(String batchId, double rate, int blocks,
+            int minAmount, int maxAmount, int maxFees, long drainMillis, UVNode fixedSender,
+            List<ScheduledInvoice> scheduled, ScheduledBlockAdmission pacing) throws InterruptedException {
         if (!isRunning() || getUVNodeList().size() < 2 || !Double.isFinite(rate) || rate <= 0
                 || (fixedSender == null ? rate * getUVNodeList().size() : rate) >= Integer.MAX_VALUE
                 || blocks <= 0 || minAmount <= 0 || minAmount > maxAmount
@@ -787,35 +895,57 @@ public class UVNetwork implements LNetwork {
             if (!batchIds.add(batchId)) { batchOwner = null; batchActive.set(false); throw new IllegalArgumentException("duplicate batch ID"); }
         }
         var batch = new InvoiceBatch(batchId, rate, blocks, minAmount, maxAmount, maxFees,
-                invoice_thread_pool_size, uvTimechain.getCurrentBlockHeight(), fixedSender == null ? null : fixedSender.getPubKey());
+                invoice_thread_pool_size, pacing == null ? uvTimechain.getCurrentBlockHeight() : pacing.startHeight, fixedSender == null ? null : fixedSender.getPubKey());
         lastInvoiceBatch = batch;
         var futures = new ArrayList<Future<GlobalStats.NodeStats.InvoiceReport>>();
         // Injection and every submitted task remain accounted for, even if injection fails.
         Exception injectionFailure = null;
         try (var injection = beginMutation()) {
-            waitBlock(drainMillis);
+            if (pacing == null) waitBlock(drainMillis); else waitRegisteredBlock(pacing.firstBlock, drainMillis);
             double events = fixedSender == null ? getUVNodeList().size() * rate : rate;
+            int replayOriginHeight = uvTimechain.getCurrentBlockHeight();
+            int replayIndex = 0;
             for (int block = 0; block < blocks; block++) {
                 requireHealthy();
                 int height = uvTimechain.getCurrentBlockHeight();
-                int count = (int) events + (random.nextDouble(1) < events - (int) events ? 1 : 0);
+                if (scheduled != null && height != replayOriginHeight + block) throw new IllegalStateException("Scheduled block overrun");
+                int count = scheduled == null ? (int) events + (random.nextDouble(1) < events - (int) events ? 1 : 0) : (int) events;
                 for (int event = 0; event < count; event++) {
-                    UVNode sender = fixedSender == null ? getRandomNode() : fixedSender, destination;
-                    do { destination = getRandomNode(); } while (destination.equals(sender));
-                    int amount = minAmount == maxAmount ? minAmount : random.nextInt(maxAmount - minAmount + 1) + minAmount;
+                    ScheduledInvoice planned = scheduled == null ? null : scheduled.get(replayIndex++);
+                    UVNode sender, destination;
+                    int amount;
+                    if (planned == null) {
+                        sender = fixedSender == null ? getRandomNode() : fixedSender;
+                        do { destination = getRandomNode(); } while (destination.equals(sender));
+                        amount = minAmount == maxAmount ? minAmount : random.nextInt(maxAmount - minAmount + 1) + minAmount;
+                    } else {
+                        sender = getUVNode(planned.sender()); destination = getUVNode(planned.destination()); amount = planned.amountSat();
+                        if (uvTimechain.getCurrentBlockHeight() != replayOriginHeight + planned.relativeBlock()) throw new IllegalStateException("Scheduled request block overrun");
+                    }
                     long identity = nextInvoiceIdentity();
+                    if (planned != null && identity != planned.position()) throw new IllegalStateException("Scheduled identity changed");
                     var invoice = destination.generateInvoiceWithIdentity(amount, amount + " " + sender.getPubKey() + " to " + destination.getPubKey(), identity);
-                    batch.request(identity, sender.getPubKey(), invoice, uvTimechain.getCurrentBlockHeight());
+                    int submittedHeight = uvTimechain.getCurrentBlockHeight();
+                    if (planned != null && submittedHeight != replayOriginHeight + planned.relativeBlock()) throw new IllegalStateException("Scheduled request block overrun before submission");
+                    batch.request(identity, sender.getPubKey(), invoice, submittedHeight);
                     futures.add(submitInvoice(sender, invoice, maxFees, false,
                             report -> batch.complete(identity, report, uvTimechain.getCurrentBlockHeight()),
                             error -> batch.exception(identity, error, uvTimechain.getCurrentBlockHeight())));
                 }
-                if (uvTimechain.getCurrentBlockHeight() == height) waitBlock(drainMillis);
+                if (pacing != null) {
+                    // Register before granting the next block: no missed wakeup under host load.
+                    var nextBlock = uvTimechain.getWaitBlocksLatch(1);
+                    pacing.permit(height + 1);
+                    waitRegisteredBlock(nextBlock, drainMillis);
+                } else if (uvTimechain.getCurrentBlockHeight() == height) waitBlock(drainMillis);
             }
         } catch (Exception error) {
             injectionFailure = error;
             batch.fail(error); recordFailure("Invoice injection failed", error);
-        } finally { batch.injectionStopped(uvTimechain.getCurrentBlockHeight()); }
+        } finally {
+            if (pacing != null) { pacing.release(); if (scheduledAdmission == pacing) scheduledAdmission = null; }
+            batch.injectionStopped(uvTimechain.getCurrentBlockHeight());
+        }
         try {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(drainMillis);
             for (var future : futures) {
@@ -1017,6 +1147,7 @@ public class UVNetwork implements LNetwork {
                 htlcResolution.reset();
                 uvnodes.clear();
                 uvnodes.putAll(importedNodes);
+                allocationHistoryKnown = false; exactS50Attempted = false; exactS50Completed = false; exactS50Receipt = null;
                 refreshPubkeyList();
                 imported_rootnode_graph = root.getPubKey();
                 topologyMode = TopologyMode.IMPORTED_OBSERVER_VIEW;
@@ -1400,7 +1531,61 @@ public class UVNetwork implements LNetwork {
         }
     }
 
-    public void saveStatus(String filename) {
+    public void saveStatus(String filename) { saveStatus(filename, null, null); }
+
+    /** Only a verified, settled, zero-invoice S50 state is a supported paired branch. */
+    public void saveInitialS50Branch(String filename, String sourceSha256) {
+        if (sourceSha256 == null || !sourceSha256.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Producer SHA256 required");
+        withSettledState(() -> {
+            requireInitialS50Branch();
+            saveStatus(filename, sourceSha256, initialS50Fingerprint());
+            return null;
+        });
+    }
+
+    public boolean loadInitialS50Branch(String filename, String sourceSha256) {
+        if (sourceSha256 == null || !sourceSha256.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Producer SHA256 required");
+        return loadStatus(filename, SnapshotConfigPolicy.RESTORE_SAVED, sourceSha256);
+    }
+
+    private static Map<String, Object> copyS50Receipt(Map<String, Object> source) {
+        if (source == null) return null;
+        Map<String, Object> result = new TreeMap<>(source);
+        if (source.get("node_holding_deltas_sat") instanceof Map<?, ?> deltas) result.put("node_holding_deltas_sat", new TreeMap<>(deltas));
+        return result;
+    }
+
+    public Map<String, Object> getExactS50Receipt() { return copyS50Receipt(exactS50Receipt); }
+
+    public String initialS50Fingerprint() {
+        requireInitialS50Branch();
+        return InitialS50State.fingerprint(uvConfig, uvTimechain, getUVNodeList(), random,
+                getTopologyMode().name(), imported_rootnode_graph, exactS50Receipt);
+    }
+
+    public Map<String, Object> initialS50Description() {
+        requireInitialS50Branch();
+        return InitialS50State.describe(uvConfig, uvTimechain, getUVNodeList(), random,
+                getTopologyMode().name(), imported_rootnode_graph, exactS50Receipt);
+    }
+
+    public String pausedNativeRandomFingerprint() {
+        if (!isPaused()) throw new IllegalStateException("Native RNG audit requires paused state");
+        return InitialS50State.digest(random);
+    }
+
+    private void requireInitialS50Branch() {
+        validateSettledState();
+        if (!isBootstrapCompleted() || getTopologyMode() != TopologyMode.SIMULATED_DISTRIBUTED
+                || !allocationHistoryKnown || !exactS50Attempted || !exactS50Completed || exactS50Receipt == null
+                || invoiceIdentity != 0 || !issuedIdentities.isEmpty() || !processedInvoices.isEmpty()
+                || lastInvoiceBatch != null || !batchIds.isEmpty() || batchSequence != 0 || scheduledAdmission != null) {
+            throw new IllegalStateException("Supported branch requires completed initial S50 with zero invoice history");
+        }
+        InitialS50State.validate(uvConfig, uvTimechain, getUVNodeList(), random, exactS50Receipt, false);
+    }
+
+    private void saveStatus(String filename, String branchSource, String branchState) {
         withSettledState(() -> {
             if (!isBootstrapCompleted()) throw new IllegalStateException("Network is not initialized");
             Path target = Path.of(filename).toAbsolutePath();
@@ -1414,7 +1599,7 @@ public class UVNetwork implements LNetwork {
                     output.writeInt(nodes.size());
                     for (UVNode node : nodes.values()) output.writeObject(node);
                     output.writeObject(random);
-                    output.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph, invoiceIdentity, processedInvoices));
+                    output.writeObject(new TopologySnapshotMetadata(topologyMode, imported_rootnode_graph, invoiceIdentity, processedInvoices, this, branchSource, branchState));
                 }
                 try { Files.move(temporary, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
                 catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
@@ -1435,13 +1620,27 @@ public class UVNetwork implements LNetwork {
 
     /** APPLY_RUNTIME validates the current config before changing live state, rebuilds
      * workers/pathfinders from it, and preserves the saved topology, clock and RNG. */
-    public boolean loadStatus(String file, SnapshotConfigPolicy configPolicy) {
+    public boolean loadStatus(String file, SnapshotConfigPolicy configPolicy) { return loadStatus(file, configPolicy, null); }
+
+    private boolean loadStatus(String file, SnapshotConfigPolicy configPolicy, String expectedBranchSource) {
         Objects.requireNonNull(configPolicy, "Snapshot config policy");
         lastLoadStatusError = null;
 
         LoadedStatus loadedStatus;
         try {
             loadedStatus = readStatusSnapshot(file);
+            if (expectedBranchSource != null) {
+                if (!INITIAL_BRANCH_VERSION.equals(loadedStatus.branchVersion) || !expectedBranchSource.equals(loadedStatus.branchSource)
+                        || !loadedStatus.allocationHistoryKnown || !loadedStatus.exactS50Attempted || !loadedStatus.exactS50Completed
+                        || loadedStatus.invoiceIdentity != 0 || !loadedStatus.processedInvoices.isEmpty()
+                        || loadedStatus.topologyMode != TopologyMode.SIMULATED_DISTRIBUTED || loadedStatus.importedRootNodeGraph != null) {
+                    throw new InvalidObjectException("Unsupported initial S50 branch metadata/source/history");
+                }
+                InitialS50State.validate(loadedStatus.config, loadedStatus.timechain, loadedStatus.nodes, loadedStatus.random, loadedStatus.exactS50Receipt, true);
+                String state = InitialS50State.fingerprint(loadedStatus.config, loadedStatus.timechain, loadedStatus.nodes,
+                        loadedStatus.random, loadedStatus.topologyMode.name(), loadedStatus.importedRootNodeGraph, loadedStatus.exactS50Receipt);
+                if (!state.equals(loadedStatus.branchState)) throw new InvalidObjectException("Initial S50 branch state/order fingerprint mismatch");
+            }
         } catch (IOException | ClassNotFoundException | RuntimeException e) {
             lastLoadStatusError = describeLoadStatusError(file, e);
             log(lastLoadStatusError);
@@ -1463,6 +1662,10 @@ public class UVNetwork implements LNetwork {
                         loadedStatus.random, loadedStatus.topologyMode, loadedStatus.importedRootNodeGraph);
                 selected.invoiceIdentity = loadedStatus.invoiceIdentity;
                 selected.processedInvoices = loadedStatus.processedInvoices;
+                selected.allocationHistoryKnown = loadedStatus.allocationHistoryKnown;
+                selected.exactS50Attempted = loadedStatus.exactS50Attempted;
+                selected.exactS50Completed = loadedStatus.exactS50Completed;
+                selected.exactS50Receipt = loadedStatus.exactS50Receipt;
                 loadedStatus = selected;
             }
             if (isHealthy()) {
@@ -1488,9 +1691,20 @@ public class UVNetwork implements LNetwork {
                 for (long identity : node.getGeneratedInvoices().keySet()) invoiceIdentity = Math.max(invoiceIdentity, identity);
                 processedInvoices.addAll(node.getPayedInvoices().keySet());
             }
+            allocationHistoryKnown = loadedStatus.allocationHistoryKnown;
+            exactS50Attempted = loadedStatus.exactS50Attempted;
+            exactS50Completed = loadedStatus.exactS50Completed;
+            exactS50Receipt = copyS50Receipt(loadedStatus.exactS50Receipt);
+            batchSequence = 0;
             invoiceIdentity = Math.max(invoiceIdentity, loadedStatus.invoiceIdentity);
             processedInvoices.addAll(loadedStatus.processedInvoices);
             validateSettledState();
+            if (expectedBranchSource != null && !initialS50Fingerprint().equals(loadedStatus.branchState)) {
+                throw new IllegalStateException("Bound branch differs after restoration");
+            }
+        } catch (Error error) {
+            integrityFailure.compareAndSet(null, "Snapshot restore failed");
+            throw error;
         } catch (RuntimeException error) {
             recordFailure("Snapshot restore failed", error);
             lastLoadStatusError = error.toString();
@@ -1555,6 +1769,13 @@ public class UVNetwork implements LNetwork {
                     loadedImportedRootNodeGraph
             );
             if (snapshotMetadata != null) {
+                loaded.allocationHistoryKnown = INITIAL_BRANCH_VERSION.equals(snapshotMetadata.allocationVersion) && snapshotMetadata.allocationHistoryKnown;
+                loaded.exactS50Attempted = snapshotMetadata.exactS50Attempted;
+                loaded.exactS50Completed = snapshotMetadata.exactS50Completed;
+                loaded.exactS50Receipt = copyS50Receipt(snapshotMetadata.exactS50Receipt);
+                loaded.branchVersion = snapshotMetadata.branchVersion;
+                loaded.branchSource = snapshotMetadata.branchSource;
+                loaded.branchState = snapshotMetadata.branchState;
                 loaded.invoiceIdentity = snapshotMetadata.invoiceIdentity;
                 loaded.processedInvoices = snapshotMetadata.processedInvoices == null ? Set.of() : snapshotMetadata.processedInvoices;
             }
@@ -1800,6 +2021,86 @@ public class UVNetwork implements LNetwork {
     /* set the channel balances of each node to the level
      Notice: for each channel only the initiators modify the balance
      */
+
+    /** Initial allocation only: no invoices or repeated intervention; versioned eligibility is persisted. */
+    public Map<String, Object> initializeExactS50(long trafficSeed) {
+        lifecycle.lock();
+        try {
+            synchronized (admission) {
+                if (!isPaused() || hasActiveWork() || batchActive.get() || !unsettledState().isEmpty()) {
+                    throw new IllegalStateException("Exact S50 requires an already settled pause");
+                }
+                if (!allocationHistoryKnown || exactS50Attempted || invoiceIdentity != 0 || lastInvoiceBatch != null
+                        || !issuedIdentities.isEmpty() || !processedInvoices.isEmpty() || trafficSeed <= 0) {
+                    throw new IllegalStateException("Exact S50 is initial-only");
+                }
+            }
+            return withSettledState(() -> {
+                if (!draining) throw new IllegalStateException("Exact S50 mutation admission must be closed");
+                // Recheck after acquiring the closed boundary: admission could race the earlier pause check.
+                if (!allocationHistoryKnown || exactS50Attempted || invoiceIdentity != 0 || lastInvoiceBatch != null
+                        || !issuedIdentities.isEmpty() || !processedInvoices.isEmpty()) {
+                    throw new IllegalStateException("Exact S50 is initial-only at the closed boundary");
+                }
+                var channels = new TreeMap<String, UVChannel>();
+                for (UVNode node : getUVNodeList().values()) {
+                    for (UVChannel channel : node.getChannels().values()) {
+                        UVChannel previous = channels.putIfAbsent(channel.getChannelId(), channel);
+                        if (previous != null && previous != channel) throw new IllegalStateException("Duplicate physical channel");
+                    }
+                }
+                if (channels.isEmpty()) throw new IllegalStateException("Empty S50 network");
+                for (UVChannel channel : channels.values()) {
+                    SymmetricAllocation.preflight(channel);
+                    if (channel.getLastCommitNumber() != 0
+                            || Math.min(channel.getBalance(channel.getNode1PubKey()), channel.getBalance(channel.getNode2PubKey())) != 0) {
+                        throw new IllegalStateException("Exact S50 requires genuine opening commitments");
+                    }
+                }
+                // Set before the first mutation: a partial failure is permanently invalid, never resumed.
+                exactS50Attempted = true;
+                boolean completed = false;
+                try {
+                long moved = 0;
+                int changed = 0;
+                Map<String, Long> deltas = new TreeMap<>();
+                getUVNodeList().keySet().forEach(key -> deltas.put(key, 0L));
+                for (UVChannel channel : channels.values()) {
+                        String a = channel.getNode1PubKey(), b = channel.getNode2PubKey();
+                        long delta = Math.subtractExact((long) channel.getCapacity() / 2, channel.getBalance(a));
+                        long amount = SymmetricAllocation.apply(channel);
+                        moved = Math.addExact(moved, amount);
+                        if (amount != 0) changed++;
+                        deltas.put(a, Math.addExact(deltas.get(a), delta));
+                        deltas.put(b, Math.subtractExact(deltas.get(b), delta));
+                    }
+                    validateSettledState();
+                    random.setSeed(trafficSeed); // Native sampler, distinct frozen traffic realization.
+                Map<String, Object> receipt = new TreeMap<>();
+                receipt.put("allocation_version", "raw-half-lexicographic-v1");
+                receipt.put("rounding", "floor(C/2) to lexicographically smaller endpoint; remainder to other");
+                receipt.put("changed_channels", changed);
+                receipt.put("channels", channels.size());
+                receipt.put("transferred_allocation_sat", moved);
+                receipt.put("node_holding_deltas_sat", deltas);
+                receipt.put("invoice_requests", 0);
+                receipt.put("invoice_successes", 0);
+                receipt.put("traffic_seed", trafficSeed);
+                exactS50Receipt = copyS50Receipt(receipt);
+                exactS50Completed = true;
+                var result = copyS50Receipt(receipt);
+                completed = true;
+                return result;
+                } finally {
+                    // No allocation, logging or exception formatting is needed to fail closed on Error.
+                    if (!completed) {
+                        exactS50Completed = false;
+                        integrityFailure.compareAndSet(null, "Exact S50 initialization failed");
+                    }
+                }
+            });
+        } finally { lifecycle.unlock(); }
+    }
 
     public void setLocalBalances(double local_level, int min_delta) {
         withSettledState(() -> { setLocalBalancesInternal(local_level, min_delta); return null; });

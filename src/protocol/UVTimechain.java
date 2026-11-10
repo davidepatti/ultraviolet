@@ -252,6 +252,8 @@ public class UVTimechain implements Runnable, Serializable {
         try {
             while (getStatus()) {
                 Thread.sleep(blocktime);
+                // Optional scheduled admission, outside this monitor and every node lock.
+                uvm.awaitScheduledBlockAdmission();
                 synchronized (this) {
                     if (!status) break;
                     tictocNextBlock();

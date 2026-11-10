@@ -125,7 +125,9 @@ public class ChannelGraph implements Serializable  {
 
             for (String k : adj_map.keySet()) {
                 s.writeObject(k);
-                s.writeObject(adj_map.get(k));
+                // Preserve the observed search-neighbor order. Policy identity hashes change on restore.
+                // LinkedHashSet is also a HashSet, so the legacy reader format remains compatible.
+                s.writeObject(new LinkedHashSet<>(adj_map.get(k)));
             }
 
         } catch (IOException e) {
