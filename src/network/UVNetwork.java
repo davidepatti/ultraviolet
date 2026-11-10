@@ -840,6 +840,17 @@ public class UVNetwork implements LNetwork {
      * @return a network.UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
+        // pubkeys_list mirrors the registry in insertion order, so drawing from it selects
+        // the same node as drawing from a copy of the registry, without the O(N) copy.
+        var keys = pubkeys_list;
+        if (keys != null) {
+            synchronized (keys) {
+                if (!keys.isEmpty() && keys.size() == uvnodes.size()) {
+                    var node = uvnodes.get(keys.get(random.nextInt(keys.size())));
+                    if (node != null) return node;
+                }
+            }
+        }
         var nodes = new ArrayList<>(getUVNodeList().values());
         return nodes.get(random.nextInt(nodes.size()));
     }
@@ -869,7 +880,7 @@ public class UVNetwork implements LNetwork {
         Optional<LNChannel> channel = Optional.empty();
         int found_channels = 0;
 
-        for (LNChannel c: n1.getLNChannelList()) {
+        for (LNChannel c: n1.getChannels().values()) {
             if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2)) {
                 channel = Optional.of(c);
                 found_channels++;
