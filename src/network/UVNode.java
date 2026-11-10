@@ -54,6 +54,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private ConcurrentHashMap<Long, LNInvoice> generatedInvoices = new ConcurrentHashMap<>();
+    // payment hash -> identity of the generated invoice, rebuilt on load
+    transient private ConcurrentHashMap<String, Long> invoiceIdentityByHash = new ConcurrentHashMap<>();
     transient private ConcurrentHashMap<String, LNInvoice> pendingInvoices = new ConcurrentHashMap<>();
     transient private HashMap<String, LNInvoice> payedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
@@ -290,6 +292,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(identity).toByteArray()));
             var invoice = new LNInvoice(hash, amount, pubkey, message);
             if (generatedInvoices.putIfAbsent(identity, invoice) != null) throw new IllegalStateException("Duplicate invoice identity");
+            invoiceIdentityByHash.put(hash, identity);
             return invoice;
         }
     }
@@ -741,17 +744,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         if (currentBlock >= message.getCLTVExpiry()) { failHTLC(message, "expiry_too_soon"); return; }
 
         if (payload.getShortChannelId().equals("00")) {
-            for (var entry : generatedInvoices.entrySet()) {
-                var invoice = entry.getValue();
-                if (invoice.getHash().equals(message.getPayment_hash())
-                        && invoice.getHash().equals(payload.getPayment_secret().orElse(null))) {
-                    if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
-                        failHTLC(message, "temporary_channel_failure"); return;
-                    }
-                    var outcome = resolver.fulfill(pubkey, message, entry.getKey());
-                    sendHTLCOutcome(message, outcome);
-                    return;
+            Long identity = findInvoiceIdentity(message.getPayment_hash());
+            if (identity != null && message.getPayment_hash().equals(payload.getPayment_secret().orElse(null))) {
+                var invoice = generatedInvoices.get(identity);
+                if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
+                    failHTLC(message, "temporary_channel_failure"); return;
                 }
+                var outcome = resolver.fulfill(pubkey, message, identity);
+                sendHTLCOutcome(message, outcome);
+                return;
             }
             throw new IllegalStateException("No generated invoice matches the final HTLC");
         }
@@ -777,6 +778,23 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         pendingHTLC.put(outgoing.getPayment_hash(), outgoing);
         nodeStats.incrementForwardingSuccesses();
         sendToPeer(getChannelPeer(channel.getChannelId()), outgoing, uvNetwork);
+    }
+
+    /** Identity of the locally generated invoice with this payment hash, or null. */
+    private Long findInvoiceIdentity(String hash) {
+        Long identity = invoiceIdentityByHash.get(hash);
+        if (identity != null) {
+            var invoice = generatedInvoices.get(identity);
+            if (invoice != null && invoice.getHash().equals(hash)) return identity;
+        }
+        // Invoices placed directly in the public map are indexed on first use.
+        for (var entry : generatedInvoices.entrySet()) {
+            if (entry.getValue().getHash().equals(hash)) {
+                invoiceIdentityByHash.put(hash, entry.getKey());
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private String getMyChannelWith(String node_id) {
@@ -1505,6 +1523,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         //noinspection unchecked
         generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
+        invoiceIdentityByHash = new ConcurrentHashMap<>();
+        for (var entry : generatedInvoices.entrySet()) invoiceIdentityByHash.put(entry.getValue().getHash(), entry.getKey());
         //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
         nodeStats = (GlobalStats.NodeStats) s.readObject();
         payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
