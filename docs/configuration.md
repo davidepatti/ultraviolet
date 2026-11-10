@@ -83,7 +83,7 @@ These values should be changed together. If `blocktime_ms` is lowered but `node_
 | Property | Meaning |
 | --- | --- |
 | `bootstrap_nodes` | Number of synthetic nodes to create during bootstrap. |
-| `bootstrap_blocks` | Block interval over which node bootstrap start times are distributed. |
+| `bootstrap_blocks` | Block interval over which node bootstrap start times are distributed. Each node starts at its sampled block; nodes sampled for the same block start together. |
 | `bootstrap_time_median` | Fraction of `bootstrap_blocks` used as the median for bootstrap start-time sampling. |
 | `bootstrap_time_mean` | Fraction of `bootstrap_blocks` used as the mean for bootstrap start-time sampling. |
 

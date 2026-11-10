@@ -128,24 +128,10 @@ public class UVNetwork implements LNetwork {
     private String bootstrapSessionId;
     private String lastLoadStatusError;
     private BufferedWriter criticalLogWriter;
-    private final ThreadLocal<Random> threadRng =
-            ThreadLocal.withInitial(() -> {
-                String threadName = Thread.currentThread().getName();
-                // derive a numeric seed component from the thread name (e.g., parsing suffix or using hashCode)
-                long nameHash;
-                String[] parts = threadName.split("-");
-                if (parts.length > 1) {
-                    try {
-                        nameHash = Long.parseLong(parts[parts.length - 1]);
-                    } catch (NumberFormatException e) {
-                        nameHash = threadName.hashCode();
-                    }
-                } else {
-                    nameHash = threadName.hashCode();
-                }
-                long seed = masterSeed ^ nameHash;
-                return new Random(seed);
-            });
+    /** A generator per bootstrap node, derived from the master seed and the node index only. */
+    private Random nodeRandom(int nodeIndex) {
+        return new Random(masterSeed ^ (0x9E3779B97F4A7C15L * (nodeIndex + 1L)));
+    }
 
     private static final class LoadedStatus {
         private final UVConfig config;
@@ -347,7 +333,8 @@ public class UVNetwork implements LNetwork {
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
 
         try {
-            int last_issue_block = 0;
+            // Sampled start times are block offsets from this height.
+            final int first_block = getTimechain().getCurrentBlockHeight();
 
             for (int current_index=0;current_index<uvConfig.bootstrap_nodes;current_index++) {
 
@@ -357,6 +344,7 @@ public class UVNetwork implements LNetwork {
                 int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
 
                 var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
+                node.setLocalRndGenerator(nodeRandom(current_index));
 
                 synchronized (pubkeys_list) {
                     uvnodes.put(node.getPubKey(),node);
@@ -364,10 +352,10 @@ public class UVNetwork implements LNetwork {
                     pubkeys_list.add(node.getPubKey());
                 }
 
-                int to_wait = boot_times[current_index] - last_issue_block;
-                // Wait at least 1 block even if to_wait == 0, to serialize starts
-                waitForBlocks(Math.max(to_wait,1));
-                last_issue_block = getTimechain().getCurrentBlockHeight();
+                // Start each node at its sampled block. Nodes sampled for the same block start
+                // together, so the configured start-time distribution is what actually happens.
+                int to_wait = first_block + boot_times[current_index] - getTimechain().getCurrentBlockHeight();
+                if (to_wait > 0) waitForBlocks(to_wait);
 
                 bootstrapExecutor.submit(() -> bootstrapNode(node));
             }
@@ -1702,10 +1690,11 @@ public class UVNetwork implements LNetwork {
     public void bootstrapNode(UVNode node) {
 
         try {
-            // get a deterministic thread-related seed to create the Random
-            Random thread_rng = threadRng.get();
-
-            node.setLocalRndGenerator(thread_rng);
+            // The generator belongs to the node, not to the pool thread that happens to run it.
+            if (node.getLocalRndGenerator() == null) {
+                node.setLocalRndGenerator(new Random(masterSeed ^ (0x9E3779B97F4A7C15L * (node.getPubKey().hashCode() + 1L))));
+            }
+            Random thread_rng = node.getLocalRndGenerator();
 
             final var profile = node.getProfile();
             final int max_channels = profile.getIntAttribute("max_channels");
