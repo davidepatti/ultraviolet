@@ -221,9 +221,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return channels;
     }
 
-    public UVChannel getRandomChannel() {
-        var some_channel_id = (String) channels.keySet().toArray()[local_rnd_generator.nextInt(channels.size())];
-        return channels.get(some_channel_id);
+    /**
+     * @param fallbackRng used by nodes that have no local generator (imported topologies)
+     * @return a random local channel, or null when the node has none
+     */
+    public UVChannel getRandomChannel(Random fallbackRng) {
+        var ids = channels.keySet().toArray();
+        if (ids.length == 0) return null;
+        var rng = local_rnd_generator != null ? local_rnd_generator : fallbackRng;
+        return channels.get((String) ids[rng.nextInt(ids.length)]);
     }
     /**
      * @return the sum of all balances on node side

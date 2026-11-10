@@ -895,7 +895,12 @@ public class UVNetwork implements LNetwork {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getChannelId();
+            var some_channel = some_node.getRandomChannel(random);
+            if (some_channel == null) {
+                log("RANDOM EVENT: skipping "+some_node.getPubKey()+", no channels");
+                continue;
+            }
+            var some_channel_id = some_channel.getChannelId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
             log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
