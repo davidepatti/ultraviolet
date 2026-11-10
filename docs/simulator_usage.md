@@ -20,7 +20,7 @@ An imported-topology workflow is:
 cfg -> import -> path -> save
 ```
 
-Imported topologies do not automatically have live P2P convergence history, and imported channel policies can be incomplete depending on the source JSON and current import behavior.
+Imported topologies do not automatically have live P2P convergence history. The importer reads `node1_policy` and `node2_policy` (`time_lock_delta`, `fee_base_msat`, `fee_rate_milli_msat`) from the source JSON; a direction whose policy is missing or marked `disabled` has no policy and is not routable. The whole capacity of each imported channel starts on one side, so set balances before generating traffic.
 
 A graph-learning export workflow is:
 

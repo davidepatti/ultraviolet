@@ -974,6 +974,7 @@ public class UVNetwork implements LNetwork {
                 return;
             }
 
+            int imported_policies = 0;
             for (Object edge : edges) {
                 if (!(edge instanceof JsonObject edgeObject)) {
                     print_log("Import failed: invalid edge entry " + edge);
@@ -1021,6 +1022,13 @@ public class UVNetwork implements LNetwork {
                 boolean direction = random.nextBoolean();
                 UVChannel ch = new UVChannel(channel_id,left,right,capacity,0,0,direction);
 
+                // lncli describegraph carries one routing policy per direction; a missing or
+                // disabled one leaves that direction without a policy, hence not routable.
+                var policy1 = importedPolicy(edgeObject.get("node1_policy"));
+                var policy2 = importedPolicy(edgeObject.get("node2_policy"));
+                if (policy1 != null) { ch.setPolicy(node1_pub, policy1); imported_policies++; }
+                if (policy2 != null) { ch.setPolicy(node2_pub, policy2); imported_policies++; }
+
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addLNChannel(ch);
@@ -1043,11 +1051,33 @@ public class UVNetwork implements LNetwork {
                 bootstraps_ended = uvnodes.size();
             }
 
-            print_log("Import completed (observer graph rooted at " + root.getPubKey() + ")");
+            print_log("Import completed (observer graph rooted at " + root.getPubKey() + ", "
+                    + imported_policies + " of " + 2 * edges.size() + " directional policies present)");
 
         } catch (IOException | NumberFormatException | ClassCastException e) {
             print_log("Import failed: " + e.getMessage());
         }
+    }
+
+    /** @return the policy of one channel direction, or null when absent, disabled or malformed */
+    private static LNChannel.Policy importedPolicy(Object value) {
+        if (!(value instanceof JsonObject policy)) return null;
+        if (Boolean.TRUE.equals(policy.get("disabled")) || "true".equals(policy.get("disabled"))) return null;
+        Long delta = importedNumber(policy.get("time_lock_delta"));
+        Long base = importedNumber(policy.get("fee_base_msat"));
+        Long rate = importedNumber(policy.get("fee_rate_milli_msat"));
+        if (delta == null || base == null || rate == null || delta <= 0 || base < 0 || rate < 0
+                || delta > Integer.MAX_VALUE || base > Integer.MAX_VALUE || rate > Integer.MAX_VALUE) return null;
+        // fee_rate_milli_msat is the proportional fee in millionths, i.e. ppm
+        return new LNChannel.Policy(delta.intValue(), base.intValue(), rate.intValue());
+    }
+
+    private static Long importedNumber(Object value) {
+        if (value instanceof Number n) return n.longValue();
+        if (value instanceof String s) {
+            try { return Long.parseLong(s.trim()); } catch (NumberFormatException e) { return null; }
+        }
+        return null;
     }
 
     private UVNode resolveImportedRootNode(Map<String, UVNode> importedNodes, String rootIdentifier) {
