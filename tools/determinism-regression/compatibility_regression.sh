@@ -11,6 +11,6 @@ git archive "$base" src uv_configs/template.properties | tar -x -C "$build_dir/o
 find "$build_dir/original/src" -name '*.java' > "$build_dir/old-sources.txt"
 javac --release "${JAVA_RELEASE:-24}" -d "$build_dir/old-classes" @"$build_dir/old-sources.txt" tests/LegacySnapshotWriter.java
 java -cp "$build_dir/old-classes" tests.LegacySnapshotWriter "$build_dir" "$build_dir/original/uv_configs/template.properties"
-find src -name '*.java' > "$build_dir/new-sources.txt"
+find src tools/journal/java -name '*.java' > "$build_dir/new-sources.txt"
 javac --release "${JAVA_RELEASE:-24}" -d "$build_dir/new-classes" @"$build_dir/new-sources.txt" tests/LegacySnapshotCompatibilityTest.java
 java -cp "$build_dir/new-classes" tests.LegacySnapshotCompatibilityTest "$build_dir"
