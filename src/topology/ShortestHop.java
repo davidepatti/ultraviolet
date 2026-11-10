@@ -36,8 +36,12 @@ public class ShortestHop extends PathFinder {
 
         while (!queue.isEmpty()) {
             var u = queue.poll();
-            stats.investigatedStates++;
             int d = depth.get(u);
+            // The queue is ordered by depth: once the destination depth is reached,
+            // no remaining vertex can be a parent on a shortest path.
+            Integer endDepth = depth.get(end);
+            if (endDepth != null && d >= endDepth) break;
+            stats.investigatedStates++;
 
             for (ChannelGraph.Edge e : g.getAdjMap().getOrDefault(u, Set.<ChannelGraph.Edge>of())) {
                 stats.expandedEdges++;
@@ -66,10 +70,7 @@ public class ShortestHop extends PathFinder {
         List<Path> paths = new ArrayList<>();
         if (!depth.containsKey(end)) return buildSearchResult(paths, stats);      // unreachable
 
-        buildPaths(end, parents, new ArrayList<>(), paths);
-        if (topk > 0 && paths.size() > topk) {
-            paths = new ArrayList<>(paths.subList(0, topk));
-        }
+        buildPaths(end, parents, new ArrayList<>(), paths, topk);
 
         return buildSearchResult(paths, stats);
     }
@@ -89,7 +90,10 @@ public class ShortestHop extends PathFinder {
     private void buildPaths(String v,
                             Map<String, ArrayList<ChannelGraph.Edge>> parents,
                             List<ChannelGraph.Edge> partial,
-                            List<Path> out) {
+                            List<Path> out,
+                            int limit) {
+        // Stop as soon as the requested number of paths exists (limit <= 0: no limit).
+        if (limit > 0 && out.size() >= limit) return;
         var plist = parents.get(v);
         if (plist == null) {               // reached the start
             out.add(new Path(partial));
@@ -97,7 +101,7 @@ public class ShortestHop extends PathFinder {
         }
         for (ChannelGraph.Edge e : plist) {
             partial.add(e);
-            buildPaths(e.source(), parents, partial, out);
+            buildPaths(e.source(), parents, partial, out, limit);
             partial.remove(partial.size() - 1);
         }
     }
