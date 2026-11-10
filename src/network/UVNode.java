@@ -83,6 +83,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.alias = alias;
         updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
+        channelGraph.setEdgeInterner(uvNetwork::shareEdge);
         pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS, uvNetwork.getConfig());
         this.profile = profile;
     }
@@ -268,6 +269,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     public void setUVM(UVNetwork uvm) {
         this.uvNetwork = uvm;
+        if (channelGraph != null) {
+            // snapshots written before edges were shared hold one copy per node
+            channelGraph.setEdgeInterner(uvm::shareEdge);
+            channelGraph.shareEdges();
+        }
         if (pathFinder == null) {
             pathFinder = PathFinderFactory.of(savedPathFinderStrategy == null ? PathFinderFactory.Strategy.BFS : savedPathFinderStrategy, uvm.getConfig());
         }

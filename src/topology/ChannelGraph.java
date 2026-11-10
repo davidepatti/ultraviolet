@@ -16,6 +16,25 @@ public class ChannelGraph implements Serializable  {
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
     transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
+    // Edges are immutable values. The network can supply one canonical instance per distinct
+    // value, so that graphs holding the same information about a channel point at one object
+    // instead of each keeping a copy. Every graph still holds its own set of references: a node
+    // that has not received an update keeps pointing at the edge value it knows.
+    transient private java.util.function.UnaryOperator<Edge> edgeInterner = java.util.function.UnaryOperator.identity();
+
+    public synchronized void setEdgeInterner(java.util.function.UnaryOperator<Edge> interner) {
+        edgeInterner = interner == null ? java.util.function.UnaryOperator.identity() : interner;
+    }
+
+    /** Replace the edges already held with their canonical instances (used after loading a snapshot). */
+    public synchronized void shareEdges() {
+        for (var entry : adj_map.entrySet()) {
+            var shared = new HashSet<Edge>(Math.max(16, (int) (entry.getValue().size() / 0.75f) + 1));
+            for (Edge e : entry.getValue()) shared.add(edgeInterner.apply(e));
+            entry.setValue(shared);
+        }
+    }
+
     /**
      * Path finders iterate this map without taking the graph lock. That is safe only while no
      * gossip is being processed for this node, which holds today because routing runs after
@@ -70,8 +89,8 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new HashSet<>());
         adj_map.putIfAbsent(node2pub, new HashSet<>());
 
-        var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getPolicy(node1pub));
-        var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getPolicy(node2pub));
+        var edge1 = edgeInterner.apply(new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getPolicy(node1pub)));
+        var edge2 = edgeInterner.apply(new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getPolicy(node2pub)));
 
         adj_map.get(node1pub).add(edge1);
         adj_map.get(node2pub).add(edge2);
@@ -91,8 +110,8 @@ public class ChannelGraph implements Serializable  {
         var node2 = msg.getNodeId2();
         adj_map.putIfAbsent(node1, new HashSet<>());
         adj_map.putIfAbsent(node2, new HashSet<>());
-        adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
-        adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
+        adj_map.get(node1).add(edgeInterner.apply(new Edge(channel_id,node1,node2,msg.getFunding(),null)));
+        adj_map.get(node2).add(edgeInterner.apply(new Edge(channel_id,node2,node1,msg.getFunding(),null)));
     }
 
     /**
@@ -122,6 +141,7 @@ public class ChannelGraph implements Serializable  {
     @Serial
     private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
         adj_map = new HashMap<>();
+        edgeInterner = java.util.function.UnaryOperator.identity();
         int n_keys;
         s.defaultReadObject();
         n_keys = s.readInt();
@@ -184,7 +204,7 @@ public class ChannelGraph implements Serializable  {
                     if (sameUpdate && hops >= e.policyHops) return false;
                     if (!sameUpdate && timestamp < e.policyTimestamp) return false;
                 }
-                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,new_policy,timestamp,hops);
+                var new_edge = edgeInterner.apply(new Edge(channel_id,e.source,e.destination,e.capacity,new_policy,timestamp,hops));
                 if (!edges.remove(e)) {
                     throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
                 }

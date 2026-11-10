@@ -46,6 +46,15 @@ public class UVNetwork implements LNetwork {
 
     HTLCResolution htlcResolution() { return htlcResolution; }
 
+    // Canonical instances of graph edges, see ChannelGraph.setEdgeInterner. Only needed while
+    // edges are being created; clearing it never breaks sharing that already exists.
+    private final ConcurrentHashMap<topology.ChannelGraph.Edge, topology.ChannelGraph.Edge> edgePool = new ConcurrentHashMap<>();
+
+    topology.ChannelGraph.Edge shareEdge(topology.ChannelGraph.Edge edge) {
+        var known = edgePool.putIfAbsent(edge, edge);
+        return known == null ? edge : known;
+    }
+
     /** Chain observation runs independently of P2P delivery; never called under the clock lock. */
     public void onBlockCommitted(int height) {
         requireHealthy();
@@ -405,6 +414,7 @@ public class UVNetwork implements LNetwork {
                 pruned += node.getChannelGraph().purgeNullPolicyChannels();
             }
             print_log("(Pruned null entries: "+pruned+") DONE!");
+            edgePool.clear();
 
             bootstrap_completed = true;
             resume();
@@ -935,6 +945,7 @@ public class UVNetwork implements LNetwork {
             }
 
             // Build imported state in isolation; commit only when fully valid.
+            edgePool.clear();
             Map<String, UVNode> importedNodes = new LinkedHashMap<>();
             for (Object node : nodes) {
                 if (!(node instanceof JsonObject nodeObject)) {
@@ -1582,10 +1593,12 @@ public class UVNetwork implements LNetwork {
 
         htlcResolution.reset();
         uvnodes.clear();
+        edgePool.clear();
         for (UVNode node : loadedStatus.nodes.values()) {
             node.setUVM(this);
             uvnodes.put(node.getPubKey(), node);
         }
+        edgePool.clear();
 
         for (UVNode node : getUVNodeList().values()) {
             node.restorePersistentData();
