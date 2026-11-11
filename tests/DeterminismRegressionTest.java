@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Random;
 
 public class DeterminismRegressionTest {
-    private static final int TOTAL_TESTS = 30;
+    private static final int TOTAL_TESTS = 32;
     private static int testIndex = 0;
 
     private static final String TOPOLOGY_JSON = """
@@ -146,6 +146,8 @@ public class DeterminismRegressionTest {
             runCase("DSE imported-topology traffic", "Load an observer snapshot, execute root-only traffic with explicit units, and write settled reports.", () -> DseSnapshotTest.observerTraffic(workDir));
             runCase("Terminal command smoke", "A subprocess executes load/start/two routes/stop/export/save/quit and verifies both saved outcomes.", () -> SimulationConsistencyTest.terminalCommands(workDir));
             runCase("Ordinary bootstrap completion", "A six-node DSE bootstrap drains all opening responses without terminal reservation cleanup.", () -> SimulationConsistencyTest.smallBootstrap(workDir));
+            runCase("Traffic-role roles and fee laws", "Role table parsing/frequencies/opening weights; per-edge and node-level fee laws are deterministic and validated.", () -> { TrafficRolesTest.roleModel(workDir); TrafficRolesTest.feeLaw(workDir); });
+            runCase("Traffic-role O branching", "A 12-node role-linked bootstrap saves a strict O branch; independent restores, fee laws, S50 and scheduled replay with per-invoice fee caps and route log.", () -> TrafficRolesTest.liveBranching(workDir));
             System.out.println("Determinism regression passed");
         } finally {
             deleteRecursively(workDir);

@@ -530,6 +530,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     log(successMessage);
 
                     success_htlc = true;
+                    var hops = new ArrayList<Object>();
+                    for (var edge : path.edges()) hops.add(List.of(edge.id(), edge.source(), edge.destination()));
+                    var route = new TreeMap<String, Object>();
+                    route.put("invoice_hash", hash); route.put("sender", getPubKey()); route.put("destination", invoice.getDestination());
+                    route.put("amount_sat", invoice.getAmount()); route.put("planned_fee_sat", getPathFees(path, invoice.getAmount()));
+                    route.put("attempt", attempted_paths); route.put("hops", hops);
+                    route.put("completed_height", uvNetwork.getTimechain().getCurrentBlockHeight());
+                    uvNetwork.recordSettledRoute(route);
                     break; // exit the for cycle of trying the paths...
                 } else {
                     String reason;

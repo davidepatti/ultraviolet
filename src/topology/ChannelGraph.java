@@ -163,7 +163,9 @@ public class ChannelGraph implements Serializable  {
 
             for (String k : adj_map.keySet()) {
                 s.writeObject(k);
-                s.writeObject(adj_map.get(k));
+                // Preserve the observed search-neighbor order. Policy identity hashes change on restore.
+                // LinkedHashSet is also a HashSet, so the legacy reader format remains compatible.
+                s.writeObject(new LinkedHashSet<>(adj_map.get(k)));
             }
 
         } catch (IOException e) {
@@ -213,6 +215,34 @@ public class ChannelGraph implements Serializable  {
             }
         }
         return false;
+    }
+
+    /** Number of directed edges this view holds for (source, channel): 0 or 1 in a valid graph. */
+    public synchronized int countDirectedEdges(String source, String channel_id) {
+        var edges = adj_map.get(source);
+        if (edges == null) return 0;
+        int n = 0;
+        for (Edge e : edges) if (e.id().equals(channel_id)) n++;
+        return n;
+    }
+
+    /**
+     * Replaces one directed policy without changing routing iteration order. Only defined for
+     * restored graphs, whose edge sets are LinkedHashSet; a live HashSet orders by identity hashes.
+     */
+    public synchronized void replacePolicyPreservingOrder(String source, String channel_id, LNChannel.Policy new_policy) {
+        Objects.requireNonNull(new_policy, "policy");
+        var edges = adj_map.get(source);
+        if (!(edges instanceof LinkedHashSet<Edge>)) throw new IllegalStateException("Order-preserving policy replacement requires a restored graph");
+        var rebuilt = new LinkedHashSet<Edge>();
+        int replaced = 0;
+        for (Edge e : edges) {
+            if (e.id().equals(channel_id)) { rebuilt.add(new Edge(e.id, e.source, e.destination, e.capacity, new_policy)); replaced++; }
+            else rebuilt.add(e);
+        }
+        if (replaced != 1 || rebuilt.size() != edges.size()) throw new IllegalStateException("Cannot replace policy " + channel_id + " from " + source + " in " + root_node);
+        edges.clear();
+        edges.addAll(rebuilt);
     }
 
     public synchronized boolean hasChannel(String channelId) {
