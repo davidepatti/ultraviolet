@@ -322,7 +322,11 @@ public class GlobalStats {
                                     int attempt_failed_local_liquidity,
                                     int attempt_failed_timeout,
                                     int attempt_failed_unknown,
-                                    boolean success) implements Serializable {
+                                    boolean success,
+                                    // Appended after success so existing CSV column positions are unchanged.
+                                    int attempt_failed_fee_insufficient,
+                                    int attempt_failed_incorrect_cltv_expiry,
+                                    int attempt_failed_incorrect_payment_details) implements Serializable {
 
             public static String generateInvoiceReportHeader() {
                 return String.join(",",
@@ -352,7 +356,10 @@ public class GlobalStats {
                         "attempt_failed_local_liquidity",
                         "attempt_failed_timeout",
                         "attempt_failed_unknown",
-                        "success"
+                        "success",
+                        "attempt_failed_fee_insufficient",
+                        "attempt_failed_incorrect_cltv_expiry",
+                        "attempt_failed_incorrect_payment_details"
                 );
             }
 
@@ -385,7 +392,10 @@ public class GlobalStats {
                         Integer.toString(attempt_failed_local_liquidity),
                         Integer.toString(attempt_failed_timeout),
                         Integer.toString(attempt_failed_unknown),
-                        Boolean.toString(success)
+                        Boolean.toString(success),
+                        Integer.toString(attempt_failed_fee_insufficient),
+                        Integer.toString(attempt_failed_incorrect_cltv_expiry),
+                        Integer.toString(attempt_failed_incorrect_payment_details)
                 );
             }
 

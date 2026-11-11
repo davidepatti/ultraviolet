@@ -475,6 +475,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int attempt_failed_local_liquidity = 0;
         int attempt_failed_timeout = 0;
         int attempt_failed_unknown = 0;
+        int attempt_failed_fee_insufficient = 0;
+        int attempt_failed_incorrect_cltv_expiry = 0;
+        int attempt_failed_incorrect_payment_details = 0;
 
         if (!candidatePaths.isEmpty()) {
 
@@ -546,23 +549,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     if (reason==null) reason = "unknown";
 
                     // TOFIX: reason should not be null
-                    switch (reason) {
-                        case "expiry_too_soon":
-                            attempt_failed_expiry_too_soon++;
-                            break;
-                        case "temporary_channel_failure":
-                            attempt_failed_temporary_channel++;
-                            break;
-                        case "missing local liquidity":
-                            attempt_failed_local_liquidity++;
-                            break;
-                        case "attempt_timeout":
-                            attempt_failed_timeout++;
-                            break;
-                        default:
+                    switch (attemptFailureCategory(reason)) {
+                        case "expiry_too_soon" -> attempt_failed_expiry_too_soon++;
+                        case "temporary_channel" -> attempt_failed_temporary_channel++;
+                        case "local_liquidity" -> attempt_failed_local_liquidity++;
+                        case "timeout" -> attempt_failed_timeout++;
+                        case "fee_insufficient" -> attempt_failed_fee_insufficient++;
+                        case "incorrect_cltv_expiry" -> attempt_failed_incorrect_cltv_expiry++;
+                        case "incorrect_payment_details" -> attempt_failed_incorrect_payment_details++;
+                        default -> {
                             debug(()->"No reason for failure of "+hash);
                             attempt_failed_unknown++;
-                            break;
+                        }
                     }
                     if (!uvNetwork.isHealthy()) break;
                     logMessage = "Could not route invoice: " + hash+ ", "+reason+ " on path #"+attempted_paths;
@@ -615,10 +613,31 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 attempt_failed_local_liquidity,
                 attempt_failed_timeout,
                 attempt_failed_unknown,
-                success_htlc);
+                success_htlc,
+                attempt_failed_fee_insufficient,
+                attempt_failed_incorrect_cltv_expiry,
+                attempt_failed_incorrect_payment_details);
 
         synchronized (nodeStats.invoiceReports) { nodeStats.invoiceReports.add(report); }
         return report;
+    }
+
+    /**
+     * Sender-side category of a failed payment attempt, from the reason returned upstream. Every reason a
+     * forwarder or the recipient can emit has its own category; anything else (or no reason) is "unknown".
+     */
+    public static String attemptFailureCategory(String reason) {
+        if (reason == null) return "unknown";
+        return switch (reason) {
+            case "expiry_too_soon" -> "expiry_too_soon";
+            case "temporary_channel_failure" -> "temporary_channel";
+            case "missing local liquidity" -> "local_liquidity";
+            case "attempt_timeout" -> "timeout";
+            case "fee_insufficient" -> "fee_insufficient";
+            case "incorrect_cltv_expiry" -> "incorrect_cltv_expiry";
+            case "incorrect_or_unknown_payment_details" -> "incorrect_payment_details";
+            default -> "unknown";
+        };
     }
 
     /**

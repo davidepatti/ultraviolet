@@ -63,6 +63,34 @@ public final class TrafficRolesTest {
         check(a.openAcceptance(merchant) == 1.0 && Math.abs(a.openAcceptance(payer) - 1.0 / 3) < 1e-12, "opening acceptance ∝ weight");
     }
 
+    /** Every failure reason the producer emits has its own sender-side category (none silently becomes "unknown"). */
+    static void failureCategories() throws Exception {
+        var expected = new java.util.LinkedHashMap<String, String>();
+        expected.put("expiry_too_soon", "expiry_too_soon");
+        expected.put("temporary_channel_failure", "temporary_channel");
+        expected.put("missing local liquidity", "local_liquidity");
+        expected.put("attempt_timeout", "timeout");
+        expected.put("fee_insufficient", "fee_insufficient");
+        expected.put("incorrect_cltv_expiry", "incorrect_cltv_expiry");
+        expected.put("incorrect_or_unknown_payment_details", "incorrect_payment_details");
+        expected.forEach((reason, category) -> check(UVNode.attemptFailureCategory(reason).equals(category), "category of " + reason));
+        check(UVNode.attemptFailureCategory(null).equals("unknown") && UVNode.attemptFailureCategory("something new").equals("unknown"), "unknown fallback");
+        // Source scan: every literal reason passed to failHTLC / failure_reason / FAILED outcomes is mapped.
+        var emitted = new TreeSet<String>();
+        var pattern = java.util.regex.Pattern.compile("(?:failHTLC\\([^,]+,\\s*|failure_reason\\.put\\([^,]+,\\s*|State\\.FAILED,\\s*)\"([^\"]+)\"");
+        for (String file : List.of("src/network/UVNode.java", "src/network/HTLCResolution.java")) {
+            var m = pattern.matcher(Files.readString(Path.of(file)));
+            while (m.find()) emitted.add(m.group(1));
+        }
+        check(!emitted.isEmpty() && emitted.stream().noneMatch(r -> UVNode.attemptFailureCategory(r).equals("unknown")), "emitted reasons all categorized: " + emitted);
+        // Report fields reach the JSON export (record components) and the CSV (appended after success).
+        var names = Arrays.stream(stats.GlobalStats.NodeStats.InvoiceReport.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).toList();
+        check(names.subList(names.size() - 4, names.size()).equals(List.of("success", "attempt_failed_fee_insufficient",
+                "attempt_failed_incorrect_cltv_expiry", "attempt_failed_incorrect_payment_details")), "new counters appended after success");
+        String header = stats.GlobalStats.NodeStats.InvoiceReport.generateInvoiceReportHeader();
+        check(header.split(",").length == names.size() && header.endsWith("success,attempt_failed_fee_insufficient,attempt_failed_incorrect_cltv_expiry,attempt_failed_incorrect_payment_details"), "CSV header aligned");
+    }
+
     static void feeLaw(Path tmp) throws Exception {
         var cfg = config(tmp, "fees", "");
         Map<String, String> profiles = new TreeMap<>(Map.of("a", "small", "b", "medium", "c", "hub", "d", "small"));
@@ -247,6 +275,7 @@ public final class TrafficRolesTest {
     public static void main(String[] args) throws Exception {
         Path tmp = Files.createTempDirectory("traffic-roles-tests");
         roleModel(tmp);
+        failureCategories();
         feeLaw(tmp);
         liveBranching(tmp);
         bootstrapUnchangedWhenDisabled(tmp);
