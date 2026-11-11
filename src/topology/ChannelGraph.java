@@ -16,11 +16,48 @@ public class ChannelGraph implements Serializable  {
     //transient private Map<String, List<Edge>> adj_map = new ConcurrentHashMap<>();
     transient private Map<String, Set<Edge>> adj_map = new HashMap<>();
 
+    // Edges are immutable values. The network can supply one canonical instance per distinct
+    // value, so that graphs holding the same information about a channel point at one object
+    // instead of each keeping a copy. Every graph still holds its own set of references: a node
+    // that has not received an update keeps pointing at the edge value it knows.
+    transient private java.util.function.UnaryOperator<Edge> edgeInterner = java.util.function.UnaryOperator.identity();
+
+    public synchronized void setEdgeInterner(java.util.function.UnaryOperator<Edge> interner) {
+        edgeInterner = interner == null ? java.util.function.UnaryOperator.identity() : interner;
+    }
+
+    /** Replace the edges already held with their canonical instances (used after loading a snapshot). */
+    public synchronized void shareEdges() {
+        for (var entry : adj_map.entrySet()) {
+            var shared = new HashSet<Edge>(Math.max(16, (int) (entry.getValue().size() / 0.75f) + 1));
+            for (Edge e : entry.getValue()) shared.add(edgeInterner.apply(e));
+            entry.setValue(shared);
+        }
+    }
+
+    /**
+     * Path finders iterate this map without taking the graph lock. That is safe only while no
+     * gossip is being processed for this node, which holds today because routing runs after
+     * gossip has drained. If policies are ever updated during traffic, searches must be
+     * protected (for example with a read/write lock taken once per search).
+     */
     public Map<String, Set<Edge>> getAdjMap() {
         return adj_map;
     }
 
-    public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) implements Serializable {
+    /** Value of {@code policyHops} for a policy that was not learned through gossip. */
+    public static final int LOCAL_POLICY = Integer.MAX_VALUE;
+
+    /**
+     * A directed view of a channel. {@code policyTimestamp} and {@code policyHops} describe the
+     * channel_update the policy came from: its timestamp and how many times it had been
+     * forwarded when it was accepted (-1 and {@link #LOCAL_POLICY} when not learned by gossip).
+     */
+    public record Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy,
+                       int policyTimestamp, int policyHops) implements Serializable {
+        public Edge(String id, String source, String destination, int capacity, LNChannel.Policy policy) {
+            this(id, source, destination, capacity, policy, -1, LOCAL_POLICY);
+        }
         @Override
         public String toString() {
             return "("+source + "->"+ destination + ")["+capacity +"]("+policy+")";
@@ -52,8 +89,8 @@ public class ChannelGraph implements Serializable  {
         adj_map.putIfAbsent(node1pub, new HashSet<>());
         adj_map.putIfAbsent(node2pub, new HashSet<>());
 
-        var edge1 = new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getPolicy(node1pub));
-        var edge2 = new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getPolicy(node2pub));
+        var edge1 = edgeInterner.apply(new Edge(id,node1pub,node2pub,channel.getCapacity(),channel.getPolicy(node1pub)));
+        var edge2 = edgeInterner.apply(new Edge(id,node2pub,node1pub,channel.getCapacity(),channel.getPolicy(node2pub)));
 
         adj_map.get(node1pub).add(edge1);
         adj_map.get(node2pub).add(edge2);
@@ -73,8 +110,8 @@ public class ChannelGraph implements Serializable  {
         var node2 = msg.getNodeId2();
         adj_map.putIfAbsent(node1, new HashSet<>());
         adj_map.putIfAbsent(node2, new HashSet<>());
-        adj_map.get(node1).add(new Edge(channel_id,node1,node2,msg.getFunding(),null));
-        adj_map.get(node2).add(new Edge(channel_id,node2,node1,msg.getFunding(),null));
+        adj_map.get(node1).add(edgeInterner.apply(new Edge(channel_id,node1,node2,msg.getFunding(),null)));
+        adj_map.get(node2).add(edgeInterner.apply(new Edge(channel_id,node2,node1,msg.getFunding(),null)));
     }
 
     /**
@@ -104,6 +141,7 @@ public class ChannelGraph implements Serializable  {
     @Serial
     private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
         adj_map = new HashMap<>();
+        edgeInterner = java.util.function.UnaryOperator.identity();
         int n_keys;
         s.defaultReadObject();
         n_keys = s.readInt();
@@ -134,27 +172,47 @@ public class ChannelGraph implements Serializable  {
     }
 
 
-    public synchronized void updateChannel(String updater, LNChannel.Policy new_policy, String channel_id) {
+    /**
+     * Set a policy that was not learned through gossip (the node's own, or test fixtures).
+     * @return false when this graph has no edge of {@code updater} for the channel
+     */
+    public synchronized boolean updateChannel(String updater, LNChannel.Policy new_policy, String channel_id) {
+        return replaceEdge(updater, channel_id, new_policy, -1, LOCAL_POLICY, true);
+    }
+
+    /**
+     * Apply a gossiped channel_update following BOLT 7: an update that is not newer than the one
+     * already held for the same channel and direction is ignored. The same update received with
+     * fewer forwardings than the accepted copy is recorded and reported as accepted, so that the
+     * caller forwards it again with the larger remaining hop budget; this keeps the reach of an
+     * update equal to the hop limit whatever the order of arrival.
+     * @return true when the update was accepted and should be forwarded
+     */
+    public synchronized boolean updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {
+        return replaceEdge(msgChannelUpdate.getSignerId(), msgChannelUpdate.getChannelId(),
+                msgChannelUpdate.getUpdatedPolicy(), msgChannelUpdate.getTimeStamp(), msgChannelUpdate.getForwardings(), false);
+    }
+
+    private boolean replaceEdge(String updater, String channel_id, LNChannel.Policy new_policy, int timestamp, int hops, boolean local) {
         var edges = adj_map.get(updater);
+        // The edge can be absent when the channel is unknown or this direction has been purged.
+        if (edges == null) return false;
         for (Edge e:edges) {
             if (e.id().equals(channel_id)) {
-                var new_edge = new Edge(channel_id,e.source,e.destination,e.capacity,new_policy);
+                if (!local && e.policy != null) {
+                    boolean sameUpdate = e.policy == new_policy || timestamp == e.policyTimestamp;
+                    if (sameUpdate && hops >= e.policyHops) return false;
+                    if (!sameUpdate && timestamp < e.policyTimestamp) return false;
+                }
+                var new_edge = edgeInterner.apply(new Edge(channel_id,e.source,e.destination,e.capacity,new_policy,timestamp,hops));
                 if (!edges.remove(e)) {
                     throw new IllegalStateException("FATAL:Cannot remove "+e+" for matching channel id"+channel_id);
                 }
                 edges.add(new_edge);
-                return;
+                return true;
             }
         }
-        throw new IllegalStateException("Cannot updateChannel "+channel_id+" in "+root_node+" updater:"+updater+" policy:"+new_policy);
-    }
-
-    public synchronized void updateChannel(GossipMsgChannelUpdate msgChannelUpdate) {
-        var updater = msgChannelUpdate.getSignerId();
-        var new_policy = msgChannelUpdate.getUpdatedPolicy();
-        var channel_id = msgChannelUpdate.getChannelId();
-
-        updateChannel(updater,new_policy,channel_id);
+        return false;
     }
 
     public synchronized boolean hasChannel(String channelId) {
@@ -166,9 +224,10 @@ public class ChannelGraph implements Serializable  {
         addNode(root_node);
     }
 
-    public int purgeNullPolicyChannels() {
+    public synchronized int purgeNullPolicyChannels() {
         Iterator<String> nodeIterator = adj_map.keySet().iterator();
         int purged = 0;
+        var surviving = new HashSet<String>();
         while (nodeIterator.hasNext()) {
             var node = nodeIterator.next();
             Collection<Edge> edges = adj_map.get(node);
@@ -177,8 +236,13 @@ public class ChannelGraph implements Serializable  {
             if (edges.isEmpty()) {
                 purged++;
                 nodeIterator.remove();
+            } else {
+                for (Edge edge : edges) surviving.add(edge.id);
             }
         }
+        // A channel with no remaining direction is unknown again, so that a later
+        // announcement can add it back instead of being taken for a duplicate.
+        channelSet.retainAll(surviving);
         return purged;
     }
 

@@ -35,7 +35,7 @@ This distinction is important because `search_*` counters are **not path counts*
 | `search_excluded_capacity` | Number of search expansions discarded because channel capacity was below the payment amount. |
 | `search_excluded_visited_state` | Number of search expansions discarded by visited-state or best-cost pruning. |
 | `search_excluded_cycle` | Number of search expansions discarded to avoid cycles. |
-| `search_excluded_max_hops` | Number of search states discarded because the hop limit was exceeded. |
+| `search_excluded_max_hops` | Number of search states not expanded because their path had already reached the hop limit. |
 | `search_excluded_cost` | Number of search expansions discarded because the computed cost was invalid, for example infinite. |
 | `filtered_policy` | Returned paths rejected after search because at least one edge had a missing policy. |
 | `filtered_capacity` | Returned paths rejected after search because at least one edge did not have enough capacity. |

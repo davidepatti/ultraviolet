@@ -49,6 +49,7 @@ bootstrap_blocks=100
 | Property | Meaning |
 | --- | --- |
 | `to_self_delay` | Delay used in abstract channel-opening messages and policies. |
+| `min_final_cltv_expiry` | Blocks added to the current height for the final hop of new invoices (default 9). Every node responds, so `attempt_failed_timeout` or `attempt_failed_expiry_too_soon` in an ordinary run means blocks outpaced message processing on the host; raise this value or `blocktime_ms`. May be changed when loading a snapshot. |
 | `minimum_depth` | Number of confirmations required before a funding transaction is considered confirmed. |
 | `p2p_max_hops` | Maximum forwarding count for gossip messages. |
 | `p2p_max_age` | Maximum age, in blocks, before gossip messages are considered obsolete. |
@@ -82,7 +83,7 @@ These values should be changed together. If `blocktime_ms` is lowered but `node_
 | Property | Meaning |
 | --- | --- |
 | `bootstrap_nodes` | Number of synthetic nodes to create during bootstrap. |
-| `bootstrap_blocks` | Block interval over which node bootstrap start times are distributed. |
+| `bootstrap_blocks` | Block interval over which node bootstrap start times are distributed. Each node starts at its sampled block; nodes sampled for the same block start together. |
 | `bootstrap_time_median` | Fraction of `bootstrap_blocks` used as the median for bootstrap start-time sampling. |
 | `bootstrap_time_mean` | Fraction of `bootstrap_blocks` used as the mean for bootstrap start-time sampling. |
 

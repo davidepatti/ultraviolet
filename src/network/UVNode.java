@@ -46,6 +46,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private ArrayList<String> saved_peers_id;
     transient public ScheduledFuture<?> p2pHandler;
     transient private Queue<GossipMsg> GossipMessageQueue = new ConcurrentLinkedQueue<>();
+    // messages currently in GossipMessageQueue, to reject duplicates without scanning it
+    transient private Set<GossipMsg> queuedGossip = ConcurrentHashMap.newKeySet();
     transient private Queue<MsgOpenChannel> channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgAcceptChannel> channelsAcceptedQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgRejectChannel> channelsRejectedQueue = new ConcurrentLinkedQueue<>();
@@ -54,6 +56,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     transient private Queue<MsgUpdateFulFillHTLC> updateFulFillHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private Queue<MsgUpdateFailHTLC> updateFailHTLCQueue = new ConcurrentLinkedQueue<>();
     transient private ConcurrentHashMap<Long, LNInvoice> generatedInvoices = new ConcurrentHashMap<>();
+    // payment hash -> identity of the generated invoice, rebuilt on load
+    transient private ConcurrentHashMap<String, Long> invoiceIdentityByHash = new ConcurrentHashMap<>();
     transient private ConcurrentHashMap<String, LNInvoice> pendingInvoices = new ConcurrentHashMap<>();
     transient private HashMap<String, LNInvoice> payedInvoices = new HashMap<>();
     transient private HashMap<String, MsgUpdateAddHTLC> receivedHTLC = new HashMap<>();
@@ -79,6 +83,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.alias = alias;
         updateOnChainBalance(funding);
         channelGraph = new ChannelGraph(pubkey);
+        channelGraph.setEdgeInterner(uvNetwork::shareEdge);
         pathFinder = PathFinderFactory.of(PathFinderFactory.Strategy.BFS, uvNetwork.getConfig());
         this.profile = profile;
     }
@@ -221,9 +226,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         return channels;
     }
 
-    public UVChannel getRandomChannel() {
-        var some_channel_id = (String) channels.keySet().toArray()[local_rnd_generator.nextInt(channels.size())];
-        return channels.get(some_channel_id);
+    /**
+     * @param fallbackRng used by nodes that have no local generator (imported topologies)
+     * @return a random local channel, or null when the node has none
+     */
+    public UVChannel getRandomChannel(Random fallbackRng) {
+        var ids = channels.keySet().toArray();
+        if (ids.length == 0) return null;
+        var rng = local_rnd_generator != null ? local_rnd_generator : fallbackRng;
+        return channels.get((String) ids[rng.nextInt(ids.length)]);
     }
     /**
      * @return the sum of all balances on node side
@@ -258,6 +269,11 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
      */
     public void setUVM(UVNetwork uvm) {
         this.uvNetwork = uvm;
+        if (channelGraph != null) {
+            // snapshots written before edges were shared hold one copy per node
+            channelGraph.setEdgeInterner(uvm::shareEdge);
+            channelGraph.shareEdges();
+        }
         if (pathFinder == null) {
             pathFinder = PathFinderFactory.of(savedPathFinderStrategy == null ? PathFinderFactory.Strategy.BFS : savedPathFinderStrategy, uvm.getConfig());
         }
@@ -282,8 +298,9 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             if (amount <= 0) throw new IllegalArgumentException("Positive invoice amount required");
             uvNetwork.reserveInvoiceIdentity(identity);
             var hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(identity).toByteArray()));
-            var invoice = new LNInvoice(hash, amount, pubkey, message);
+            var invoice = new LNInvoice(hash, amount, pubkey, message, uvNetwork.getConfig().getMinFinalCltvExpiry());
             if (generatedInvoices.putIfAbsent(identity, invoice) != null) throw new IllegalStateException("Duplicate invoice identity");
+            invoiceIdentityByHash.put(hash, identity);
             return invoice;
         }
     }
@@ -362,7 +379,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         int fees = 0;
 
         for (ChannelGraph.Edge e : path.forwardingEdges()) {
-            fees += computeFees(amount, e.policy().getBaseFee(), e.policy().getFeePpm());
+            // each hop charges on the amount it forwards, which includes the fees of the hops after it
+            fees += computeFees(amount + fees, e.policy().getBaseFee(), e.policy().getFeePpm());
         }
         return fees;
     }
@@ -547,6 +565,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         }
 
         if (!success_htlc) {
+            nodeStats.incrementInvoiceProcessingFailures("routing_failed");
             logMessage = "Invoice Routing Failed! No viable candidate paths found for invoice " + invoice.getHash();
             log(logMessage);
             if (showui) System.out.println(logMessage);
@@ -623,25 +642,20 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         // Carol will take the forwarding fees specified in the payload for Bob, which will instruct Bob about the HTLC to be sent to Carol
         // don't need to create the last path segment onion for local node htlc
         for (int n=0;n<path.edges().size()-1;n++) {
-            var source = path.edges().get(n).source();
-            var dest = path.edges().get(n).destination();
+            // The sender builds the route from what its own graph says about each hop: the same
+            // policies used to filter the path by fees. A forwarder rejects the HTLC if they are stale.
+            var edge = path.edges().get(n);
+            var policy = edge.policy();
+            if (policy == null) throw new IllegalStateException("ERROR: No policy for "+edge);
 
-            // TODO UVMODEL: used only by node, should be a service from the node itself ?
-            // point to clarify: it is used for searching own nodes or in general ?
-            var path_channel = uvNetwork.getChannelFromNodes(source,dest);
-            if (path_channel.isPresent()) {
-                var channel = path_channel.get();
-                var hopPayload = new OnionLayer.Payload(channel.getChannelId(),amount+cumulatedFees,out_cltv,null);
-                onionLayer = new OnionLayer(hopPayload,onionLayer);
+            var hopPayload = new OnionLayer.Payload(edge.id(),amount+cumulatedFees,out_cltv,null);
+            onionLayer = new OnionLayer(hopPayload,onionLayer);
 
-                // the fees in the carol->dina channel will be put in the Bob payload in the next loop
-                // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
-                cumulatedFees += computeFees(amount,channel.getPolicy(source).getBaseFee(),channel.getPolicy(source).getFeePpm());
-                out_cltv += channel.getPolicy(source).getCLTVDelta();
-            }
-            else {
-                throw new IllegalStateException("ERROR: No channel from "+source+ " to "+dest);
-            }
+            // the fees in the carol->dina channel will be put in the Bob payload in the next loop
+            // because it's bob that has to advance the fees to Carol  (Bob will do same with Alice)
+            // BOLT 7: the fee is charged on the amount the hop forwards, fees of later hops included
+            cumulatedFees += computeFees(amount+cumulatedFees,policy.getBaseFee(),policy.getFeePpm());
+            out_cltv += policy.getCLTVDelta();
         }
 
         var first_hop = path.getEnd();
@@ -682,9 +696,14 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
     }
 
     private void failHTLC(MsgUpdateAddHTLC message, String reason) {
+        failHTLC(message, reason, true);
+    }
+
+    /** @param forwarding false when this node is the final recipient, which is not a forwarding event */
+    private void failHTLC(MsgUpdateAddHTLC message, String reason, boolean forwarding) {
         var before = uvNetwork.htlcResolution().receive(pubkey, message);
         var outcome = uvNetwork.htlcResolution().fail(pubkey, message, reason);
-        if (before.state() == HTLCResolution.State.PENDING && outcome.state() == HTLCResolution.State.FAILED) {
+        if (forwarding && before.state() == HTLCResolution.State.PENDING && outcome.state() == HTLCResolution.State.FAILED) {
             nodeStats.incrementForwardingFailures(reason);
         }
         sendHTLCOutcome(message, outcome);
@@ -734,17 +753,15 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         if (currentBlock >= message.getCLTVExpiry()) { failHTLC(message, "expiry_too_soon"); return; }
 
         if (payload.getShortChannelId().equals("00")) {
-            for (var entry : generatedInvoices.entrySet()) {
-                var invoice = entry.getValue();
-                if (invoice.getHash().equals(message.getPayment_hash())
-                        && invoice.getHash().equals(payload.getPayment_secret().orElse(null))) {
-                    if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
-                        failHTLC(message, "temporary_channel_failure"); return;
-                    }
-                    var outcome = resolver.fulfill(pubkey, message, entry.getKey());
-                    sendHTLCOutcome(message, outcome);
-                    return;
+            Long identity = findInvoiceIdentity(message.getPayment_hash());
+            if (identity != null && message.getPayment_hash().equals(payload.getPayment_secret().orElse(null))) {
+                var invoice = generatedInvoices.get(identity);
+                if (message.getAmount() < invoice.getAmount() || payload.getAmtToForward() != invoice.getAmount()) {
+                    failHTLC(message, "incorrect_or_unknown_payment_details", false); return;
                 }
+                var outcome = resolver.fulfill(pubkey, message, identity);
+                sendHTLCOutcome(message, outcome);
+                return;
             }
             throw new IllegalStateException("No generated invoice matches the final HTLC");
         }
@@ -755,11 +772,18 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                 || payload.getAmtToForward() > message.getAmount() || channel.getPolicy(pubkey) == null) {
             failHTLC(message, "temporary_channel_failure"); return;
         }
-        int delta = channel.getPolicy(pubkey).getCLTVDelta();
-        if (payload.getOutgoingCLTV() <= currentBlock
-                || (long) message.getCLTVExpiry() - payload.getOutgoingCLTV() < delta
-                || message.getCLTVExpiry() <= payload.getOutgoingCLTV()) {
+        var policy = channel.getPolicy(pubkey);
+        if (payload.getOutgoingCLTV() <= currentBlock) {
             failHTLC(message, "expiry_too_soon"); return;
+        }
+        if ((long) message.getCLTVExpiry() - payload.getOutgoingCLTV() < policy.getCLTVDelta()
+                || message.getCLTVExpiry() <= payload.getOutgoingCLTV()) {
+            failHTLC(message, "incorrect_cltv_expiry"); return;
+        }
+        // BOLT 7: the difference between incoming and outgoing amount must cover this node's fee
+        if (message.getAmount() - payload.getAmtToForward()
+                < computeFees(payload.getAmtToForward(), policy.getBaseFee(), policy.getFeePpm())) {
+            failHTLC(message, "fee_insufficient"); return;
         }
         var outgoing = new MsgUpdateAddHTLC(channel.getChannelId(), channel.getNextHTLCid(), payload.getAmtToForward(),
                 message.getPayment_hash(), payload.getOutgoingCLTV(), inner.get());
@@ -770,6 +794,23 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         pendingHTLC.put(outgoing.getPayment_hash(), outgoing);
         nodeStats.incrementForwardingSuccesses();
         sendToPeer(getChannelPeer(channel.getChannelId()), outgoing, uvNetwork);
+    }
+
+    /** Identity of the locally generated invoice with this payment hash, or null. */
+    private Long findInvoiceIdentity(String hash) {
+        Long identity = invoiceIdentityByHash.get(hash);
+        if (identity != null) {
+            var invoice = generatedInvoices.get(identity);
+            if (invoice != null && invoice.getHash().equals(hash)) return identity;
+        }
+        // Invoices placed directly in the public map are indexed on first use.
+        for (var entry : generatedInvoices.entrySet()) {
+            if (entry.getValue().getHash().equals(hash)) {
+                invoiceIdentityByHash.put(hash, entry.getKey());
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private String getMyChannelWith(String node_id) {
@@ -1071,7 +1112,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
             // assuming all the other message type are gossip
             default ->  {
                 var message = (GossipMsg) msg;
-                if (!GossipMessageQueue.contains(message)) {
+                if (queuedGossip.add(message)) {
                     GossipMessageQueue.add(message);
                 }
             }
@@ -1102,6 +1143,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         while (isP2PRunning() && !GossipMessageQueue.isEmpty() && max_msg>0) {
             max_msg--;
             GossipMsg msg = GossipMessageQueue.poll();
+            queuedGossip.remove(msg);
 
             switch (msg.getType()) {
                 case CHANNEL_ANNOUNCE -> {
@@ -1121,20 +1163,27 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
                     var updater_id = message.getSignerId();
                     var channel_id = message.getChannelId();
 
+                    // an echo of this node's own update carries nothing new
+                    if (updater_id.equals(this.getPubKey())) break;
+
+                    // Updates that are not newer than the one already held are ignored and
+                    // not forwarded (BOLT 7); see ChannelGraph.updateChannel.
                     // sent from my channel partners, update related data
                     if (channels.containsKey(channel_id)) {
-                        channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
-                        getChannelGraph().updateChannel(message);
-                        var next = message.nextMsgToForward(this.getPubKey());
-                        broadcastToPeers(message.getSender(),next);
+                        if (getChannelGraph().updateChannel(message)) {
+                            channels.get(channel_id).setPolicy(updater_id,message.getUpdatedPolicy());
+                            var next = message.nextMsgToForward(this.getPubKey());
+                            broadcastToPeers(message.getSender(),next);
+                        }
                     } // not my local channel, but I have an entry to be updated...
                     else {
                         //debug("Received update for non local channel ");
                         if (getChannelGraph().hasChannel(channel_id)) {
                             //debug("GOSSIP: Updating non-local channel "+channel_id);
-                            getChannelGraph().updateChannel(message);
-                            var next = message.nextMsgToForward(this.getPubKey());
-                            broadcastToPeers(message.getSender(),next);
+                            if (getChannelGraph().updateChannel(message)) {
+                                var next = message.nextMsgToForward(this.getPubKey());
+                                broadcastToPeers(message.getSender(),next);
+                            }
                         }
                         else {
                             //debug("GOSSIP: Skipping update for unknown channel "+channel_id);
@@ -1498,6 +1547,8 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
 
         //noinspection unchecked
         generatedInvoices = (ConcurrentHashMap<Long, LNInvoice>)s.readObject();
+        invoiceIdentityByHash = new ConcurrentHashMap<>();
+        for (var entry : generatedInvoices.entrySet()) invoiceIdentityByHash.put(entry.getValue().getHash(), entry.getKey());
         //invoiceReports = (ArrayList<stats.GlobalStats.InvoiceReport>) s.readObject();
         nodeStats = (GlobalStats.NodeStats) s.readObject();
         payedInvoices = (HashMap<String, LNInvoice>) s.readObject();
@@ -1518,6 +1569,7 @@ public class UVNode implements LNode, Serializable,Comparable<UVNode> {
         this.updateAddHTLCQueue = new ConcurrentLinkedQueue<>();
         this.channelsToAcceptQueue = new ConcurrentLinkedQueue<>();
         this.GossipMessageQueue = new ConcurrentLinkedQueue<>();
+        this.queuedGossip = ConcurrentHashMap.newKeySet();
         this.waitingTxConf = new HashMap<>();
     }
 

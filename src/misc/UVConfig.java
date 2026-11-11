@@ -155,6 +155,7 @@ public class UVConfig implements Serializable {
         }
         settings.put("seed", master_seed);
         settings.put("htlc_stall_timeout_ms", getHTLCStallTimeoutMs());
+        settings.put("min_final_cltv_expiry", getMinFinalCltvExpiry());
         return Collections.unmodifiableMap(settings);
     }
 
@@ -165,7 +166,7 @@ public class UVConfig implements Serializable {
             "pathfinding_lnd_attempt_cost_ppm", "pathfinding_lnd_default_path_probability",
             "pathfinding_lnd_default_payment_amount_sat", "max_threads", "node_services_tick_ms",
             "gossip_flush_period_ms", "gossip_flush_size", "p2p_max_hops", "p2p_max_age",
-            "htlc_stall_timeout_ms", "logfile", "debug");
+            "htlc_stall_timeout_ms", "min_final_cltv_expiry", "logfile", "debug");
 
     public void validateSnapshotRuntimeSettings(UVConfig saved) {
         Map<String, Object> requested = getEffectiveSettings(), original = saved.getEffectiveSettings();
@@ -185,6 +186,14 @@ public class UVConfig implements Serializable {
     public long getHTLCStallTimeoutMs() {
         long value = Long.parseLong(properties.getProperty("htlc_stall_timeout_ms", "15000").trim());
         if (value <= 0) throw new IllegalArgumentException("htlc_stall_timeout_ms must be positive");
+        return value;
+    }
+
+    /** Blocks the sender adds to the current height for the final hop of new invoices;
+     * works with old snapshots, which predate the setting. */
+    public int getMinFinalCltvExpiry() {
+        int value = Integer.parseInt(properties.getProperty("min_final_cltv_expiry", "9").trim());
+        if (value <= 0) throw new IllegalArgumentException("min_final_cltv_expiry must be positive");
         return value;
     }
 
@@ -273,6 +282,7 @@ public class UVConfig implements Serializable {
         blocktime_ms = Integer.parseInt(properties.getProperty("blocktime_ms"));
         node_services_tick_ms = Integer.parseInt(properties.getProperty("node_services_tick_ms"));
         getHTLCStallTimeoutMs(); // reject invalid watchdog settings before any network work starts
+        getMinFinalCltvExpiry();
         gossip_flush_period_ms = Integer.parseInt(properties.getProperty("gossip_flush_period_ms"));
         to_self_delay = Integer.parseInt(properties.getProperty("to_self_delay"));
         minimum_depth = Integer.parseInt(properties.getProperty("minimum_depth"));

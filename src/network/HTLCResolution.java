@@ -110,10 +110,18 @@ final class HTLCResolution {
         pending.remove(contract.key);
     }
 
-    synchronized Outcome fulfill(String receiver, MsgUpdateAddHTLC message, long preimage) {
+    /** The preimage is hashed before taking the ledger lock, which all nodes share. */
+    private static String hashOf(long preimage) {
+        return CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
+    }
+
+    Outcome fulfill(String receiver, MsgUpdateAddHTLC message, long preimage) {
+        return fulfill(receiver, message, preimage, hashOf(preimage));
+    }
+
+    private synchronized Outcome fulfill(String receiver, MsgUpdateAddHTLC message, long preimage, String hash) {
         Contract contract = require(message);
         if (!contract.receiver.equals(receiver)) throw new IllegalStateException("Wrong fulfilling peer");
-        String hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
         if (!contract.hash.equals(hash)) throw new IllegalStateException("Invalid HTLC preimage");
         if (contract.outcome.state() != State.PENDING) return contract.outcome;
         if (contract.outgoing != null) {
@@ -141,11 +149,14 @@ final class HTLCResolution {
     }
 
     /** Validate the channel/HTLC ID and proof, never match a reply by payment hash alone. */
-    synchronized void acceptFulfillment(String sender, Key key, long preimage) {
+    void acceptFulfillment(String sender, Key key, long preimage) {
+        acceptFulfillment(sender, key, hashOf(preimage));
+    }
+
+    private synchronized void acceptFulfillment(String sender, Key key, String hash) {
         Contract contract = contracts.get(key);
         if (contract == null) return; // An obsolete message after a settled restore has no effect.
         if (!contract.sender.equals(sender)) throw new IllegalStateException("Wrong HTLC reply recipient");
-        String hash = CryptoKit.bytesToHexString(CryptoKit.sha256(BigInteger.valueOf(preimage).toByteArray()));
         if (!contract.hash.equals(hash)) throw new IllegalStateException("Invalid HTLC preimage");
         if (contract.outcome.state() == State.PENDING) throw new IllegalStateException("Fulfillment lacks a resolved channel outcome");
     }
@@ -180,5 +191,15 @@ final class HTLCResolution {
     }
 
     synchronized int pendingCount() { return pending.size(); }
+
+    /**
+     * Drop terminal records at a settled boundary. With no pending contract, no queued message
+     * and all workers joined, nothing can refer to them any more; channel HTLC counters keep
+     * later IDs unique. This is the same argument that lets a snapshot load start from an
+     * empty ledger.
+     */
+    synchronized void discardResolvedAtSettledBoundary() {
+        if (pending.isEmpty()) contracts.clear();
+    }
     synchronized void reset() { contracts.clear(); pending.clear(); }
 }

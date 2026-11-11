@@ -40,6 +40,14 @@ public class GossipMsgChannelUpdate extends GossipMsg {
         if (this == o) return true;
         if (!(o instanceof GossipMsgChannelUpdate that)) return false;
 
-        return channel_id.equals(that.channel_id) && timestamp == that.timestamp && signerId.equals(that.signerId);
+        // Copies that differ in the number of forwardings are not interchangeable: the one
+        // forwarded fewer times can still travel further.
+        return channel_id.equals(that.channel_id) && timestamp == that.timestamp && signerId.equals(that.signerId)
+                && forwardings == that.forwardings;
+    }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(channel_id, signerId, timestamp, forwardings);
     }
 }

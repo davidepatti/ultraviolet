@@ -2,6 +2,7 @@ package topology;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -24,7 +25,7 @@ public class BFS extends PathFinder {
     public SearchResult findPaths(ChannelGraph g, String start, String end, int topk) {
 
         int found = 0;
-        var visited_vertex = new ArrayList<String>();
+        var visited_vertex = new HashSet<String>();
         var queue_vertex = new LinkedList<String>();
         List<Path> paths = new ArrayList<>();
         var stats = new SearchStatsCollector();

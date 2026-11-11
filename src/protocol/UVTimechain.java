@@ -11,10 +11,12 @@ public class UVTimechain implements Runnable, Serializable {
 
     @Serial
     private static final long serialVersionUID = 1207897L;
-    private static final int BLOCK_WEIGHT_LIMIT = 4000000;
+    // Transaction sizes are expressed in vBytes: 4,000,000 weight units are 1,000,000 vBytes.
+    private static final int BLOCK_VSIZE_LIMIT = 1_000_000;
     // Defines fee-per-byte bands (inclusive upper bounds) for congestion tracking: 0-5, 5-15, 15-35, 35-100, 100-200, 200-500, 500-1000, 1000-2000
     private static final int[] FEE_BYTE_BANDS = {5, 15, 35, 100, 200, 500, 1000, 2000};
-    private int current_height;
+    // Written only under the timechain lock; volatile so that readers do not need it.
+    private volatile int current_height;
     private final int blocktime;
     private final PriorityQueue<UVTransaction> mempoolQueue = new PriorityQueue<>(new FeeComparator());
     private final List<Block>  blockChain = new ArrayList<>();
@@ -92,14 +94,14 @@ public class UVTimechain implements Runnable, Serializable {
         List<UVTransaction> blockTxs = new ArrayList<>();
         int currentBlockWeight = 0;
 
-        while (currentBlockWeight < BLOCK_WEIGHT_LIMIT && !mempoolQueue.isEmpty()) {
+        while (currentBlockWeight < BLOCK_VSIZE_LIMIT && !mempoolQueue.isEmpty()) {
             UVTransaction tx = mempoolQueue.peek();
 
             var txFeeBand = getTxFeeBand(tx);
 
             int txSize = tx.getSize();
 
-            if (currentBlockWeight + txSize <= BLOCK_WEIGHT_LIMIT) {
+            if (currentBlockWeight + txSize <= BLOCK_VSIZE_LIMIT) {
                 mempoolQueue.poll();
                 blockTxs.add(tx);
                 currentBlockWeight += txSize;
@@ -110,7 +112,7 @@ public class UVTimechain implements Runnable, Serializable {
             }
             // blob pseudo txs can be partially removed, since they represent multiple txs
             else if (tx.getType().equals(UVTransaction.Type.EXTERNAL_BLOB)){
-                int bytesToInclude = BLOCK_WEIGHT_LIMIT - currentBlockWeight;
+                int bytesToInclude = BLOCK_VSIZE_LIMIT - currentBlockWeight;
                 if (bytesToInclude <= 0) {
                     break;
                 }
@@ -182,7 +184,7 @@ public class UVTimechain implements Runnable, Serializable {
         return Optional.empty();
     }
 
-    public synchronized int getCurrentBlockHeight() {
+    public int getCurrentBlockHeight() {
         return current_height;
     }
 

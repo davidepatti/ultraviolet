@@ -42,7 +42,7 @@ public class LNDPathFinder extends MiniDijkstra{
     }
 
     @Override
-    public double weight(ChannelGraph.Edge edge, Path path) {
+    protected double weight(ChannelGraph.Edge edge, int hops) {
         // MiniDijkstra already accumulates cost across expansions.
         // Return only the incremental cost of this newly added edge.
         var p = edge.policy();
@@ -50,10 +50,10 @@ public class LNDPathFinder extends MiniDijkstra{
             return Double.POSITIVE_INFINITY;
         }
         double incrementalCost = 0.0;
-        if (path.getSize() > 1) {
+        if (hops > 1) {
             incrementalCost += routingFees(p) + timelockOpportunityCost(p);
         }
-        if (path.getSize() == 1) {
+        if (hops == 1) {
             incrementalCost += probabilisticPenalty();
         }
         return incrementalCost;

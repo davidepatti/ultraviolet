@@ -46,6 +46,15 @@ public class UVNetwork implements LNetwork {
 
     HTLCResolution htlcResolution() { return htlcResolution; }
 
+    // Canonical instances of graph edges, see ChannelGraph.setEdgeInterner. Only needed while
+    // edges are being created; clearing it never breaks sharing that already exists.
+    private final ConcurrentHashMap<topology.ChannelGraph.Edge, topology.ChannelGraph.Edge> edgePool = new ConcurrentHashMap<>();
+
+    topology.ChannelGraph.Edge shareEdge(topology.ChannelGraph.Edge edge) {
+        var known = edgePool.putIfAbsent(edge, edge);
+        return known == null ? edge : known;
+    }
+
     /** Chain observation runs independently of P2P delivery; never called under the clock lock. */
     public void onBlockCommitted(int height) {
         requireHealthy();
@@ -128,24 +137,10 @@ public class UVNetwork implements LNetwork {
     private String bootstrapSessionId;
     private String lastLoadStatusError;
     private BufferedWriter criticalLogWriter;
-    private final ThreadLocal<Random> threadRng =
-            ThreadLocal.withInitial(() -> {
-                String threadName = Thread.currentThread().getName();
-                // derive a numeric seed component from the thread name (e.g., parsing suffix or using hashCode)
-                long nameHash;
-                String[] parts = threadName.split("-");
-                if (parts.length > 1) {
-                    try {
-                        nameHash = Long.parseLong(parts[parts.length - 1]);
-                    } catch (NumberFormatException e) {
-                        nameHash = threadName.hashCode();
-                    }
-                } else {
-                    nameHash = threadName.hashCode();
-                }
-                long seed = masterSeed ^ nameHash;
-                return new Random(seed);
-            });
+    /** A generator per bootstrap node, derived from the master seed and the node index only. */
+    private Random nodeRandom(int nodeIndex) {
+        return new Random(masterSeed ^ (0x9E3779B97F4A7C15L * (nodeIndex + 1L)));
+    }
 
     private static final class LoadedStatus {
         private final UVConfig config;
@@ -347,7 +342,8 @@ public class UVNetwork implements LNetwork {
         print_log("BOOTSTRAP: Creating "+uvConfig.bootstrap_nodes+" node instancies...");
 
         try {
-            int last_issue_block = 0;
+            // Sampled start times are block offsets from this height.
+            final int first_block = getTimechain().getCurrentBlockHeight();
 
             for (int current_index=0;current_index<uvConfig.bootstrap_nodes;current_index++) {
 
@@ -357,6 +353,7 @@ public class UVNetwork implements LNetwork {
                 int funding = (int)1e3*(random.nextInt(min_capacity,max_capacity+1));
 
                 var node = new UVNode(this,"pk"+current_index, createAlias(),funding,profile);
+                node.setLocalRndGenerator(nodeRandom(current_index));
 
                 synchronized (pubkeys_list) {
                     uvnodes.put(node.getPubKey(),node);
@@ -364,10 +361,10 @@ public class UVNetwork implements LNetwork {
                     pubkeys_list.add(node.getPubKey());
                 }
 
-                int to_wait = boot_times[current_index] - last_issue_block;
-                // Wait at least 1 block even if to_wait == 0, to serialize starts
-                waitForBlocks(Math.max(to_wait,1));
-                last_issue_block = getTimechain().getCurrentBlockHeight();
+                // Start each node at its sampled block. Nodes sampled for the same block start
+                // together, so the configured start-time distribution is what actually happens.
+                int to_wait = first_block + boot_times[current_index] - getTimechain().getCurrentBlockHeight();
+                if (to_wait > 0) waitForBlocks(to_wait);
 
                 bootstrapExecutor.submit(() -> bootstrapNode(node));
             }
@@ -417,6 +414,7 @@ public class UVNetwork implements LNetwork {
                 pruned += node.getChannelGraph().purgeNullPolicyChannels();
             }
             print_log("(Pruned null entries: "+pruned+") DONE!");
+            edgePool.clear();
 
             bootstrap_completed = true;
             resume();
@@ -646,6 +644,7 @@ public class UVNetwork implements LNetwork {
                 requireHealthy();
                 if (!hasActiveWork() && unsettledState().isEmpty()) {
                     settled = true;
+                    htlcResolution.discardResolvedAtSettledBoundary();
                     return;
                 }
                 remainingMillis(deadline);
@@ -840,6 +839,17 @@ public class UVNetwork implements LNetwork {
      * @return a network.UVNode instance of the selected node
      */
     private UVNode getRandomNode() {
+        // pubkeys_list mirrors the registry in insertion order, so drawing from it selects
+        // the same node as drawing from a copy of the registry, without the O(N) copy.
+        var keys = pubkeys_list;
+        if (keys != null) {
+            synchronized (keys) {
+                if (!keys.isEmpty() && keys.size() == uvnodes.size()) {
+                    var node = uvnodes.get(keys.get(random.nextInt(keys.size())));
+                    if (node != null) return node;
+                }
+            }
+        }
         var nodes = new ArrayList<>(getUVNodeList().values());
         return nodes.get(random.nextInt(nodes.size()));
     }
@@ -869,7 +879,7 @@ public class UVNetwork implements LNetwork {
         Optional<LNChannel> channel = Optional.empty();
         int found_channels = 0;
 
-        for (LNChannel c: n1.getLNChannelList()) {
+        for (LNChannel c: n1.getChannels().values()) {
             if (c.getNode1PubKey().equals(pub2) || c.getNode2PubKey().equals(pub2)) {
                 channel = Optional.of(c);
                 found_channels++;
@@ -895,7 +905,12 @@ public class UVNetwork implements LNetwork {
         if (!this.isBootstrapCompleted()) return;
         for (int i=0;i<n;i++) {
             var some_node = getRandomNode();
-            var some_channel_id = some_node.getRandomChannel().getChannelId();
+            var some_channel = some_node.getRandomChannel(random);
+            if (some_channel == null) {
+                log("RANDOM EVENT: skipping "+some_node.getPubKey()+", no channels");
+                continue;
+            }
+            var some_channel_id = some_channel.getChannelId();
             var some_amount = random.nextInt(1000);
             some_amount *= 1000;
             log("RANDOM EVENT: pushing "+some_amount+ " sats from "+some_node.getPubKey()+" to "+some_channel_id);
@@ -931,6 +946,7 @@ public class UVNetwork implements LNetwork {
             }
 
             // Build imported state in isolation; commit only when fully valid.
+            edgePool.clear();
             Map<String, UVNode> importedNodes = new LinkedHashMap<>();
             for (Object node : nodes) {
                 if (!(node instanceof JsonObject nodeObject)) {
@@ -958,6 +974,7 @@ public class UVNetwork implements LNetwork {
                 return;
             }
 
+            int imported_policies = 0;
             for (Object edge : edges) {
                 if (!(edge instanceof JsonObject edgeObject)) {
                     print_log("Import failed: invalid edge entry " + edge);
@@ -1005,6 +1022,13 @@ public class UVNetwork implements LNetwork {
                 boolean direction = random.nextBoolean();
                 UVChannel ch = new UVChannel(channel_id,left,right,capacity,0,0,direction);
 
+                // lncli describegraph carries one routing policy per direction; a missing or
+                // disabled one leaves that direction without a policy, hence not routable.
+                var policy1 = importedPolicy(edgeObject.get("node1_policy"));
+                var policy2 = importedPolicy(edgeObject.get("node2_policy"));
+                if (policy1 != null) { ch.setPolicy(node1_pub, policy1); imported_policies++; }
+                if (policy2 != null) { ch.setPolicy(node2_pub, policy2); imported_policies++; }
+
                 uvnode1.configureChannel(ch);
                 uvnode2.configureChannel(ch);
                 uvnode1.getChannelGraph().addLNChannel(ch);
@@ -1027,11 +1051,33 @@ public class UVNetwork implements LNetwork {
                 bootstraps_ended = uvnodes.size();
             }
 
-            print_log("Import completed (observer graph rooted at " + root.getPubKey() + ")");
+            print_log("Import completed (observer graph rooted at " + root.getPubKey() + ", "
+                    + imported_policies + " of " + 2 * edges.size() + " directional policies present)");
 
         } catch (IOException | NumberFormatException | ClassCastException e) {
             print_log("Import failed: " + e.getMessage());
         }
+    }
+
+    /** @return the policy of one channel direction, or null when absent, disabled or malformed */
+    private static LNChannel.Policy importedPolicy(Object value) {
+        if (!(value instanceof JsonObject policy)) return null;
+        if (Boolean.TRUE.equals(policy.get("disabled")) || "true".equals(policy.get("disabled"))) return null;
+        Long delta = importedNumber(policy.get("time_lock_delta"));
+        Long base = importedNumber(policy.get("fee_base_msat"));
+        Long rate = importedNumber(policy.get("fee_rate_milli_msat"));
+        if (delta == null || base == null || rate == null || delta <= 0 || base < 0 || rate < 0
+                || delta > Integer.MAX_VALUE || base > Integer.MAX_VALUE || rate > Integer.MAX_VALUE) return null;
+        // fee_rate_milli_msat is the proportional fee in millionths, i.e. ppm
+        return new LNChannel.Policy(delta.intValue(), base.intValue(), rate.intValue());
+    }
+
+    private static Long importedNumber(Object value) {
+        if (value instanceof Number n) return n.longValue();
+        if (value instanceof String s) {
+            try { return Long.parseLong(s.trim()); } catch (NumberFormatException e) { return null; }
+        }
+        return null;
     }
 
     private UVNode resolveImportedRootNode(Map<String, UVNode> importedNodes, String rootIdentifier) {
@@ -1578,10 +1624,12 @@ public class UVNetwork implements LNetwork {
 
         htlcResolution.reset();
         uvnodes.clear();
+        edgePool.clear();
         for (UVNode node : loadedStatus.nodes.values()) {
             node.setUVM(this);
             uvnodes.put(node.getPubKey(), node);
         }
+        edgePool.clear();
 
         for (UVNode node : getUVNodeList().values()) {
             node.restorePersistentData();
@@ -1686,10 +1734,11 @@ public class UVNetwork implements LNetwork {
     public void bootstrapNode(UVNode node) {
 
         try {
-            // get a deterministic thread-related seed to create the Random
-            Random thread_rng = threadRng.get();
-
-            node.setLocalRndGenerator(thread_rng);
+            // The generator belongs to the node, not to the pool thread that happens to run it.
+            if (node.getLocalRndGenerator() == null) {
+                node.setLocalRndGenerator(new Random(masterSeed ^ (0x9E3779B97F4A7C15L * (node.getPubKey().hashCode() + 1L))));
+            }
+            Random thread_rng = node.getLocalRndGenerator();
 
             final var profile = node.getProfile();
             final int max_channels = profile.getIntAttribute("max_channels");
