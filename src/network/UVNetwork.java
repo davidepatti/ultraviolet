@@ -2207,6 +2207,7 @@ public class UVNetwork implements LNetwork {
                         for (var side : e.getValue().entrySet()) ch.setPolicy(side.getKey(), side.getValue());
                     }
                     for (var r : replacements) { r.graph().replacePolicyPreservingOrder(r.source(), r.channel(), r.policy()); graphEdges++; }
+                    edgePool.clear(); // only needed while the replacement edges were being created
                     validateSettledState();
                     var table = new TreeMap<String, Object>();
                     result.directed().forEach((id, sides) -> {

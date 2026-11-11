@@ -29,7 +29,11 @@ public class ChannelGraph implements Serializable  {
     /** Replace the edges already held with their canonical instances (used after loading a snapshot). */
     public synchronized void shareEdges() {
         for (var entry : adj_map.entrySet()) {
-            var shared = new HashSet<Edge>(Math.max(16, (int) (entry.getValue().size() / 0.75f) + 1));
+            int capacity = Math.max(16, (int) (entry.getValue().size() / 0.75f) + 1);
+            // A restored graph holds LinkedHashSets whose order is the saved search-neighbour order
+            // (see writeObject). Keep both the set type and that order: path finders iterate these
+            // sets, and branch fingerprints and order-preserving policy replacement depend on them.
+            Set<Edge> shared = entry.getValue() instanceof LinkedHashSet<Edge> ? new LinkedHashSet<>(capacity) : new HashSet<>(capacity);
             for (Edge e : entry.getValue()) shared.add(edgeInterner.apply(e));
             entry.setValue(shared);
         }
@@ -237,7 +241,8 @@ public class ChannelGraph implements Serializable  {
         var rebuilt = new LinkedHashSet<Edge>();
         int replaced = 0;
         for (Edge e : edges) {
-            if (e.id().equals(channel_id)) { rebuilt.add(new Edge(e.id, e.source, e.destination, e.capacity, new_policy)); replaced++; }
+            // Not learned through gossip: the edge carries no update timestamp (LOCAL_POLICY). Shared across views like any other edge.
+            if (e.id().equals(channel_id)) { rebuilt.add(edgeInterner.apply(new Edge(e.id, e.source, e.destination, e.capacity, new_policy))); replaced++; }
             else rebuilt.add(e);
         }
         if (replaced != 1 || rebuilt.size() != edges.size()) throw new IllegalStateException("Cannot replace policy " + channel_id + " from " + source + " in " + root_node);

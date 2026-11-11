@@ -38,6 +38,8 @@ public final class InitialS50State {
             if(Modifier.isStatic(f.getModifiers())||f.isSynthetic())continue;
             if(o instanceof UVNode && Set.of("uvNetwork","p2pHandler","saved_peers_id","peers").contains(f.getName()))continue;
             if(o instanceof UVTimechain && Set.of("uvm","timechainThread","wait_blocks_latch").contains(f.getName()))continue;
+            // Runtime wiring to the owning network (edge sharing), not node state: following it would walk the whole network.
+            if(o instanceof topology.ChannelGraph && f.getName().equals("edgeInterner"))continue;
             try{f.setAccessible(true);a.put(c.getName()+"."+f.getName(),value(f.get(o)));}catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
         }
         if(o instanceof UVNode n) {
